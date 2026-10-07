@@ -1,0 +1,34 @@
+[package]
+name = "mpz-common"
+version = "0.1.0-alpha.6"
+edition = "2024"
+description = "mpz-common v0.1.0-alpha.6 (6ebfe61), vendored by zkfetch for single-threaded wasm. See vendor/mpz/ZKFETCH_PATCHES.md."
+
+[features]
+default = []
+executor = []
+sync = ["tokio/sync"]
+future = []
+test-utils = ["tokio/io-util", "tokio-util/compat"]
+ideal = ["tokio/sync"]
+
+[dependencies]
+futures = "0.3"
+async-trait = "0.1"
+bytes = "1"
+pin-project-lite = "0.2"
+thiserror = "1"
+serio = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+pollster = "0.3"
+cfg-if = "1"
+tokio = { version = "1.23", default-features = false, optional = true }
+tokio-util = "0.7"
+crossbeam-channel = "0.5"
+crossbeam-deque = "0.8"
+crossbeam-utils = "0.8"
+async-task = "4"
+
+[dev-dependencies]
+tokio = { version = "1.23", features = ["io-util", "macros", "rt-multi-thread", "net"] }
+tokio-util = { version = "0.7", features = ["compat"] }

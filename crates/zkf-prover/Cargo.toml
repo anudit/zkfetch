@@ -1,0 +1,32 @@
+[package]
+name = "zkf-prover"
+description = "zkfetch prover: notarized fetch + presentation builder"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+zkf-core = { workspace = true }
+zkf-predicates = { workspace = true }
+tlsn = { workspace = true }
+tlsn-formats = { workspace = true }
+anyhow = { workspace = true }
+bincode = { workspace = true }
+futures = { workspace = true }
+hex = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
+zkf-notary = { workspace = true }
+zkf-verifier = { workspace = true }
+tlsn-server-fixture = { workspace = true }
+tlsn-server-fixture-certs = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,15 @@
+[package]
+name = "zkf-verifier"
+description = "zkfetch presentation verifier"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+zkf-core = { workspace = true }
+zkf-predicates = { workspace = true }
+tlsn = { workspace = true }
+anyhow = { workspace = true }
+bincode = { workspace = true }
+hex = { workspace = true }

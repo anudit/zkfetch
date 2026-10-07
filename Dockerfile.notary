@@ -1,0 +1,18 @@
+FROM --platform=$BUILDPLATFORM rust:1.98-bookworm AS build
+RUN apt-get update && apt-get install -y --no-install-recommends clang cmake pkg-config gcc-x86-64-linux-gnu g++-x86-64-linux-gnu && rm -rf /var/lib/apt/lists/*
+RUN rustup target add x86_64-unknown-linux-gnu
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY vendor ./vendor
+RUN cargo build --locked --release --target x86_64-unknown-linux-gnu -p zkf-notary
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* && useradd -m -u 10001 notary
+COPY --from=build /app/target/x86_64-unknown-linux-gnu/release/zkf-notary /usr/local/bin/zkf-notary
+USER notary
+WORKDIR /home/notary
+ENV ZKF_NOTARY_ADDR=0.0.0.0:7047 ZKF_HEALTH_ADDR=0.0.0.0:9001 ZKF_REQUIRE_KEY=1
+EXPOSE 7047 9001
+ENTRYPOINT ["/usr/local/bin/zkf-notary"]

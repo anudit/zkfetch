@@ -1,0 +1,23 @@
+{
+  "name": "zkfetch-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:bins": "cargo build --release -p zkf-notary -p zkf-fixture",
+    "build:native": "bun run packages/native/scripts/build-native.ts",
+    "build": "bun run build:bins && bun run build:native",
+    "test:rust": "cargo test --release",
+    "test": "bun run build && bun test && cargo test --release",
+    "typecheck": "bunx tsc -p tsconfig.json --noEmit",
+    "zkfetch": "bun apps/cli/src/index.ts",
+    "playground": "bun packages/playground/src/duolingo.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "zkfetch-notary-edge",
+  "main": "build/index.js",
+  "compatibility_date": "2026-10-07",
+  "account_id": "c9ef8f83cb2796f46fab8a820577d11c",
+  "workers_dev": true,
+  // No placement: the verifier runs at the edge location the prover reaches,
+  // so each MPC round trip stays prover <-> nearest Cloudflare location.
+  "observability": { "enabled": true },
+  "limits": { "cpu_ms": 300000 },
+  "secrets": { "required": ["ZKF_NOTARY_KEY"] },
+  "build": { "command": "worker-build --release" }
+}

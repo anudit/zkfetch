@@ -1,0 +1,33 @@
+[package]
+name = "tlsn-tls13-schedule"
+description = "TLS 1.3 key schedule in MPC (port of tlsn PR #1001 to alpha.15's VM; zkfetch patch)"
+authors = ["TLSNotary Team", "zkfetch"]
+keywords = ["tls", "mpc", "2pc", "prf", "hkdf"]
+categories = ["cryptography"]
+license = "MIT OR Apache-2.0"
+version = "0.1.0-alpha.15"
+edition = "2024"
+
+[lib]
+name = "tls13_schedule"
+
+[dependencies]
+mpz-vm-core = { workspace = true }
+mpz-core = { workspace = true }
+mpz-circuits = { workspace = true }
+mpz-hash = { workspace = true, features = ["sha256"] }
+sha2 = { workspace = true, features = ["compress"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+rand = { workspace = true }
+ring = { workspace = true }
+
+[dev-dependencies]
+mpz-common = { workspace = true, features = ["test-utils"] }
+mpz-ideal-vm = { workspace = true }
+mpz-garble = { workspace = true }
+mpz-ot = { workspace = true, features = ["ideal"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+rstest = { workspace = true }
+hex = { workspace = true }
+hmac = { workspace = true }

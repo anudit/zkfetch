@@ -1,0 +1,21 @@
+[package]
+name = "zkf-napi"
+description = "Node-API bindings (Bun/Node) for the zkfetch prover and verifier"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zkf-core = { workspace = true }
+zkf-prover = { workspace = true }
+zkf-verifier = { workspace = true }
+napi = { version = "3", default-features = false, features = ["napi8", "async"] }
+napi-derive = "3"
+serde_json = { workspace = true }
+
+[build-dependencies]
+napi-build = "2"

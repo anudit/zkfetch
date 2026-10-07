@@ -1,0 +1,25 @@
+/target
+node_modules/
+*.node
+.zkf/
+*.tlsn
+*.zkf.json
+.DS_Store
+PLAN.md
+infra/cloudflare/build/
+infra/cloudflare/target/
+infra/cloudflare/.wrangler/
+.env
+.env.*
+!.env.example
+next.txt
+zkfetchfeedback.md
+
+# Cloudflare: local Worker secrets, Wrangler state and build outputs anywhere
+.dev.vars
+**/.wrangler/
+infra/cloudflare/edge/build/
+infra/cloudflare/edge/target/
+# Profiles and logs
+*.trace
+*.log

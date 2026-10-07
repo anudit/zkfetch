@@ -1,0 +1,19 @@
+[package]
+name = "zkf-fixture"
+description = "Local HTTPS test server (TLSNotary server fixture) for zkfetch"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "zkf-fixture"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+zkf-core = { workspace = true }
+tlsn-server-fixture = { workspace = true }
+tlsn-server-fixture-certs = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }

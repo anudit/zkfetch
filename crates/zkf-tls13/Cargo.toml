@@ -1,0 +1,30 @@
+[package]
+name = "zkf-tls13"
+description = "TLS 1.3 record geometry and independent server handshake authentication"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+zkf-tls13-schedule.workspace = true
+anyhow.workspace = true
+sha2.workspace = true
+hmac = "0.12"
+ring = "0.17"
+tls-core = { package = "tlsn-tls-core", git = "https://github.com/tlsnotary/tlsn", tag = "v0.1.0-alpha.15" }
+aes-gcm = "0.10"
+p256 = "0.13"
+subtle = "2.6"
+mpz-vm-core = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
+mpz-common = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
+mpz-circuits = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6", features = ["aes"] }
+
+[dev-dependencies]
+rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
+tlsn-server-fixture-certs.workspace = true
+mpz-common = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6", features = ["test-utils"] }
+mpz-garble = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
+mpz-ot = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6", features = ["ideal"] }
+rand = "0.9"
+tokio.workspace = true

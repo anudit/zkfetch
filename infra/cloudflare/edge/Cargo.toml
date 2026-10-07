@@ -1,0 +1,54 @@
+[package]
+name = "zkfetch-notary-edge"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "zkfetch notary running MPC-TLS verification inside a Cloudflare Worker (wasm32)."
+
+# Own workspace: the Worker targets wasm32 only. Cargo.lock starts from the
+# root lockfile so shared crates resolve to the same versions.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zkf-notary = { path = "../../../crates/zkf-notary" }
+anyhow = "1"
+futures = "0.3"
+hex = "0.4"
+serde_json = "1"
+worker = "0.8.7"
+tokio-util = { version = "0.7", features = ["compat"] }
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+# Randomness from crypto.getRandomValues (see .cargo/config.toml).
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+rustls-pki-types = { version = "1", features = ["web"] }
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+# wasm-bindgen >=0.2.125 needs the externref table names during bundling.
+strip = "debuginfo"
+
+[patch."https://github.com/tlsnotary/tlsn"]
+tlsn = { path = "../../../vendor/tlsn/crates/tlsn" }
+tlsn-attestation = { path = "../../../vendor/tlsn/crates/attestation" }
+tlsn-cipher = { path = "../../../vendor/tlsn/crates/components/cipher" }
+tlsn-core = { path = "../../../vendor/tlsn/crates/core" }
+tlsn-deap = { path = "../../../vendor/tlsn/crates/components/deap" }
+tlsn-formats = { path = "../../../vendor/tlsn/crates/formats" }
+tlsn-hmac-sha256 = { path = "../../../vendor/tlsn/crates/components/hmac-sha256" }
+tlsn-key-exchange = { path = "../../../vendor/tlsn/crates/components/key-exchange" }
+tlsn-mpc-tls = { path = "../../../vendor/tlsn/crates/mpc-tls" }
+tlsn-server-fixture = { path = "../../../vendor/tlsn/crates/server-fixture/server" }
+tlsn-server-fixture-certs = { path = "../../../vendor/tlsn/crates/server-fixture/certs" }
+tlsn-tls-client = { path = "../../../vendor/tlsn/crates/tls/client" }
+tlsn-tls-core = { path = "../../../vendor/tlsn/crates/tls/core" }
+
+[patch."https://github.com/privacy-ethereum/mpz"]
+mpz-common = { path = "../../../vendor/mpz/common" }

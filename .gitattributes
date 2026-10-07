@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Vendored upstream code is kept byte-exact (HTTP fixtures need CRLF).
+vendor/** -text

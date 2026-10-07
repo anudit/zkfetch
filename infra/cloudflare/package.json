@@ -1,0 +1,19 @@
+{
+  "name": "@zkfetch/cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "worker-build --release && bun scripts/prepare.ts",
+    "types": "wrangler types",
+    "deploy": "bun scripts/deploy.ts"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "wrangler": "latest",
+    "typescript": "^5.6.0",
+    "@types/bun": "latest"
+  }
+}

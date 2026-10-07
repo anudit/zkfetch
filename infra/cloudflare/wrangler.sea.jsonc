@@ -1,0 +1,59 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "zkfetch-notary-sea",
+  "main": "build/entry.ts",
+  "compatibility_date": "2026-10-07",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "account_id": "c9ef8f83cb2796f46fab8a820577d11c",
+  "workers_dev": true,
+  "placement": {
+    "region": "aws:ap-southeast-1"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "secrets": {
+    "required": [
+      "ZKF_NOTARY_KEY"
+    ]
+  },
+  "build": {
+    "command": "bun run build"
+  },
+  "containers": [
+    {
+      "class_name": "NotaryContainer",
+      "image": "../../Dockerfile.notary",
+      "image_build_context": "../..",
+      "instance_type": "standard-3",
+      "max_instances": 1,
+      "constraints": {
+        "regions": [
+          "APAC"
+        ]
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NOTARY",
+        "class_name": "NotaryContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "NotaryContainer"
+      ]
+    }
+  ],
+  "vars": {
+    "LOCATION_HINT": "apac",
+    "DEPLOYMENT_REGION": "sea"
+  }
+}

@@ -1,0 +1,21 @@
+[package]
+name = "zkf-core"
+description = "Shared types, wire framing and transport for zkfetch"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+url = { workspace = true }
+anyhow = { workspace = true }
+base64 = "0.22"
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Sockets are native-only; the Cloudflare Worker notary brings its own.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+async-tungstenite = { workspace = true }
+tokio = { workspace = true }
+ws_stream_tungstenite = { workspace = true }
