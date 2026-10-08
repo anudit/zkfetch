@@ -1,0 +1,17 @@
+{
+  "name": "@zkfetch/chrome-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build.ts",
+    "typecheck": "bun check",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@omnid/zkfetch": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/chrome": "latest"
+  }
+}

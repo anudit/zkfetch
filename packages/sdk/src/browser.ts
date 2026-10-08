@@ -6,4 +6,4 @@ import { setBackend } from "./core";
 setBackend(wasm);
 
 export * from "./core";
-export { init, type WasmSource } from "@zkfetch/wasm";
+export { init, threads, type InitOptions, type ThreadsOptions, type WasmSource } from "@zkfetch/wasm";

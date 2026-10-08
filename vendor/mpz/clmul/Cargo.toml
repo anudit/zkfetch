@@ -1,0 +1,24 @@
+[package]
+name = "clmul"
+version = "0.1.0-alpha.6"
+edition = "2024"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(clmul_armv8)", "cfg(clmul_force_soft)"] }
+
+[dependencies]
+cfg-if = "1"
+bytemuck = { version = "1", features = ["derive"] }
+
+[target.'cfg(any(target_arch = "aarch64", target_arch = "x86_64", target_arch = "x86"))'.dependencies]
+cpufeatures = "0.2"
+
+[dev-dependencies]
+rand_chacha = "0.9"
+rand = "0.9"
+rand_core = "0.9"
+criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "clmul"
+harness = false

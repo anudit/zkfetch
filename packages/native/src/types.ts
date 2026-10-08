@@ -60,6 +60,8 @@ export interface NotarizeTimings {
   /** Attestation exchange + local validation. */
   attestMs: number;
   totalMs: number;
+  /** Connect and setup ran ahead of the request (`prepare`); `totalMs` then excludes them. */
+  prewarmed?: boolean;
 }
 
 export interface NotarizeOutput {

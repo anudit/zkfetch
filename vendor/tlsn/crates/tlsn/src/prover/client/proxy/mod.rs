@@ -328,6 +328,10 @@ impl TlsClient for ProxyTlsClient {
                         prover,
                     };
                     self.poll(cx)
+                } else if self.server_closed {
+                    // All received data has been processed above.
+                    Poll::Ready(Err(TlsnError::internal()
+                        .with_msg("server closed the connection during the TLS handshake")))
                 } else {
                     self.state = State::Handshaking { prover };
                     Poll::Pending

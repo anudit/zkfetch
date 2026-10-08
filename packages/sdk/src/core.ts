@@ -13,6 +13,11 @@ export interface Backend {
   notarize(params: NotarizeParams): Promise<NotarizeOutput>;
   present(attestation: string, secrets: string, spec: types.RevealSpec): string;
   verify(presentation: string, options?: VerifyOptions): VerifyOutput;
+  /** Optional: request-independent setup ahead of a request (wasm builds). */
+  prepare?(params: NotarizeParams): Promise<{
+    notarize(params: NotarizeParams): Promise<NotarizeOutput>;
+    dispose(): void;
+  }>;
 }
 
 let active: Backend | undefined;
@@ -54,6 +59,69 @@ export interface ZkConfig {
   /** Browser builds, MPC mode only: WebSocket-to-TCP relay used to reach the
    * server (browsers cannot open TCP). Proxy mode needs no relay. */
   relayUrl?: string;
+  /** A session from `prepare()` for this request; falls back to a fresh
+   * session if it expired or failed before the request was sent. */
+  prepared?: ZkPrepared;
+}
+
+/** Notary sessions time out 120 s after connecting; leave room for the request. */
+const PREPARED_LIFETIME_MS = 80_000;
+
+type BackendPrepared = Awaited<ReturnType<NonNullable<Backend["prepare"]>>>;
+
+/**
+ * A notary session set up ahead of a `zkFetch` (connection and MPC
+ * preprocessing, most of the latency). Pass it as `zkConfig.prepared`.
+ * Single use; expires after 80 s. Call `dispose()` if it will not be used.
+ */
+export class ZkPrepared {
+  /** Epoch milliseconds after which `zkFetch` ignores this session. */
+  readonly expiresAt = Date.now() + PREPARED_LIFETIME_MS;
+  #session: Promise<BackendPrepared | undefined>;
+  #used = false;
+
+  /** Use `prepare()`. */
+  constructor(session: Promise<BackendPrepared>) {
+    this.#session = session.catch(() => undefined);
+  }
+
+  /** Resolves once setup finished; `false` if it failed or is unsupported. */
+  async ready(): Promise<boolean> {
+    return (await this.#session) !== undefined;
+  }
+
+  /** True until used, disposed or expired. Setup may still be running. */
+  get usable(): boolean {
+    return !this.#used && Date.now() < this.expiresAt;
+  }
+
+  /** Hands the session to one request; `undefined` if it cannot be used. */
+  async take(): Promise<BackendPrepared | undefined> {
+    if (!this.usable) return undefined;
+    this.#used = true;
+    return this.#session;
+  }
+
+  /** Closes the session at the notary if it was not used. */
+  dispose(): void {
+    if (this.#used) return;
+    this.#used = true;
+    void this.#session.then(session => session?.dispose());
+  }
+}
+
+/**
+ * Starts the request-independent part of a `zkFetch` to `input` now, so the
+ * later request only runs the TLS, proof and attestation phases. The session
+ * is bound to the notary, mode, TLS version, MPC limits and (proxy mode) host.
+ * On runtimes without support (native) it is a no-op.
+ */
+export function prepare(input: string | URL, zkConfig: Omit<ZkConfig, "prepared">): ZkPrepared {
+  const backend = backendOrThrow();
+  const session = backend.prepare
+    ? backend.prepare(notarizeParams(input.toString(), {}, zkConfig))
+    : Promise.reject(new Error("prepare is not supported by this backend"));
+  return new ZkPrepared(session);
 }
 
 /** Standard `RequestInit` plus `zkConfig`. Only string bodies are supported. */
@@ -131,13 +199,38 @@ export async function zkFetch(input: string | URL, init: ZkRequestInit): Promise
   if (body != null && typeof body !== "string") throw new TypeError("zkFetch: only string bodies are supported");
   const url = input.toString();
   const backend = checkedBackend(zkConfig.backend);
+  const params = notarizeParams(url, { method, headers, body }, zkConfig);
 
-  const out = await backendOrThrow().notarize({
+  const out = await notarizeWith(params, zkConfig.prepared);
+  const session = new ZkSession({ version: 1, url, ...out, backend });
+  return toResponse(out.response, session);
+}
+
+/** Uses the prepared session if it is still good, else a fresh one. A failed
+ * prepared attempt is retried fresh only for idempotent methods. */
+async function notarizeWith(params: NotarizeParams, prepared: ZkPrepared | undefined): Promise<NotarizeOutput> {
+  const session = await prepared?.take();
+  if (!session) return backendOrThrow().notarize(params);
+  try {
+    return await session.notarize(params);
+  } catch (cause) {
+    if (!["GET", "HEAD", "OPTIONS"].includes((params.method ?? "GET").toUpperCase())) throw cause;
+    return backendOrThrow().notarize(params);
+  }
+}
+
+function notarizeParams(
+  url: string,
+  request: { method?: string; headers?: HeadersInit; body?: string | null },
+  zkConfig: Omit<ZkConfig, "prepared">,
+): NotarizeParams {
+  const backend = checkedBackend(zkConfig.backend);
+  return {
     notaryUrl: zkConfig.notaryUrl,
     url,
-    method,
-    headers: [...new Headers(headers).entries()],
-    body: body ?? undefined,
+    method: request.method,
+    headers: [...new Headers(request.headers).entries()],
+    body: request.body ?? undefined,
     connectAddr: zkConfig.connectAddr,
     extraRootCerts: zkConfig.extraRootCerts,
     maxSent: zkConfig.maxSent,
@@ -149,10 +242,7 @@ export async function zkFetch(input: string | URL, init: ZkRequestInit): Promise
     tlsVersion: zkConfig.tlsVersion,
     mode: zkConfig.mode,
     relayUrl: zkConfig.relayUrl,
-  });
-
-  const session = new ZkSession({ version: 1, url, ...out, backend });
-  return toResponse(out.response, session);
+  };
 }
 
 function checkedBackend(backend: PredicateBackend | undefined): PredicateBackend {

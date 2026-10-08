@@ -21,5 +21,11 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let id = namespace.id_from_name("notary-v1")?;
     let hint = env.var("LOCATION_HINT")?.to_string();
     let stub = id.get_stub_with_location_hint(&hint)?;
-    stub.fetch_with_request(req).await
+    let colo = req.cf().map(|cf| cf.colo()).unwrap_or_default();
+    let mut response = stub.fetch_with_request(req).await?;
+    if path == "/health" {
+        response = response.cloned()?;
+        response.headers_mut().set("x-zkf-worker-colo", &colo)?;
+    }
+    Ok(response)
 }

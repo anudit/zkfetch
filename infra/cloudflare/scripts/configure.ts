@@ -1,14 +1,16 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 const base = JSON.parse(readFileSync("wrangler.jsonc", "utf8"));
-for (const [region, cloudRegion, hint, constraint] of [
-  ["us", "aws:us-east-1", "enam", "ENAM"],
-  ["eu", "aws:eu-central-1", "weur", "WEUR"],
-  ["sea", "aws:ap-southeast-1", "apac", "APAC"],
+// No Worker placement: the Worker runs at the client's nearest edge and
+// forwards to the region's Durable Object, which fronts the container.
+// Pinning the Worker to a cloud region added a detour to every message.
+for (const [region, hint, constraint] of [
+  ["us", "enam", "ENAM"],
+  ["eu", "weur", "WEUR"],
+  ["sea", "apac", "APAC"],
 ]) {
   const config = structuredClone(base);
   config.name = `zkfetch-notary-${region}`;
-  config.placement.region = cloudRegion;
   config.vars.LOCATION_HINT = hint;
   config.vars.DEPLOYMENT_REGION = region;
   config.containers[0].constraints.regions = [constraint];

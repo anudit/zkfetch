@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Duolingo · zkfetch</title>
+    <link rel="stylesheet" href="sidepanel.css">
+    <script type="module" src="sidepanel.js"></script>
+  </head>
+  <body>
+    <main>
+      <header><span class="wordmark">zkfetch</span><span class="eyebrow">Duolingo proof</span></header>
+      <h1>Your streak.<br>A little proof.</h1>
+      <p class="intro">Prove your username and longest streak from Duolingo.</p>
+
+      <section class="status-list" aria-label="Connection status">
+        <div class="status-row"><span>Notary</span><span id="notary" class="status" data-state="checking">Checking…</span></div>
+        <div class="status-row"><span>Relay <small>via notary</small></span><span id="relay" class="status" data-state="checking">Checking…</span></div>
+        <div class="status-row"><span>Duolingo</span><span id="tab" class="status" data-state="checking">Checking…</span></div>
+        <div class="status-row"><span>Bearer token</span><span id="token" class="status" data-state="checking">Checking…</span></div>
+      </section>
+
+      <div class="session-actions"><button id="open" class="text-button">Open Duolingo</button><button id="refresh" class="text-button">Refresh status</button></div>
+      <p id="hint" class="note">Sign in to Duolingo. Your token is detected automatically.</p>
+      <button id="prove" class="primary" disabled>Generate proof</button>
+      <p id="progress" class="note" role="status" aria-live="polite"></p>
+      <p id="error" class="error" role="alert" hidden></p>
+
+      <section id="result" hidden aria-label="Proof result">
+        <div class="result-heading"><span class="eyebrow">Longest streak</span><span id="verification" class="status" data-state="checking">Unverified</span></div>
+        <p class="streak"><span id="streak">0</span> <span>days</span></p>
+        <p id="username" class="account"></p>
+        <dl class="measurements"><div><dt>Proof generated in</dt><dd id="elapsed"></dd></div><div><dt>Verification</dt><dd id="verify-time">—</dd></div></dl>
+        <button id="verify" class="primary">Verify proof</button>
+        <details><summary>Proof &amp; timings</summary><pre id="timings"></pre><label class="eyebrow" for="proof">Presentation · base64</label><textarea id="proof" readonly spellcheck="false" aria-label="Proof presentation"></textarea></details>
+        <details id="verified-details" hidden><summary>Verified transcript</summary><pre id="transcript"></pre></details>
+      </section>
+
+      <footer>Your bearer token stays hidden in the proof.</footer>
+    </main>
+  </body>
+</html>
