@@ -326,8 +326,10 @@ impl Verifier<state::CommitAccepted<Proxy>> {
         let (prover_read, mut prover_write) = prover_socket.split();
         let (server_read, mut server_write) = server_socket.split();
 
-        let mut prover_reader = InspectReader::new(prover_read, &mut sent_buf);
-        let mut server_reader = InspectReader::new(server_read, &mut recv_buf);
+        let mut prover_reader =
+            InspectReader::new(prover_read, &mut sent_buf, crate::proxy::PROXY_MAX_SENT_BYTES);
+        let mut server_reader =
+            InspectReader::new(server_read, &mut recv_buf, crate::proxy::PROXY_MAX_RECV_BYTES);
 
         futures::future::try_join(
             async {
@@ -347,9 +349,11 @@ impl Verifier<state::CommitAccepted<Proxy>> {
         })?;
         info!("proxying TLS traffic finished");
 
+        // A prover that closes without sending anything must not panic the
+        // notary (zkfetch P6).
         let conn_time = prover_reader
             .first_read()
-            .expect("connection time should have been set");
+            .ok_or_else(|| Error::io().with_msg("prover sent no TLS traffic"))?;
 
         // TLS 1.3 checks the Finished messages while finalizing (zkfetch P4).
         let (mut ctx, mut vm, output, finished_checks) = match *verifier {

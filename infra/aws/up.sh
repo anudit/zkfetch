@@ -68,7 +68,7 @@ EOF
   INSTANCE=$(aws ec2 run-instances --image-id "$AMI" --instance-type "$INSTANCE_TYPE" --key-name "$NAME" \
     --security-group-ids "$SG" --user-data "$USER_DATA" \
     --metadata-options HttpTokens=required,HttpEndpoint=enabled \
-    --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=16,VolumeType=gp3,DeleteOnTermination=true}' \
+    --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=8,VolumeType=gp3,DeleteOnTermination=true}' \
     --tag-specifications "ResourceType=instance,Tags=[{$TAG},{Key=Name,Value=$NAME}]" \
                          "ResourceType=volume,Tags=[{$TAG}]" \
     --query 'Instances[0].InstanceId' --output text)
@@ -107,7 +107,8 @@ CADDY
 docker network inspect zkf >/dev/null 2>&1 || docker network create zkf >/dev/null
 docker rm -f zkf-notary zkf-caddy >/dev/null 2>&1 || true
 docker run -d --name zkf-notary --network zkf --restart unless-stopped \
-  --env-file /etc/zkf-notary.env -e ZKF_MAX_SESSIONS=16 -e ZKF_SESSION_TIMEOUT_SECS=120 -e RAYON_NUM_THREADS=2 \
+  --env-file /etc/zkf-notary.env -e ZKF_MAX_SESSIONS=16 -e ZKF_MAX_SESSIONS_PER_CLIENT=4 \
+  -e ZKF_TRUST_FORWARDED=1 -e ZKF_SESSION_TIMEOUT_SECS=120 -e RAYON_NUM_THREADS=2 \
   --log-opt max-size=10m --log-opt max-file=3 "$IMAGE" >/dev/null
 docker run -d --name zkf-caddy --network zkf --restart unless-stopped \
   -p 80:80 -p 443:443 -v caddy_data:/data -v /etc/zkf-Caddyfile:/etc/caddy/Caddyfile:ro \

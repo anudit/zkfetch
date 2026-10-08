@@ -154,8 +154,24 @@ fn load_key() -> Result<[u8; 32]> {
         return parse_key(&std::fs::read_to_string(path)?);
     }
     let key = k256::ecdsa::SigningKey::random(&mut rand::thread_rng());
-    std::fs::create_dir_all(".zkf")?;
-    std::fs::write(path, hex::encode(key.to_bytes()))?;
+    // Anyone who reads this key can sign attestations: owner-only, created
+    // exclusively so an existing file or symlink is never followed.
+    {
+        use std::{
+            io::Write,
+            os::unix::fs::{DirBuilderExt, OpenOptionsExt},
+        };
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(".zkf")?;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)?
+            .write_all(hex::encode(key.to_bytes()).as_bytes())?;
+    }
     info!("generated development notary key at {}", path.display());
     Ok(key.to_bytes().into())
 }

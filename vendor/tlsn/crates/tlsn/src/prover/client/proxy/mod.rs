@@ -41,8 +41,26 @@ const ALLOWED_SUITES_TLS13: &[CipherSuite] = &[CipherSuite::TLS13_AES_128_GCM_SH
 
 /// ECDHE shared secrets of in-flight TLS 1.3 proxy handshakes, keyed by the
 /// client's public key share. The prover proves the key schedule from it.
-static SHARED_SECRETS: std::sync::LazyLock<Mutex<HashMap<Vec<u8>, Vec<u8>>>> =
+static SHARED_SECRETS: std::sync::LazyLock<Mutex<HashMap<Vec<u8>, SharedSecretEntry>>> =
     std::sync::LazyLock::new(Default::default);
+
+/// Sessions take at most a few minutes; a cancelled session's secret is
+/// dropped after this instead of living for the life of the process.
+const SHARED_SECRET_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// A captured secret, zeroed when dropped.
+struct SharedSecretEntry {
+    created: web_time::Instant,
+    secret: Vec<u8>,
+}
+
+impl Drop for SharedSecretEntry {
+    fn drop(&mut self) {
+        self.secret.fill(0);
+        // Keep the wipe from being optimized away as a dead store.
+        std::hint::black_box(&self.secret);
+    }
+}
 
 /// Key exchange group that records the ECDHE shared secret.
 #[derive(Debug)]
@@ -64,10 +82,15 @@ impl ActiveKeyExchange for CapturingActiveKx {
     fn complete(self: Box<Self>, peer_pub_key: &[u8]) -> Result<SharedSecret, rustls::Error> {
         let key = self.0.pub_key().to_vec();
         let secret = self.0.complete(peer_pub_key)?;
-        SHARED_SECRETS
-            .lock()
-            .expect("shared secret lock")
-            .insert(key, secret.secret_bytes().to_vec());
+        let mut secrets = SHARED_SECRETS.lock().expect("shared secret lock");
+        secrets.retain(|_, entry| entry.created.elapsed() < SHARED_SECRET_TTL);
+        secrets.insert(
+            key,
+            SharedSecretEntry {
+                created: web_time::Instant::now(),
+                secret: secret.secret_bytes().to_vec(),
+            },
+        );
         Ok(secret)
     }
 
@@ -199,6 +222,7 @@ impl ProxyTlsClient {
             .lock()
             .expect("shared secret lock")
             .remove(&share)
+            .map(|entry| entry.secret.clone())
             .ok_or_else(|| TlsnError::internal().with_msg("ECDHE shared secret is not available"))?;
         let (client_app, server_app) = self.ms_log.take_app_secrets();
         let (client_hs, server_hs) = self.ms_log.take_hs_secrets();

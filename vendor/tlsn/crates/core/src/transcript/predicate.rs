@@ -18,6 +18,11 @@ pub const MAX_UINT_DIGITS: usize = 19;
 /// Maximum number of predicates in a single proving request.
 pub const MAX_PREDICATES: usize = 1024;
 
+/// Maximum operand bytes summed over all predicates in one request. Each
+/// predicate is a separate circuit evaluation, so repeating or overlapping
+/// long operands must not multiply the notary's work (zkfetch P7).
+pub const MAX_PREDICATE_BYTES: usize = 1 << 18;
+
 /// Maximum length of a [`PredicateKind::JsonStringContent`] operand.
 pub const MAX_STRING_CONTENT: usize = 1 << 16;
 

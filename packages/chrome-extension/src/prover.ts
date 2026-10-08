@@ -1,6 +1,6 @@
 import { init, prepare, threads, verify, zkFetch, type ZkPrepared } from "@omnid/zkfetch";
 import { tokenUserId } from "./auth";
-import { readClaims } from "./claims";
+import { claimsFromFields, readClaims } from "./claims";
 import { API, DEFAULT_USERNAME, DISCLOSURES, NOTARY } from "./defaults";
 import type { ProverReply, ProverRequest } from "./messages";
 
@@ -95,7 +95,7 @@ async function verifyProof(message: Extract<ProverRequest, { type: "verify" }>) 
     throw new Error("Proof does not match the trusted notary and Duolingo server.");
   }
   if (!/^HTTP\/1\.[01] 200\b/.test(verified.recv)) throw new Error("The proof does not contain a successful Duolingo response.");
-  send({ type: "verified", verified, elapsedMs: performance.now() - started, ...readClaims(verified.recv) });
+  send({ type: "verified", verified, elapsedMs: performance.now() - started, ...claimsFromFields(verified.json) });
 }
 
 self.onmessage = (event: MessageEvent<ProverRequest>) => {

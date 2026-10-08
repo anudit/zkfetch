@@ -177,17 +177,26 @@ pub(crate) struct TlsBytes {
 ///
 /// Used to intercept TLS traffic as it flows through the proxy,
 /// extending the parser's transcript buffers on the fly.
+/// Most proxied bytes (TLS records, handshake included) the verifier records
+/// from the prover. Everything is retained for the proofs, so this bounds
+/// memory per session (zkfetch P6).
+pub(crate) const PROXY_MAX_SENT_BYTES: usize = 1 << 17;
+/// Most proxied bytes the verifier records from the server.
+pub(crate) const PROXY_MAX_RECV_BYTES: usize = 1 << 20;
+
 pub(crate) struct InspectReader<'a, R> {
     inner: R,
     buf: &'a mut Vec<u8>,
+    limit: usize,
     first_read: Option<u64>,
 }
 
 impl<'a, R> InspectReader<'a, R> {
-    pub(crate) fn new(inner: R, buf: &'a mut Vec<u8>) -> Self {
+    pub(crate) fn new(inner: R, buf: &'a mut Vec<u8>, limit: usize) -> Self {
         Self {
             inner,
             buf,
+            limit,
             first_read: None,
         }
     }
@@ -204,7 +213,13 @@ impl<R: AsyncRead + Unpin> AsyncRead for InspectReader<'_, R> {
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
-        let n = ready!(Pin::new(&mut this.inner).poll_read(cx, buf))?;
+        // Never read past the budget, so the excess is not even buffered.
+        let room = this.limit.saturating_sub(this.buf.len());
+        if room == 0 && !buf.is_empty() {
+            return Poll::Ready(Err(io::Error::other("proxied traffic exceeds the session limit")));
+        }
+        let max = buf.len().min(room);
+        let n = ready!(Pin::new(&mut this.inner).poll_read(cx, &mut buf[..max]))?;
         if this.first_read.is_none() && n > 0 {
             let now = web_time::UNIX_EPOCH
                 .elapsed()

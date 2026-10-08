@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // zkfetch CLI: fetch -> (interactive) reveal -> present -> verify.
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
@@ -28,8 +28,9 @@ const USAGE = `zkfetch — fetch with a notarized MPC-TLS proof, then selectivel
   zkfetch present <session.json> [--json PATH]... [--header NAME]... [--body]
                 [--request-header NAME]... [--hide-target] [--gte PATH=DECIMAL]...
                 [-o presentation.txt]
-  zkfetch verify <presentation.txt> [--notary-key HEX]... [--owner ID] [--context NONCE]
-                [--ca base64-der] [--require-gte PATH=DECIMAL]...
+  zkfetch verify <presentation.txt> --notary-key HEX... [--owner ID] [--context NONCE]
+                [--ca base64-der] [--require-gte PATH=DECIMAL]... [--reject-proxy]
+                [--allow-untrusted]   inspect without a trusted notary key
   zkfetch dev                                                 start local notary + HTTPS fixture
 
 Env: ZKF_NOTARY_URL (default ws://127.0.0.1:7047), ZKF_EXTRA_CA (comma-separated base64 DER roots), ZKF_TLS_VERSION (default auto)
@@ -49,9 +50,11 @@ function readSession(path: string | undefined) {
   return restoreResponse(JSON.parse(readFileSync(path, "utf8")) as ZkSessionData);
 }
 
-function writeOut(path: string | undefined, data: string, what: string) {
+function writeOut(path: string | undefined, data: string, what: string, secret = false) {
   if (path) {
-    writeFileSync(path, data);
+    // Sessions open every commitment: readable by the owner only.
+    writeFileSync(path, data, secret ? { mode: 0o600 } : {});
+    if (secret) chmodSync(path, 0o600);
     console.error(`${what} written to ${path}`);
   } else {
     console.log(data);
@@ -106,7 +109,7 @@ async function cmdFetch() {
   console.error(`HTTP ${res.status} (TLS ${res.zk.tlsVersion}) — notarized in ${((performance.now() - started) / 1000).toFixed(2)}s`);
   console.error(`notary ${res.zk.notaryKey.alg} ${res.zk.notaryKey.key}`);
   console.error(await res.text());
-  writeOut(values.out ?? "session.zkf.json", JSON.stringify(res.zk, null, 2), "session (contains secrets)");
+  writeOut(values.out ?? "session.zkf.json", JSON.stringify(res.zk, null, 2), "session (contains secrets)", true);
 }
 
 function cmdPresent() {
@@ -185,18 +188,22 @@ function cmdVerify() {
     context: { type: "string" },
     ca: { type: "string", multiple: true },
     "require-gte": { type: "string", multiple: true },
+    "reject-proxy": { type: "boolean" },
+    "allow-untrusted": { type: "boolean" },
   });
   if (!positionals[0]) throw new Error("missing presentation path");
   const out = verify(readFileSync(positionals[0], "utf8").trim(), {
     trustedNotaryKeys: values["notary-key"] ?? [],
+    allowUntrustedNotary: values["allow-untrusted"],
+    rejectProxy: values["reject-proxy"],
     expectedOwner: values.owner,
     expectedContext: values.context,
     extraRootCerts: extraCa(values.ca),
     expectedPredicates: parsePredicates(values["require-gte"]),
   });
-  console.log(`✔ valid presentation from ${out.serverName} at ${new Date(out.time * 1000).toISOString()} (${out.tlsVersion})`);
+  console.log(`${out.notaryTrusted ? "✔ valid" : "⚠ UNTRUSTED (inspection only)"} presentation from ${out.serverName} at ${new Date(out.time * 1000).toISOString()} (${out.tlsVersion}, ${out.mode})`);
   console.log(
-    `  notary ${out.notaryKey.alg} ${out.notaryKey.key}${out.notaryTrusted ? " (trusted)" : "  ⚠ not checked against a trusted key list"}`,
+    `  notary ${out.notaryKey.alg} ${out.notaryKey.key}${out.notaryTrusted ? " (trusted)" : "  ⚠ not a trusted key: this proves nothing about the server"}`,
   );
   if (out.owner) console.log(`  owner ${out.owner}`);
   if (out.context) console.log(`  context ${out.context}`);

@@ -128,6 +128,18 @@ pub(crate) async fn verify<T: Vm<Binary> + Send + Sync>(
     if request.predicates().len() > tlsn_core::transcript::predicate::MAX_PREDICATES {
         return Err(Error::internal().with_msg("verification failed: too many predicates"));
     }
+    // Aggregate budget (zkfetch P7): honest requests prove each JSON leaf about
+    // once, so their operands add up to at most the transcript.
+    let operand_bytes: usize = request.predicates().iter().map(|p| p.range.len()).sum();
+    let budget = tlsn_core::transcript::predicate::MAX_PREDICATE_BYTES
+        .min(2 * (ciphertext_sent.len() + ciphertext_recv.len()));
+    if operand_bytes > budget {
+        return Err(Error::internal().with_msg("verification failed: predicates exceed the work budget"));
+    }
+    let mut seen = std::collections::HashSet::new();
+    if !request.predicates().iter().all(|p| seen.insert(p)) {
+        return Err(Error::internal().with_msg("verification failed: duplicate predicate"));
+    }
 
     let (sent_refs, sent_proof) = verify_plaintext(
         vm,

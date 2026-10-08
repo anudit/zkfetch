@@ -25,13 +25,14 @@ a notary that runs on a small ARM server (AWS Graviton, Mumbai).
 | **Proxy mode, TLS 1.2 and 1.3** | The notary relays the connection and the prover proves the session keys in zero knowledge. Kilobytes of traffic instead of ~66 MB of MPC preprocessing. For TLS 1.3 the notary decrypts and checks the handshake it relayed. |
 | **QuickSilver predicates** | Numeric (`gte`, `gt`) and JSON-shape proofs over hidden plaintext, checked by the notary during the session and signed into the attestation. The default backend. |
 | **Binius64 predicates** | Opt-in. Per-leaf BLAKE3 commitments let the user prove new predicates later, offline, without the notary. |
-| **JSON selective disclosure** | Reveal by dotted path (`users.0.username`), including array elements, with the JSON structure kept authenticated. |
+| **JSON selective disclosure** | Reveal by dotted path (`users.0.username`), including array elements. With the default QuickSilver backend the notary attests the shape of every JSON value, so `verify()` returns each disclosed value with a proven path (`result.json`). Disclosing a field therefore also reveals the response's keys and punctuation, not its other values. |
 | **Session binding** | `zkf.owner` / `zkf.context` attestation extensions for wallet binding and verifier challenges. |
 | **`fetch`-shaped SDK** | `zkFetch(url, init)` returns a standard `Response`. Sessions serialize, so the reveal can be decided later. |
 | **Automatic version and backend** | `tlsVersion: "auto"` prefers TLS 1.3 and falls back to 1.2 only for idempotent requests. One `backend` switch configures commitments and proofs. |
 | **Single-threaded MPC** | A patched executor runs MPC without OS threads, for wasm hosts such as Workers. |
 | **Multi-threaded wasm** | A threaded browser build spreads OT work across Web Workers in cross-origin isolated contexts. |
 | **Prepared sessions** | `prepare()` runs the notary connection and preprocessing before the request, so a click only waits for TLS, proofs and attestation. |
+| **Notary hardening** | The notary signs the session mode and, in proxy mode, the host it dialed (verifiers reject a different server name); dials only public addresses; caps relayed bytes, predicate work, sessions per client (429) and total sessions (503); and closes connections that do not start a session within 15 s. |
 | **Hosted notary** | The native notary on a `t4g.small` in `ap-south-1` behind Caddy (HTTPS), with scripts that create and delete it ([`infra/aws`](infra/aws)). |
 
 The protocol patches are listed in
@@ -124,7 +125,7 @@ const result = verify(presentation, {
   trustedNotaryKeys: [NOTARY_PUBLIC_KEY],
   expectedContext: challenge,
 });
-console.log(result.serverName, result.recv);
+console.log(result.serverName, result.json); // [{ path: "username", value: "…" }]
 ```
 
 | API | Purpose |
@@ -134,7 +135,7 @@ console.log(result.serverName, result.recv);
 | `res.zk.timings` | Per-phase latency: connect, setup, TLS, proving, attestation. `prewarmed` marks connect and setup done ahead. |
 | `prepare(url, zkConfig)` | Runs the notary connection and MPC preprocessing (most of the latency) before the request. Pass the result as `zkConfig.prepared`. Single use, expires after 80 s, falls back to a fresh session. wasm builds; a no-op on the native prover. |
 | `res.zk.toJSON()` / `restoreResponse(data)` | Save a session and present it later. The JSON holds secrets; treat it like a credential. |
-| `verify(presentation, opts)` | Offline verification against pinned notary keys, the expected context and the required predicates. |
+| `verify(presentation, opts)` | Offline verification against pinned notary keys (required; `allowUntrustedNotary` only to inspect), the expected context and the required predicates. Returns the notary-signed `mode`; a proxy proof must name the server the notary dialed, and `rejectProxy` accepts only MPC-TLS. `recvAuthed`/`sentAuthed` give the authenticated byte ranges: decide from those, since a hidden byte and a literal `X` look the same in `recv`. |
 | `startNotary()` / `startFixture()` | A local notary and HTTPS fixture for development and tests. |
 
 ## Runtimes

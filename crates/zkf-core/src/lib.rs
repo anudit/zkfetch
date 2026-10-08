@@ -10,6 +10,12 @@ pub use types::*;
 pub const EXT_OWNER: &[u8] = b"zkf.owner";
 /// Attestation extension carrying a verifier-supplied context / challenge.
 pub const EXT_CONTEXT: &[u8] = b"zkf.context";
+/// Attestation extension set by the notary (never the prover): `mpc` or `proxy`.
+pub const EXT_MODE: &[u8] = b"zkf.mode";
+/// Attestation extension set by the notary in proxy mode: the host it dialed.
+/// Verifiers require it to equal the proven server name, so a proxy session
+/// to one host cannot be presented as another host's data.
+pub const EXT_SERVER: &[u8] = b"zkf.server";
 
 /// Default preprocessing limits (bytes). MPC cost scales with these.
 pub const DEFAULT_MAX_SENT: usize = 1 << 12;

@@ -234,6 +234,87 @@ pub fn verify(
     }
 }
 
+/// The disclosed JSON fields with their authenticated dotted paths.
+///
+/// Requires the notary-attested shape proof of every hidden leaf, plus an
+/// authenticated HTTP framing and JSON skeleton (keys and punctuation): only
+/// then is the redacted body parsed exactly as the server sent it, so a value's
+/// path is proven, not inferred from nearby text. Returns each fully
+/// disclosed scalar leaf as `(path, value)`; `partial` must have its unauthed
+/// bytes replaced (e.g. with `X`).
+pub fn disclosed_fields(
+    claims: &AttestedPredicates,
+    partial: &PartialTranscript,
+) -> Result<Vec<(String, serde_json::Value)>> {
+    let authed = partial.received_authed();
+    let mut hidden = Vec::new();
+    for p in &claims.predicates {
+        let idx = RangeSet::from(p.range.clone());
+        if !idx.is_subset(authed) {
+            hidden.push(Hidden {
+                idx,
+                string: p.kind == PredicateKind::JsonStringContent,
+            });
+        }
+    }
+    with_redacted_json(partial, &hidden, |root| {
+        let mut out = Vec::new();
+        collect_fields(root, String::new(), authed, claims, &mut out)?;
+        Ok(out)
+    })
+}
+
+fn collect_fields(
+    value: &JsonValue<Vec<u8>>,
+    path: String,
+    authed: &RangeSet<usize>,
+    claims: &AttestedPredicates,
+    out: &mut Vec<(String, serde_json::Value)>,
+) -> Result<()> {
+    let join = |part: &str| {
+        if path.is_empty() {
+            part.to_string()
+        } else {
+            format!("{path}.{part}")
+        }
+    };
+    match value {
+        JsonValue::Object(o) => {
+            for kv in &o.elems {
+                let key: String = serde_json::from_str(&format!("\"{}\"", kv.key.view().as_str()))?;
+                collect_fields(&kv.value, join(&key), authed, claims, out)?;
+            }
+        }
+        JsonValue::Array(a) => {
+            for (i, elem) in a.elems.iter().enumerate() {
+                collect_fields(elem, join(&i.to_string()), authed, claims, out)?;
+            }
+        }
+        leaf => {
+            let idx = leaf.view().indices();
+            if idx.is_empty() || idx.is_subset(authed) {
+                let raw = leaf.view().as_str();
+                let raw = if matches!(leaf, JsonValue::String(_)) {
+                    format!("\"{raw}\"")
+                } else {
+                    raw.to_string()
+                };
+                out.push((path, serde_json::from_str(&raw)?));
+            } else {
+                let range = single_range(idx)?;
+                ensure!(
+                    claims
+                        .predicates
+                        .iter()
+                        .any(|p| p.direction == Direction::Received && p.range == range),
+                    "hidden JSON leaf lacks an attested proof"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn single_range(idx: &RangeSet<usize>) -> Result<std::ops::Range<usize>> {
     let mut it = idx.iter();
     let range = it.next().ok_or_else(|| anyhow!("empty JSON span"))?;

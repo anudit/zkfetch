@@ -132,3 +132,25 @@ overflowed, and left the proxy client pending forever.
 zkfetch's `auto` TLS version then falls back to TLS 1.2 for idempotent
 requests. Regression tests: `*_server_hangup_during_handshake_fails` in
 `crates/zkf-prover/tests/e2e.rs`.
+
+## P6: bounded proxy traffic
+
+`tlsn/src/proxy.rs`: `InspectReader` records at most `PROXY_MAX_SENT_BYTES`
+(128 KiB) from the prover and `PROXY_MAX_RECV_BYTES` (1 MiB) from the server,
+including handshake records, and fails the relay at the first excess byte
+instead of buffering it. `tlsn/src/verifier.rs`: a prover that closes the proxy
+stream without sending anything gets an error instead of a panic.
+
+## P7: aggregate predicate budget
+
+`core/src/transcript/predicate.rs`, `tlsn/src/verifier/verify.rs`: the summed
+operand length of all predicates in a request may not exceed
+`MAX_PREDICATE_BYTES` (256 KiB) or twice the transcript, and exact duplicates
+are rejected, so repeated or overlapping long operands cannot multiply the
+verifier's circuit work.
+
+## P8: TLS 1.3 shared secrets expire
+
+`tlsn/src/prover/client/proxy/mod.rs`: captured ECDHE secrets of handshakes
+that never finish (cancelled sessions) are dropped after five minutes, and
+every entry is zeroed when it is removed.

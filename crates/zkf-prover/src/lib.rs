@@ -460,9 +460,23 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
             .commit_transcript(&mut commit, &transcript)?;
         }
         // QuickSilver predicates (default backend): shape proofs for every JSON
-        // leaf plus the requested numeric predicates.
+        // leaf plus the requested numeric predicates. Without predicates the
+        // shape proofs are still attached when possible: they let a verifier
+        // authenticate the JSON path of each disclosed value.
+        let json_body = transcript
+            .responses
+            .first()
+            .and_then(|r| r.body.as_ref())
+            .and_then(|b| match &b.content {
+                BodyContent::Json(doc) => Some(doc),
+                _ => None,
+            });
         let qs_claims = if params.predicates.is_empty() {
-            None
+            json_body.filter(|_| !params.binius).and_then(|doc| {
+                zkf_predicates::quicksilver::plan(&doc.root, prover.transcript().received(), &[])
+                    .inspect_err(|err| debug!("no JSON shape proofs: {err:#}"))
+                    .ok()
+            })
         } else {
             let body = transcript
                 .responses

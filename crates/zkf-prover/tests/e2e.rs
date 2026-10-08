@@ -132,6 +132,25 @@ async fn notarize_present_verify() {
         ..Default::default()
     };
     let verified = zkf_verifier::verify(&presentation, &opts).expect("verify");
+    assert_eq!(verified.mode, "mpc");
+    // Shape proofs are attached by default, so disclosed values come with
+    // authenticated paths (ZKF-07).
+    let paths: Vec<&str> = verified.json.iter().map(|f| f.path.as_str()).collect();
+    assert!(paths.contains(&"id") && paths.contains(&"meta.version"), "{paths:?}");
+    // MPC sessions pass a proxy-rejecting policy.
+    zkf_verifier::verify(
+        &presentation,
+        &VerifyOptions {
+            reject_proxy: true,
+            ..opts.clone()
+        },
+    )
+    .expect("MPC accepted with reject_proxy");
+    // Authenticated ranges cover exactly what `recv` shows unredacted.
+    assert!(!verified.recv_authed.is_empty());
+    for [start, end] in &verified.recv_authed {
+        assert!(!verified.recv.as_bytes()[*start..*end].is_empty());
+    }
 
     assert_eq!(verified.server_name, SERVER_DOMAIN);
     assert!(verified.notary_trusted);
@@ -186,6 +205,26 @@ async fn notarize_present_verify() {
         zkf_verifier::verify(&b64::encode(&raw), &opts).is_err(),
         "tampered value accepted"
     );
+
+    // No trust policy fails closed; inspection must be explicit.
+    let no_keys = VerifyOptions {
+        trusted_notary_keys: vec![],
+        ..opts.clone()
+    };
+    let err = zkf_verifier::verify(&presentation, &no_keys).unwrap_err();
+    assert!(
+        format!("{err:#}").contains("no trusted notary keys"),
+        "{err:#}"
+    );
+    let inspected = zkf_verifier::verify(
+        &presentation,
+        &VerifyOptions {
+            allow_untrusted_notary: true,
+            ..no_keys
+        },
+    )
+    .expect("explicit inspection");
+    assert!(!inspected.notary_trusted);
 
     // Wrong notary key / context must be rejected.
     let bad_key = VerifyOptions {
@@ -602,6 +641,24 @@ async fn proxy_round_trip(tls13: bool) {
     };
     let presentation = zkf_prover::present(&out.attestation, &out.secrets, &spec).unwrap();
     let v = zkf_verifier::verify(&presentation, &opts).expect("verify proxy presentation");
+    assert_eq!(v.mode, "proxy");
+    // The parent object is proven, not just a matching "name" key.
+    assert_eq!(
+        v.json,
+        vec![zkf_core::JsonField {
+            path: "information.name".into(),
+            value: serde_json::json!("John Doe")
+        }]
+    );
+    let err = zkf_verifier::verify(
+        &presentation,
+        &VerifyOptions {
+            reject_proxy: true,
+            ..opts.clone()
+        },
+    )
+    .unwrap_err();
+    assert!(format!("{err:#}").contains("proxy-mode sessions are not accepted"));
     assert_eq!(v.tls_version, if tls13 { "V1_3" } else { "V1_2" });
     assert_eq!(v.server_name, SERVER_DOMAIN);
     assert!(

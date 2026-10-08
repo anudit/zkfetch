@@ -139,7 +139,11 @@ fn ambiguous_json_rejected() {
 #[test]
 #[ignore]
 fn bench_leaf_hash() {
-    let cases: [(&str, &[u8]); 3] = [("3-digit integer", b"439"), ("10-digit integer", b"1234567890"), ("19-digit integer", b"1234567890123456789")];
+    let cases: [(&str, &[u8]); 3] = [
+        ("3-digit integer", b"439"),
+        ("10-digit integer", b"1234567890"),
+        ("19-digit integer", b"1234567890123456789"),
+    ];
     for (name, data) in cases {
         let (claim, witness) = integer(data, 1);
         let claims = vec![claim];
@@ -150,6 +154,9 @@ fn bench_leaf_hash() {
         let started = std::time::Instant::now();
         circuit::verify(&claims, proof.clone(), b"bench").unwrap();
         let verify_ms = started.elapsed().as_secs_f64() * 1e3;
-        println!("BENCH {name}: and={ands} prove={prove_ms:.1}ms verify={verify_ms:.1}ms proof={}B", proof.len());
+        println!(
+            "BENCH {name}: and={ands} prove={prove_ms:.1}ms verify={verify_ms:.1}ms proof={}B",
+            proof.len()
+        );
     }
 }

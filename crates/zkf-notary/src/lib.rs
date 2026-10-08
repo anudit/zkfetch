@@ -21,7 +21,7 @@ use tlsn::{
     verifier::{VerifierCommitStart, VerifierOutput},
     webpki::{CertificateDer, RootCertStore},
 };
-use zkf_core::{EXT_CONTEXT, EXT_OWNER, transport};
+use zkf_core::{EXT_CONTEXT, EXT_MODE, EXT_OWNER, EXT_SERVER, transport};
 use zkf_predicates::quicksilver::{AttestedPredicates, EXT_QS};
 
 /// Opens the notary's own connection to the server in proxy mode, where the
@@ -45,17 +45,71 @@ impl ServerConnector for TcpConnector {
 
     async fn connect(&self, host: &str, port: u16) -> Result<Self::Stream> {
         use tokio_util::compat::TokioAsyncReadCompatExt;
-        let addr = self
-            .resolve
-            .iter()
-            .find(|(name, _)| name == host)
-            .map(|(_, addr)| addr.clone())
-            .unwrap_or_else(|| format!("{host}:{port}"));
-        let tcp = tokio::net::TcpStream::connect(&addr)
+        // Explicit overrides (tests, fixtures) are trusted configuration.
+        if let Some((_, addr)) = self.resolve.iter().find(|(name, _)| name == host) {
+            let tcp = tokio::net::TcpStream::connect(addr)
+                .await
+                .with_context(|| format!("failed to connect to {addr}"))?;
+            tcp.set_nodelay(true)?;
+            return Ok(tcp.compat());
+        }
+        // The prover picks the host, so only dial public addresses: never the
+        // notary's own network, cloud metadata or other internal services.
+        // Resolve once and connect to the checked address (no DNS rebinding).
+        let candidates: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host, port))
             .await
-            .with_context(|| format!("failed to connect to {addr}"))?;
+            .with_context(|| format!("failed to resolve {host}"))?
+            .collect();
+        let allowed: Vec<_> = candidates
+            .iter()
+            .copied()
+            .filter(|a| is_public(a.ip()))
+            .collect();
+        if allowed.is_empty() {
+            bail!("{host} does not resolve to a public address");
+        }
+        let tcp = tokio::net::TcpStream::connect(allowed.as_slice())
+            .await
+            .with_context(|| format!("failed to connect to {host}:{port}"))?;
         tcp.set_nodelay(true)?;
         Ok(tcp.compat())
+    }
+}
+
+/// Whether `ip` is a globally routable unicast address the notary may dial.
+pub fn is_public(ip: std::net::IpAddr) -> bool {
+    use std::net::{IpAddr, Ipv4Addr};
+    fn v4(ip: Ipv4Addr) -> bool {
+        let [a, b, c, _] = ip.octets();
+        !(ip.is_unspecified()
+            || ip.is_loopback()
+            || ip.is_private()
+            || ip.is_link_local()
+            || ip.is_broadcast()
+            || ip.is_multicast()
+            || ip.is_documentation()
+            || a == 0
+            || (a == 100 && (64..128).contains(&b)) // shared / CGNAT
+            || (a == 192 && b == 0 && c == 0) // IETF protocol assignments
+            || (a == 198 && (b == 18 || b == 19)) // benchmarking
+            || a >= 240) // reserved
+    }
+    match ip {
+        IpAddr::V4(ip) => v4(ip),
+        IpAddr::V6(ip) => {
+            if let Some(mapped) = ip.to_ipv4_mapped() {
+                return v4(mapped);
+            }
+            let s = ip.segments();
+            !(ip.is_unspecified()
+                || ip.is_loopback()
+                || ip.is_multicast()
+                || (s[0] & 0xfe00) == 0xfc00 // unique local
+                || (s[0] & 0xffc0) == 0xfe80 // link local
+                || (s[0] == 0x64 && s[1] == 0xff9b) // NAT64 can reach IPv4 internals
+                || (s[0] == 0x2001 && s[1] == 0x0db8) // documentation
+                || s[0..6] == [0, 0, 0, 0, 0, 0]) // IPv4-compatible
+        }
     }
 }
 
@@ -66,6 +120,10 @@ fn phase(name: &str) {
         hook(name);
     }
 }
+
+/// How long a new connection may take to complete the WebSocket handshake
+/// and to send its session configuration.
+pub const OPENING_DEADLINE: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Hard ceilings on what a prover may ask the notary to preprocess.
 pub const MAX_SENT_LIMIT: usize = 1 << 14;
@@ -96,10 +154,11 @@ impl NotaryConfig {
     }
 }
 
-/// Answers a plain HTTP request (no WebSocket upgrade) with `200 ok` and
-/// returns `None`; returns the stream untouched for WebSocket upgrades.
+/// Reads the HTTP request head without consuming it. Answers plain requests
+/// (readiness probes) with `200 ok` and returns `None`; for WebSocket upgrades
+/// returns the untouched stream and the lowercased head.
 #[cfg(not(target_arch = "wasm32"))]
-async fn answer_probe(tcp: tokio::net::TcpStream) -> Option<tokio::net::TcpStream> {
+async fn answer_probe(tcp: tokio::net::TcpStream) -> Option<(tokio::net::TcpStream, String)> {
     use tokio::io::AsyncWriteExt;
     let mut buf = [0u8; 4096];
     let head = tokio::time::timeout(std::time::Duration::from_secs(5), async {
@@ -119,13 +178,101 @@ async fn answer_probe(tcp: tokio::net::TcpStream) -> Option<tokio::net::TcpStrea
     .ok()
     .flatten()?;
     if head.contains("upgrade: websocket") {
-        return Some(tcp);
+        return Some((tcp, head));
     }
     let mut tcp = tcp;
     let _ = tcp
         .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
         .await;
     None
+}
+
+/// Refuses a WebSocket upgrade with an HTTP status, so the prover gets an
+/// immediate error instead of a connection that never answers.
+#[cfg(not(target_arch = "wasm32"))]
+async fn refuse(mut tcp: tokio::net::TcpStream, status: &str) {
+    use tokio::io::AsyncWriteExt;
+    let reason = status.split_once(' ').map_or(status, |(_, r)| r);
+    let response = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nRetry-After: 5\r\nConnection: close\r\n\r\n{reason}",
+        reason.len()
+    );
+    let _ = tcp.write_all(response.as_bytes()).await;
+    let _ = tcp.shutdown().await;
+}
+
+/// The client address: the socket peer, or with `ZKF_TRUST_FORWARDED=1` (only
+/// behind a proxy that overwrites the header, such as Caddy) the last
+/// `X-Forwarded-For` entry.
+#[cfg(not(target_arch = "wasm32"))]
+fn client_ip(head: &str, peer: std::net::IpAddr, trust_forwarded: bool) -> std::net::IpAddr {
+    if !trust_forwarded {
+        return peer;
+    }
+    head.lines()
+        .find_map(|line| line.strip_prefix("x-forwarded-for:"))
+        .and_then(|value| value.rsplit(',').next())
+        .and_then(|ip| ip.trim().parse().ok())
+        .unwrap_or(peer)
+}
+
+/// Removes a session from the watchdog's table when the session ends in any
+/// way, including a panic, so one crashed session cannot later make the
+/// watchdog restart the whole process.
+#[cfg(not(target_arch = "wasm32"))]
+struct Tracked {
+    started: Arc<std::sync::Mutex<std::collections::HashMap<u64, std::time::Instant>>>,
+    id: u64,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for Tracked {
+    fn drop(&mut self) {
+        if let Ok(mut started) = self.started.lock() {
+            started.remove(&self.id);
+        }
+    }
+}
+
+/// Counts one client's open sessions; decrements on drop.
+#[cfg(not(target_arch = "wasm32"))]
+struct ClientSlot {
+    clients: Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, usize>>>,
+    ip: std::net::IpAddr,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ClientSlot {
+    fn acquire(
+        clients: &Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, usize>>>,
+        ip: std::net::IpAddr,
+        max: usize,
+    ) -> Option<Self> {
+        let mut map = clients.lock().ok()?;
+        let count = map.entry(ip).or_default();
+        if *count >= max {
+            return None;
+        }
+        *count += 1;
+        Some(Self {
+            clients: clients.clone(),
+            ip,
+        })
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for ClientSlot {
+    fn drop(&mut self) {
+        if let Ok(mut map) = self.clients.lock()
+            && let Some(count) = map.get_mut(&self.ip)
+        {
+            *count -= 1;
+            if *count == 0 {
+                map.remove(&self.ip);
+            }
+        }
+    }
 }
 
 /// Upper bound on one session (handshake through attestation). A prover that
@@ -170,7 +317,11 @@ pub async fn serve(
         std::thread::spawn(move || {
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(5));
-                let stuck = started.lock().unwrap().values().any(|t| t.elapsed() > limit);
+                let stuck = started
+                    .lock()
+                    .unwrap()
+                    .values()
+                    .any(|t| t.elapsed() > limit);
                 if stuck {
                     eprintln!("notary watchdog: session exceeded {limit:?}; exiting");
                     std::process::exit(1);
@@ -178,37 +329,70 @@ pub async fn serve(
             }
         });
     }
+    let env_usize = |name: &str, default: usize| -> Result<usize> {
+        std::env::var(name)
+            .ok()
+            .map(|value| value.parse())
+            .transpose()
+            .with_context(|| format!("{name} must be an integer"))
+            .map(|v| v.unwrap_or(default))
+    };
+    // One client may hold only part of the capacity (per address).
+    let per_client = env_usize(
+        "ZKF_MAX_SESSIONS_PER_CLIENT",
+        max_sessions.div_ceil(4).max(1),
+    )?;
+    let trust_forwarded = std::env::var("ZKF_TRUST_FORWARDED").as_deref() == Ok("1");
+    // Reading request heads happens off the accept loop, so a slow client
+    // cannot stall others; this bounds how many may be read at once.
+    let pending = Arc::new(tokio::sync::Semaphore::new(256));
+    let clients: Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, usize>>> =
+        Default::default();
     let mut next_id = 0u64;
     loop {
         let (tcp, peer) = listener.accept().await?;
-        // Readiness probes (Cloudflare Containers sends `GET /ping`) must
-        // succeed without consuming a session slot.
-        let tcp = match answer_probe(tcp).await {
-            Some(tcp) => tcp,
-            None => continue,
-        };
-        let Ok(permit) = slots.clone().try_acquire_owned() else {
-            warn!(%peer, "notary at session capacity");
+        let Ok(pending_permit) = pending.clone().try_acquire_owned() else {
+            warn!(%peer, "too many connections awaiting a request");
             continue;
         };
-        let config = config.clone();
-        let connector = connector.clone();
-        let started = started.clone();
         let id = next_id;
         next_id += 1;
-        started.lock().unwrap().insert(id, std::time::Instant::now());
+        let (slots, clients, started) = (slots.clone(), clients.clone(), started.clone());
+        let (config, connector) = (config.clone(), connector.clone());
         tokio::spawn(async move {
-            let _permit = permit;
+            // Readiness probes (`GET /ping`) succeed without a session slot.
+            let Some((tcp, head)) = answer_probe(tcp).await else {
+                return;
+            };
+            drop(pending_permit);
+            let client = client_ip(&head, peer.ip(), trust_forwarded);
+            let Some(client_slot) = ClientSlot::acquire(&clients, client, per_client) else {
+                warn!(%client, "client at its session limit");
+                return refuse(tcp, "429 Too Many Requests").await;
+            };
+            let Ok(permit) = slots.try_acquire_owned() else {
+                warn!(%client, "notary at session capacity");
+                return refuse(tcp, "503 Service Unavailable").await;
+            };
+            started
+                .lock()
+                .unwrap()
+                .insert(id, std::time::Instant::now());
+            let _tracked = Tracked { started, id };
+            let _slots = (permit, client_slot);
             let res = tokio::time::timeout(timeout, async {
-                let ws = transport::accept(tcp).await?;
+                // A connection that does not finish its WebSocket handshake
+                // promptly must not hold a slot until the session timeout.
+                let ws = tokio::time::timeout(OPENING_DEADLINE, transport::accept(tcp))
+                    .await
+                    .map_err(|_| anyhow::anyhow!("WebSocket handshake not completed in time"))??;
                 notarize(ws, &config, &*connector).await
             })
             .await
             .unwrap_or_else(|_| Err(anyhow::anyhow!("session timed out after {timeout:?}")));
-            started.lock().unwrap().remove(&id);
             match res {
-                Ok(()) => info!(%peer, "session notarized"),
-                Err(err) => warn!(%peer, "session failed: {err:#}"),
+                Ok(()) => info!(%client, "session notarized"),
+                Err(err) => warn!(%client, "session failed: {err:#}"),
             }
         });
     }
@@ -226,7 +410,7 @@ where
     let session = Session::new(socket);
     let (driver, mut handle) = session.split();
     // On failure the protocol future returns early and drops the driver.
-    let (mut socket, (transcript_commitments, verified_predicates, tls_transcript)) =
+    let (mut socket, (transcript_commitments, verified_predicates, tls_transcript, proxy_host)) =
         futures::future::try_join(driver.err_into::<anyhow::Error>(), async move {
             let out = verify_session(&mut handle, config, connector).await;
             // Reclaim the socket for the attestation exchange.
@@ -306,6 +490,22 @@ where
         })
         .server_ephemeral_key(server_ephemeral_key)
         .transcript_commitments(transcript_commitments);
+    // Notary-owned facts about the session. The extension validator above
+    // rejects these IDs from the prover, so only the notary can set them.
+    builder.extension(tlsn::attestation::Extension {
+        id: EXT_MODE.to_vec(),
+        value: if proxy_host.is_some() {
+            b"proxy".to_vec()
+        } else {
+            b"mpc".to_vec()
+        },
+    });
+    if let Some(host) = proxy_host {
+        builder.extension(tlsn::attestation::Extension {
+            id: EXT_SERVER.to_vec(),
+            value: host.into_bytes(),
+        });
+    }
 
     let attestation = builder.build(&provider)?;
     transport::write_frame(&mut socket, &bincode::serialize(&attestation)?).await?;
@@ -324,6 +524,7 @@ async fn verify_session<C: ServerConnector>(
     Vec<tlsn::transcript::TranscriptCommitment>,
     Vec<tlsn::transcript::TranscriptPredicate>,
     tlsn::transcript::TlsTranscript,
+    Option<String>,
 )> {
     phase("start");
     let verifier_config = VerifierConfig::builder()
@@ -331,7 +532,18 @@ async fn verify_session<C: ServerConnector>(
         .build()?;
     phase("root store");
 
-    let verifier = match handle.new_verifier(verifier_config)?.commit().await? {
+    let mut proxy_host = None;
+    // The session configuration must arrive promptly; idle connections would
+    // otherwise hold a slot for the whole session timeout (ZKF-09).
+    let commit = handle.new_verifier(verifier_config)?.commit();
+    #[cfg(not(target_arch = "wasm32"))]
+    let commit = async {
+        tokio::time::timeout(OPENING_DEADLINE, commit)
+            .await
+            .map_err(|_| anyhow::anyhow!("prover did not send its session configuration in time"))?
+            .map_err(anyhow::Error::from)
+    };
+    let verifier = match commit.await? {
         VerifierCommitStart::Mpc(verifier) => {
             let mpc = verifier.config();
             if mpc.max_sent_data() > MAX_SENT_LIMIT || mpc.max_recv_data() > MAX_RECV_LIMIT {
@@ -349,11 +561,14 @@ async fn verify_session<C: ServerConnector>(
             let server = match connector.connect(&host, 443).await {
                 Ok(server) => server,
                 Err(err) => {
-                    verifier.reject(Some("notary could not reach the server")).await?;
+                    verifier
+                        .reject(Some("notary could not reach the server"))
+                        .await?;
                     return Err(err);
                 }
             };
             let accepted = verifier.accept().await?;
+            proxy_host = Some(host);
             phase("proxy accepted");
             accepted.run(server).await?
         }
@@ -384,5 +599,59 @@ async fn verify_session<C: ServerConnector>(
     let tls_transcript = verifier.tls_transcript().clone();
     verifier.close().await?;
 
-    Ok((transcript_commitments, verified_predicates, tls_transcript))
+    Ok((
+        transcript_commitments,
+        verified_predicates,
+        tls_transcript,
+        proxy_host,
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_public;
+
+    #[test]
+    fn proxy_dials_only_public_addresses() {
+        for blocked in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "0.0.0.0",
+            "255.255.255.255",
+            "224.0.0.1",
+            "192.0.2.1",
+            "198.18.0.1",
+            "240.0.0.1",
+            "::1",
+            "::",
+            "fe80::1",
+            "fd00::1",
+            "ff02::1",
+            "::ffff:127.0.0.1",
+            "::ffff:169.254.169.254",
+            "64:ff9b::a00:1",
+            "2001:db8::1",
+            "::7f00:1",
+        ] {
+            assert!(
+                !is_public(blocked.parse().unwrap()),
+                "{blocked} must be blocked"
+            );
+        }
+        for allowed in [
+            "1.1.1.1",
+            "93.184.215.14",
+            "2606:4700:4700::1111",
+            "::ffff:8.8.8.8",
+        ] {
+            assert!(
+                is_public(allowed.parse().unwrap()),
+                "{allowed} must be allowed"
+            );
+        }
+    }
 }

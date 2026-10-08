@@ -81,7 +81,10 @@ test("zkFetch -> present -> verify, with tamper and policy rejection", async () 
   expect(checked.recv).not.toContain("1234567890");
   expect(checked.recv).not.toContain("John Doe");
   expect(checked.sent).not.toContain("super-secret-token");
-  expect(() => verify(presentation, { ...opts, expectedPredicates: [predicate] })).toThrow();
+  // A plain disclosure also reveals the JSON skeleton (authenticated paths), so
+  // the notary-signed predicate verifies there too; the value is simply visible.
+  expect(verify(presentation, { ...opts, expectedPredicates: [predicate] }).predicates).toEqual([predicate]);
+  expect(out.json).toEqual([{ path: "id", value: 1234567890 }]);
   expect(() => verify(hidden, { ...opts, expectedPredicates: [{ jsonPath: "id", predicate: { gt: "1234567890" } }] })).toThrow();
   expect(() => restored.zk.present({ prove: [{ jsonPath: "id", predicate: { gt: "1234567890" } }] })).toThrow();
   expect(() => restored.zk.present({ prove: [{ jsonPath: "id", predicate: { gte: Number.MAX_SAFE_INTEGER + 1 } }] })).toThrow();

@@ -274,9 +274,17 @@ pub struct KeyView {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerifyOptions {
-    /// Accepted notary keys (hex). Empty means "report, don't enforce".
+    /// Accepted notary keys (hex). Required unless `allow_untrusted_notary`.
     #[serde(default)]
     pub trusted_notary_keys: Vec<String>,
+    /// Inspection only: accept any notary key and report `notary_trusted`.
+    /// A presentation from an unknown notary proves nothing about the server.
+    #[serde(default)]
+    pub allow_untrusted_notary: bool,
+    /// Reject proxy-mode sessions (the notary relayed the connection) and
+    /// accept only MPC-TLS ones.
+    #[serde(default)]
+    pub reject_proxy: bool,
     /// Additional trusted root CAs (base64 DER).
     #[serde(default)]
     pub extra_root_certs: Vec<String>,
@@ -289,6 +297,13 @@ pub struct VerifyOptions {
     pub expected_predicates: Vec<PredicateSpec>,
 }
 
+/// A disclosed JSON scalar at an authenticated dotted path.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JsonField {
+    pub path: String,
+    pub value: serde_json::Value,
+}
+
 /// Verified, redacted view of a presentation. Unrevealed bytes are `X`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -298,8 +313,19 @@ pub struct VerifyOutput {
     pub tls_version: String,
     pub notary_key: KeyView,
     pub notary_trusted: bool,
+    /// `mpc` or `proxy`, as signed by the notary.
+    pub mode: String,
+    /// Display text: undisclosed bytes are `X`, invalid UTF-8 is replaced.
+    /// Decide what was proven from `sent_authed` / `recv_authed`, not from it.
     pub sent: String,
     pub recv: String,
+    /// Authenticated byte ranges `[start, end)` of the request and response.
+    pub sent_authed: Vec<[usize; 2]>,
+    pub recv_authed: Vec<[usize; 2]>,
+    /// Disclosed response JSON fields whose paths are proven (the notary
+    /// attested every hidden leaf's shape and the skeleton is disclosed).
+    /// Empty when the session or presentation does not allow it.
+    pub json: Vec<JsonField>,
     pub owner: Option<String>,
     pub context: Option<String>,
     /// Claims checked against authenticated JSON paths and Binius64 ZK proofs.

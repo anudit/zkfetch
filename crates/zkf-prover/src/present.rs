@@ -68,8 +68,12 @@ pub fn present(attestation_b64: &str, secrets_b64: &str, spec: &RevealSpec) -> R
         }
     }
 
+    // With attested shape proofs, disclosing JSON fields also reveals the
+    // skeleton (keys and punctuation, not values) so the verifier can prove
+    // each value's path. Without it a disclosure proves bytes, not a path.
+    let shape_proofs = AttestedPredicates::from_attestation(&attestation)?.is_some();
     if let Some(body) = &response.body {
-        if !spec.prove.is_empty() {
+        if !spec.prove.is_empty() || (shape_proofs && !spec.response.json_paths.is_empty()) {
             let BodyContent::Json(doc) = &body.content else {
                 bail!("predicates require a JSON response");
             };

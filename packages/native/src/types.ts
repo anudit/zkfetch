@@ -98,7 +98,12 @@ export interface PredicateSpec {
 }
 
 export interface VerifyOptions {
+  /** Accepted notary keys (hex). Required unless `allowUntrustedNotary`. */
   trustedNotaryKeys?: string[];
+  /** Inspection only: accept any notary and report `notaryTrusted`. */
+  allowUntrustedNotary?: boolean;
+  /** Accept only MPC-TLS sessions, not proxy ones. */
+  rejectProxy?: boolean;
   extraRootCerts?: string[];
   expectedOwner?: string;
   expectedContext?: string;
@@ -111,10 +116,19 @@ export interface VerifyOutput {
   tlsVersion: string;
   notaryKey: KeyView;
   notaryTrusted: boolean;
-  /** Request bytes; undisclosed bytes are `X`. */
+  /** Session mode signed by the notary. */
+  mode: "mpc" | "proxy";
+  /** Request bytes for display; undisclosed bytes are `X`. */
   sent: string;
-  /** Response bytes; undisclosed bytes are `X`. */
+  /** Response bytes for display; undisclosed bytes are `X`. A literal `X`
+   * and a hidden byte look the same: use `recvAuthed` to decide. */
   recv: string;
+  /** Authenticated byte ranges `[start, end)` (UTF-8 offsets). */
+  sentAuthed: [number, number][];
+  recvAuthed: [number, number][];
+  /** Disclosed response JSON fields at proven paths (empty if the session
+   * has no QuickSilver shape proofs or the skeleton was not disclosed). */
+  json: { path: string; value: unknown }[];
   owner: string | null;
   context: string | null;
   predicates: PredicateSpec[];
