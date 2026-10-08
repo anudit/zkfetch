@@ -1,11 +1,19 @@
 {
-  "name": "zkfetch",
+  "name": "@omnid/zkfetch",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "browser": "./src/browser.ts",
+      "worker": "./src/browser.ts",
+      "default": "./src/index.ts"
+    }
+  },
   "dependencies": {
-    "@zkfetch/native": "workspace:*"
+    "@zkfetch/native": "workspace:*",
+    "@zkfetch/wasm": "workspace:*"
   }
 }

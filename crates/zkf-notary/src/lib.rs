@@ -96,6 +96,38 @@ impl NotaryConfig {
     }
 }
 
+/// Answers a plain HTTP request (no WebSocket upgrade) with `200 ok` and
+/// returns `None`; returns the stream untouched for WebSocket upgrades.
+#[cfg(not(target_arch = "wasm32"))]
+async fn answer_probe(tcp: tokio::net::TcpStream) -> Option<tokio::net::TcpStream> {
+    use tokio::io::AsyncWriteExt;
+    let mut buf = [0u8; 4096];
+    let head = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let n = tcp.peek(&mut buf).await.ok()?;
+            let head = &buf[..n];
+            if head.windows(4).any(|w| w == b"\r\n\r\n") || n == buf.len() {
+                return Some(String::from_utf8_lossy(head).to_ascii_lowercase());
+            }
+            if n == 0 {
+                return None;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .ok()
+    .flatten()?;
+    if head.contains("upgrade: websocket") {
+        return Some(tcp);
+    }
+    let mut tcp = tcp;
+    let _ = tcp
+        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+        .await;
+    None
+}
+
 /// Upper bound on one session (handshake through attestation). A prover that
 /// disappears mid-protocol must not pin notary resources forever.
 pub fn session_timeout() -> std::time::Duration {
@@ -149,6 +181,12 @@ pub async fn serve(
     let mut next_id = 0u64;
     loop {
         let (tcp, peer) = listener.accept().await?;
+        // Readiness probes (Cloudflare Containers sends `GET /ping`) must
+        // succeed without consuming a session slot.
+        let tcp = match answer_probe(tcp).await {
+            Some(tcp) => tcp,
+            None => continue,
+        };
         let Ok(permit) = slots.clone().try_acquire_owned() else {
             warn!(%peer, "notary at session capacity");
             continue;

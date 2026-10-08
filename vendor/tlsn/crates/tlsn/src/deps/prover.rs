@@ -7,7 +7,10 @@ use mpz_ot::{
     rcot::shared::{SharedRCOTReceiver, SharedRCOTSender},
 };
 use std::sync::Arc;
-use tlsn_core::config::tls_commit::{mpc::MpcTlsConfig, proxy::ProxyTlsConfig};
+use tlsn_core::{
+    config::tls_commit::{mpc::MpcTlsConfig, proxy::ProxyTlsConfig},
+    connection::TlsVersion,
+};
 use tlsn_deap::Deap;
 use tokio::sync::Mutex;
 use tracing::debug;
@@ -15,7 +18,7 @@ use tracing::debug;
 use crate::{
     Error,
     deps::{build_mpc_tls_config, translate_keys},
-    proxy::ProxyProver,
+    proxy::{AnyProxyProver, ProxyProver, ProxyProver13},
 };
 
 cfg_select! {
@@ -127,7 +130,7 @@ impl ProverMpcDeps {
 
 /// Protocol dependencies for Proxy.
 pub(crate) struct ProverProxyDeps {
-    pub(crate) prover: Box<ProxyProver>,
+    pub(crate) prover: Box<AnyProxyProver>,
     pub(crate) id: ContextId,
 }
 
@@ -138,7 +141,7 @@ impl std::fmt::Debug for ProverProxyDeps {
 }
 
 impl ProverProxyDeps {
-    pub(crate) fn new(_config: &ProxyTlsConfig, ctx: Context) -> Self {
+    pub(crate) fn new(config: &ProxyTlsConfig, ctx: Context) -> Self {
         let vm = cfg_select! {
             tlsn_insecure => { mpz_ideal_vm::IdealVm::new() }
             _ => {{
@@ -160,7 +163,10 @@ impl ProverProxyDeps {
         };
 
         let id = ctx.id().to_owned();
-        let prover = ProxyProver::new(vm, ctx);
+        let prover = match config.tls_version() {
+            TlsVersion::V1_2 => AnyProxyProver::V12(ProxyProver::new(vm, ctx)),
+            TlsVersion::V1_3 => AnyProxyProver::V13(ProxyProver13::new(vm, ctx)),
+        };
 
         Self {
             prover: Box::new(prover),

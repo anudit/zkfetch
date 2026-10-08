@@ -3522,10 +3522,12 @@ name = "tlsn"
 version = "0.1.0-alpha.15"
 dependencies = [
  "aes 0.8.4",
+ "aes-gcm",
  "ctr 0.9.2",
  "futures",
  "futures-plex",
  "ghash 0.5.1",
+ "hmac",
  "mpz-circuits",
  "mpz-common",
  "mpz-core",
@@ -3549,6 +3551,7 @@ dependencies = [
  "semver",
  "serde",
  "serio",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
  "tlsn-attestation",
  "tlsn-cipher",
@@ -3559,6 +3562,7 @@ dependencies = [
  "tlsn-mux",
  "tlsn-tls-client",
  "tlsn-tls-core",
+ "tlsn-tls13-schedule",
  "tokio",
  "tracing",
  "web-time 0.2.4",

@@ -19,9 +19,58 @@ pub(crate) use prover::ProxyProver;
 mod verifier;
 pub(crate) use verifier::ProxyVerifier;
 
+mod tls13;
+pub(crate) use tls13::{
+    ProxyProver13, ProxyVerifier13, Tls13ClientSecrets, client_key_share, hkdf_expand_label,
+};
+
+/// Proxy prover for the negotiated TLS version (zkfetch patch P4).
+pub(crate) enum AnyProxyProver {
+    V12(ProxyProver),
+    V13(ProxyProver13<crate::deps::ProverZk>),
+}
+
+impl AnyProxyProver {
+    pub(crate) fn alloc(&mut self) -> Result<(), TlsnError> {
+        match self {
+            Self::V12(p) => p.alloc(),
+            Self::V13(p) => p.alloc(),
+        }
+    }
+
+    pub(crate) async fn preprocess(&mut self) -> Result<(), TlsnError> {
+        match self {
+            Self::V12(p) => p.preprocess().await,
+            Self::V13(p) => p.preprocess().await,
+        }
+    }
+}
+
+/// Proxy verifier for the negotiated TLS version (zkfetch patch P4).
+pub(crate) enum AnyProxyVerifier {
+    V12(ProxyVerifier),
+    V13(ProxyVerifier13<crate::deps::VerifierZk>),
+}
+
+impl AnyProxyVerifier {
+    pub(crate) fn alloc(&mut self) -> Result<(), TlsnError> {
+        match self {
+            Self::V12(v) => v.alloc(),
+            Self::V13(v) => v.alloc(),
+        }
+    }
+
+    pub(crate) async fn preprocess(&mut self) -> Result<(), TlsnError> {
+        match self {
+            Self::V12(v) => v.preprocess().await,
+            Self::V13(v) => v.preprocess().await,
+        }
+    }
+}
+
 const AES_GCM_START_COUNTER: u32 = 2;
 
-fn alloc_ghash_key(
+pub(crate) fn alloc_ghash_key(
     vm: &mut dyn Vm<Binary>,
     cipher: &mut Aes128,
 ) -> Result<Array<U8, 16>, TlsnError> {

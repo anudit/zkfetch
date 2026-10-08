@@ -48,11 +48,15 @@ pub struct NotarizeParams {
     #[serde(default)]
     pub tls_version: Option<String>,
     /// Commitment protocol: "mpc" (default) or "proxy". In proxy mode the
-    /// notary dials the server and relays the prover's TLS 1.2 traffic; the
-    /// prover then proves the session keys in zero knowledge. Much less
-    /// traffic than MPC, but trusts the notary-to-server network path.
+    /// notary dials the server and relays the prover's TLS traffic; the prover
+    /// then proves the session keys in zero knowledge. Much less traffic than
+    /// MPC, but trusts the notary-to-server network path.
     #[serde(default)]
     pub mode: Option<String>,
+    /// Browser builds, MPC mode: WebSocket-to-TCP relay for the prover's
+    /// connection to the server.
+    #[serde(default)]
+    pub relay_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

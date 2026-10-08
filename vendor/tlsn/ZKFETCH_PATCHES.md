@@ -69,3 +69,48 @@ server handshake records independently: the implementation relies on MPC tag
 checks and the offline CertificateVerify binding. Public handshake secrets and
 IVs and the suffix proof construction need security review. P2 is local and
 has not been submitted upstream.
+
+## P3: single-threaded executor (wasm without threads)
+
+- `tlsn/src/session.rs`: on `wasm32` without the `web` feature the executor is
+  built with zero threads and the session driver runs queued MPC tasks on the
+  polling thread (`mpz_common::LocalRunner`, see `vendor/mpz/ZKFETCH_PATCHES.md`).
+  Native and `web` builds are unchanged.
+
+## P4: TLS 1.3 proxy mode
+
+- `core`: `ProxyTlsConfig::tls_version` (serde default TLS 1.2, so older peers
+  keep working).
+- `tlsn/src/proxy/tls13.rs` (new): the prover runs a TLS_AES_128_GCM_SHA256 /
+  P-256 rustls client through the verifier's relay. After the connection
+  closes, both parties run `tls13-schedule` in the ZK VM with the ECDHE shared
+  secret as a private prover input. `H(ClientHello || ServerHello)` is computed
+  by each party from the relayed plaintext; the handshake traffic secrets are
+  decoded. Each party decrypts the relayed handshake itself: the server
+  records' AEAD tags bind the private shared secret to the server's key
+  exchange, the server and client Finished MACs are checked, and
+  `H(ClientHello ..= server Finished)` feeds the application key schedule.
+  Application keys stay in the VM and their IVs are decoded; records use the
+  P2 nonce mapping, so tag and suffix proofs are shared with MPC TLS 1.3. The
+  prover discloses record suffixes, proven during proving. The certificate is
+  bound offline through `CertBindingV1_3` (ClientHello ..= Certificate, the
+  CertificateVerify signature and the server key share), as in P2.
+  Optional CertificateRequest / client Certificate messages are accepted.
+  No PSK, 0-RTT, HelloRetryRequest or key updates.
+- `tlsn/src/prover/client/proxy`: version-aware rustls config; a P-256
+  key-exchange wrapper records the shared secret keyed by the client share;
+  the key log also captures the TLS 1.3 application traffic secrets.
+- `tlsn/src/verifier.rs`: TLS 1.2 Finished VM checks only run for TLS 1.2.
+- Latency (fewer prover-verifier round trips):
+  - `tls13-schedule`: `assign_all` / `finish_all` assign every HKDF context up
+    front so the whole TLS 1.3 schedule runs in one VM execution (Normal mode
+    only assigns public contexts). The prover derives its handshake keys
+    natively from the TLS client, computes `H(ClientHello ..= server Finished)`
+    and the record suffixes, and sends them in one message before the
+    execution. The verifier decrypts the relayed handshake with the revealed
+    keys and rejects the session if its own hash differs from the claim; the
+    application keys were derived from the claimed hash, so a false claim also
+    fails the tag proofs. The prover checks the proven keys against rustls's.
+
+Proxy mode (both versions) trusts that nobody can intercept the network path
+between the verifier and the server. P4 needs the same security review as P2.

@@ -41,14 +41,16 @@ async function waitForLine(proc: Subprocess<"ignore", "pipe", "inherit">, prefix
   }
 }
 
-/** Starts `zkf-notary` on a random port. `extraRoots` are DER file paths. */
-export async function startNotary(opts: { key?: string; extraRoots?: string[] } = {}): Promise<DevNotary> {
+/** Starts `zkf-notary` on a random port. `extraRoots` are DER file paths;
+ * `proxyResolve` maps proxy-mode server names to `host:port` (fixtures). */
+export async function startNotary(opts: { key?: string; extraRoots?: string[]; proxyResolve?: Record<string, string> } = {}): Promise<DevNotary> {
   const proc = Bun.spawn([bin("zkf-notary")], {
     env: {
       ...process.env,
       ZKF_NOTARY_ADDR: "127.0.0.1:0",
       ...(opts.key ? { ZKF_NOTARY_KEY: opts.key } : {}),
       ZKF_EXTRA_ROOTS: (opts.extraRoots ?? []).join(","),
+      ZKF_PROXY_RESOLVE: Object.entries(opts.proxyResolve ?? {}).map(([name, addr]) => `${name}=${addr}`).join(","),
     },
     stdout: "pipe",
     stderr: "inherit",

@@ -1,6 +1,6 @@
 //! Proxy-TLS commitment protocol configuration.
 
-use crate::connection::DnsName;
+use crate::connection::{DnsName, TlsVersion};
 use serde::{Deserialize, Serialize};
 
 /// Proxy-TLS commitment protocol configuration.
@@ -8,6 +8,13 @@ use serde::{Deserialize, Serialize};
 pub struct ProxyTlsConfig {
     /// The server name.
     server_name: DnsName,
+    /// TLS protocol version to negotiate (zkfetch patch P4).
+    #[serde(default = "tls12")]
+    tls_version: TlsVersion,
+}
+
+fn tls12() -> TlsVersion {
+    TlsVersion::V1_2
 }
 
 impl ProxyTlsConfig {
@@ -20,18 +27,30 @@ impl ProxyTlsConfig {
     pub fn server_name(&self) -> &DnsName {
         &self.server_name
     }
+
+    /// Returns the TLS protocol version to negotiate.
+    pub fn tls_version(&self) -> TlsVersion {
+        self.tls_version
+    }
 }
 
 /// Builder for [`ProxyTlsConfig`].
 #[derive(Debug, Default)]
 pub struct ProxyTlsConfigBuilder {
     server_name: Option<DnsName>,
+    tls_version: Option<TlsVersion>,
 }
 
 impl ProxyTlsConfigBuilder {
     /// Sets the server name.
     pub fn server_name(mut self, server_name: DnsName) -> Self {
         self.server_name = Some(server_name);
+        self
+    }
+
+    /// Sets the TLS protocol version (default TLS 1.2).
+    pub fn tls_version(mut self, tls_version: TlsVersion) -> Self {
+        self.tls_version = Some(tls_version);
         self
     }
 
@@ -43,7 +62,10 @@ impl ProxyTlsConfigBuilder {
                 name: "server_name",
             }))?;
 
-        let config = ProxyTlsConfig { server_name };
+        let config = ProxyTlsConfig {
+            server_name,
+            tls_version: self.tls_version.unwrap_or(TlsVersion::V1_2),
+        };
         Ok(config)
     }
 }

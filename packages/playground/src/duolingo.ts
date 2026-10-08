@@ -13,7 +13,7 @@
 //   ZKF_NOTARY_URL      optional; a local notary is started if unset
 //   ZKF_TLS_VERSION     auto (default), 1.2 or 1.3
 //   ZKF_STREAK_MINIMUM  optional; prove longestStreak >= N without revealing it
-import { startNotary, verify, zkFetch, type NotarizeTimings, type PredicateSpec, type TlsVersionPreference, type VerifyOutput } from "zkfetch";
+import { startNotary, verify, zkFetch, type NotarizeTimings, type PredicateSpec, type TlsVersionPreference, type VerifyOutput } from "@omnid/zkfetch";
 import { writeFileSync } from "node:fs";
 
 const API = "https://www.duolingo.com/2017-06-30";

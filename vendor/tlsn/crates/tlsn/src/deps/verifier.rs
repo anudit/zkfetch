@@ -8,7 +8,10 @@ use mpz_ot::{
     rcot::shared::{SharedRCOTReceiver, SharedRCOTSender},
 };
 use std::sync::Arc;
-use tlsn_core::config::tls_commit::{mpc::MpcTlsConfig, proxy::ProxyTlsConfig};
+use tlsn_core::{
+    config::tls_commit::{mpc::MpcTlsConfig, proxy::ProxyTlsConfig},
+    connection::TlsVersion,
+};
 use tlsn_deap::Deap;
 use tokio::sync::Mutex;
 use tracing::debug;
@@ -16,7 +19,7 @@ use tracing::debug;
 use crate::{
     Error,
     deps::{build_mpc_tls_config, translate_keys},
-    proxy::ProxyVerifier,
+    proxy::{AnyProxyVerifier, ProxyVerifier, ProxyVerifier13},
 };
 
 cfg_select! {
@@ -125,7 +128,7 @@ impl VerifierMpcDeps {
 
 /// Protocol dependencies for Proxy.
 pub(crate) struct VerifierProxyDeps {
-    pub(crate) verifier: Box<ProxyVerifier>,
+    pub(crate) verifier: Box<AnyProxyVerifier>,
     pub(crate) id: ContextId,
 }
 
@@ -136,7 +139,7 @@ impl std::fmt::Debug for VerifierProxyDeps {
 }
 
 impl VerifierProxyDeps {
-    pub(crate) fn new(_config: &ProxyTlsConfig, ctx: Context) -> Self {
+    pub(crate) fn new(config: &ProxyTlsConfig, ctx: Context) -> Self {
         let vm = cfg_select! {
             tlsn_insecure => { mpz_ideal_vm::IdealVm::new() }
             _ => {{
@@ -166,7 +169,10 @@ impl VerifierProxyDeps {
         let prf = Prf::new(prf_config);
 
         let id = ctx.id().to_owned();
-        let verifier = ProxyVerifier::new(prf, vm, ctx);
+        let verifier = match config.tls_version() {
+            TlsVersion::V1_2 => AnyProxyVerifier::V12(ProxyVerifier::new(prf, vm, ctx)),
+            TlsVersion::V1_3 => AnyProxyVerifier::V13(ProxyVerifier13::new(vm, ctx)),
+        };
 
         Self {
             verifier: Box::new(verifier),

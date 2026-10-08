@@ -70,15 +70,28 @@ async fn main() -> Result<()> {
             .map(|(host, addr)| (host.to_string(), addr.to_string()))
             .collect(),
     });
-    if let Ok(addr) = std::env::var("ZKF_HEALTH_ADDR") {
-        let health = TcpListener::bind(&addr).await?;
-        tokio::try_join!(
-            serve(listener, config.clone(), connector),
-            serve_health(health, config)
-        )?;
-        Ok(())
-    } else {
-        serve(listener, config, connector).await
+    let server = async {
+        if let Ok(addr) = std::env::var("ZKF_HEALTH_ADDR") {
+            let health = TcpListener::bind(&addr).await?;
+            tokio::try_join!(
+                serve(listener, config.clone(), connector),
+                serve_health(health, config)
+            )?;
+            Ok(())
+        } else {
+            serve(listener, config, connector).await
+        }
+    };
+    // As PID 1 in a container, SIGTERM is ignored unless handled, so the
+    // platform could never stop (and stop billing) an idle notary.
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    tokio::select! {
+        res = server => res,
+        _ = sigterm.recv() => {
+            info!("SIGTERM received; shutting down");
+            Ok(())
+        }
+        _ = tokio::signal::ctrl_c() => Ok(()),
     }
 }
 

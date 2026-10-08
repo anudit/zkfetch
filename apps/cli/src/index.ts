@@ -15,7 +15,7 @@ import {
   startNotary,
   verify,
   zkFetch,
-} from "zkfetch";
+} from "@omnid/zkfetch";
 
 const USAGE = `zkfetch — fetch with a notarized MPC-TLS proof, then selectively disclose it.
 

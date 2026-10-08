@@ -4,19 +4,21 @@ use crate::{
     Error as TlsnError,
     deps::ProverZk,
     prover::client::{DecryptState, TlsClient, TlsOutput},
-    proxy::{ProxyProver, TlsBytes},
+    proxy::{AnyProxyProver, Tls13ClientSecrets, TlsBytes, client_key_share, hkdf_expand_label},
 };
 use futures::FutureExt;
 use mpz_common::Context;
 use rustls::{
     CipherSuite, ClientConnection, NamedGroup, RootCertStore, SupportedCipherSuite,
-    client::Resumption, crypto::CryptoProvider,
+    client::Resumption,
+    crypto::{ActiveKeyExchange, CryptoProvider, SharedSecret, SupportedKxGroup},
 };
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use std::{
+    collections::HashMap,
     io::{Read, Write},
     pin::Pin,
-    sync::{Arc, atomic::AtomicBool},
+    sync::{Arc, Mutex, atomic::AtomicBool},
     task::Poll,
 };
 use tls_core::dns::ServerName;
@@ -32,6 +34,58 @@ const ALLOWED_SUITES: &[CipherSuite] = &[
     CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
     CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 ];
+const TLS12_ONLY: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS12];
+const TLS13_ONLY: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
+/// TLS 1.3 proxy mode (zkfetch patch P4): AES-128-GCM / SHA-256 only.
+const ALLOWED_SUITES_TLS13: &[CipherSuite] = &[CipherSuite::TLS13_AES_128_GCM_SHA256];
+
+/// ECDHE shared secrets of in-flight TLS 1.3 proxy handshakes, keyed by the
+/// client's public key share. The prover proves the key schedule from it.
+static SHARED_SECRETS: std::sync::LazyLock<Mutex<HashMap<Vec<u8>, Vec<u8>>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Key exchange group that records the ECDHE shared secret.
+#[derive(Debug)]
+struct CapturingKx(&'static dyn SupportedKxGroup);
+
+impl SupportedKxGroup for CapturingKx {
+    fn start(&self) -> Result<Box<dyn ActiveKeyExchange>, rustls::Error> {
+        Ok(Box::new(CapturingActiveKx(self.0.start()?)))
+    }
+
+    fn name(&self) -> NamedGroup {
+        self.0.name()
+    }
+}
+
+struct CapturingActiveKx(Box<dyn ActiveKeyExchange>);
+
+impl ActiveKeyExchange for CapturingActiveKx {
+    fn complete(self: Box<Self>, peer_pub_key: &[u8]) -> Result<SharedSecret, rustls::Error> {
+        let key = self.0.pub_key().to_vec();
+        let secret = self.0.complete(peer_pub_key)?;
+        SHARED_SECRETS
+            .lock()
+            .expect("shared secret lock")
+            .insert(key, secret.secret_bytes().to_vec());
+        Ok(secret)
+    }
+
+    fn pub_key(&self) -> &[u8] {
+        self.0.pub_key()
+    }
+
+    fn group(&self) -> NamedGroup {
+        self.0.group()
+    }
+}
+
+fn traffic_key(secret: &[u8]) -> ([u8; 16], [u8; 12]) {
+    (
+        hkdf_expand_label(secret, b"key", 16).try_into().expect("16 bytes"),
+        hkdf_expand_label(secret, b"iv", 12).try_into().expect("12 bytes"),
+    )
+}
 
 pub(crate) struct ProxyTlsClient {
     conn: ClientConnection,
@@ -46,14 +100,14 @@ pub(crate) struct ProxyTlsClient {
 
 enum State {
     Init {
-        prover: Box<ProxyProver>,
+        prover: Box<AnyProxyProver>,
     },
     Handshaking {
-        prover: Box<ProxyProver>,
+        prover: Box<AnyProxyProver>,
     },
     Connected {
         sent_close_notify: bool,
-        prover: Box<ProxyProver>,
+        prover: Box<AnyProxyProver>,
     },
     Finalizing {
         fut: Pin<FinalizeFuture>,
@@ -66,23 +120,37 @@ type FinalizeFuture =
 
 impl ProxyTlsClient {
     pub(crate) fn new(
-        prover: Box<ProxyProver>,
+        prover: Box<AnyProxyProver>,
         config: &TlsClientConfig,
         server_name: ServerName,
     ) -> Result<Self, TlsnError> {
         let provider = rustls::crypto::ring::default_provider();
+        let tls13 = matches!(*prover, AnyProxyProver::V13(_));
 
         let kx_groups = provider
             .kx_groups
             .iter()
             .filter(|g| ALLOWED_GROUPS.contains(&g.name()))
-            .copied()
+            .map(|g| -> &'static dyn SupportedKxGroup {
+                if tls13 {
+                    // The provider needs 'static groups; P-256 is the only one.
+                    static P256: std::sync::OnceLock<CapturingKx> = std::sync::OnceLock::new();
+                    P256.get_or_init(|| CapturingKx(*g))
+                } else {
+                    *g
+                }
+            })
             .collect();
         let cipher_suites: Vec<SupportedCipherSuite> = provider
             .cipher_suites
             .iter()
             .filter(|s| match s {
-                SupportedCipherSuite::Tls12(tls12) => ALLOWED_SUITES.contains(&tls12.common.suite),
+                SupportedCipherSuite::Tls12(tls12) if !tls13 => {
+                    ALLOWED_SUITES.contains(&tls12.common.suite)
+                }
+                SupportedCipherSuite::Tls13(tls13s) if tls13 => {
+                    ALLOWED_SUITES_TLS13.contains(&tls13s.common.suite)
+                }
                 _ => false,
             })
             .copied()
@@ -94,7 +162,7 @@ impl ProxyTlsClient {
         };
 
         let ms_log = Arc::new(MasterSecretLog::default());
-        let mut config = create_client_config(config, provider)?;
+        let mut config = create_client_config(config, provider, tls13)?;
         config.key_log = ms_log.clone();
 
         let conn = ClientConnection::new(Arc::new(config), server_name.into_pki_server_name())
@@ -120,6 +188,37 @@ impl ProxyTlsClient {
         };
 
         Ok(tls_client)
+    }
+}
+
+impl ProxyTlsClient {
+    /// Collects the TLS 1.3 secrets the prover proves the key schedule from.
+    fn tls13_secrets(&self, tls_sent: &[u8]) -> Result<Tls13ClientSecrets, TlsnError> {
+        let share = client_key_share(tls_sent)?;
+        let shared_secret = SHARED_SECRETS
+            .lock()
+            .expect("shared secret lock")
+            .remove(&share)
+            .ok_or_else(|| TlsnError::internal().with_msg("ECDHE shared secret is not available"))?;
+        let (client_app, server_app) = self.ms_log.take_app_secrets();
+        let (client_hs, server_hs) = self.ms_log.take_hs_secrets();
+        let secret32 = |s: Vec<u8>| -> Result<[u8; 32], TlsnError> {
+            s.try_into()
+                .map_err(|_| TlsnError::internal().with_msg("TLS 1.3 traffic secrets are not available"))
+        };
+        let (client_hs, server_hs) = (secret32(client_hs)?, secret32(server_hs)?);
+        if client_app.len() != 32 || server_app.len() != 32 {
+            return Err(TlsnError::internal().with_msg("TLS 1.3 traffic secrets are not available"));
+        }
+        Ok(Tls13ClientSecrets {
+            shared_secret: shared_secret
+                .try_into()
+                .map_err(|_| TlsnError::internal().with_msg("unexpected ECDHE secret length"))?,
+            client_hs,
+            server_hs,
+            client_app: traffic_key(&client_app),
+            server_app: traffic_key(&server_app),
+        })
     }
 }
 
@@ -246,18 +345,29 @@ impl TlsClient for ProxyTlsClient {
                 })?;
 
                 if self.server_closed {
-                    let ms = self.ms_log.take();
-                    if ms.is_empty() {
-                        return Poll::Ready(Err(
-                            TlsnError::internal().with_msg("master secret is not available")
-                        ));
-                    }
                     let time = self.time.ok_or_else(|| {
                         TlsnError::internal().with_msg("connection timestamp is not set")
                     })?;
                     let traffic = std::mem::take(&mut self.traffic);
 
-                    let fut = Box::pin(prover.finalize(ms, time, traffic));
+                    let fut: Pin<FinalizeFuture> = match *prover {
+                        AnyProxyProver::V12(prover) => {
+                            let ms = self.ms_log.take();
+                            if ms.is_empty() {
+                                return Poll::Ready(Err(TlsnError::internal()
+                                    .with_msg("master secret is not available")));
+                            }
+                            Box::pin(prover.finalize(ms, time, traffic))
+                        }
+                        AnyProxyProver::V13(prover) => {
+                            let secrets = self.tls13_secrets(&traffic.tls_sent)?;
+                            Box::pin(async move {
+                                prover
+                                    .finalize(secrets, time, &traffic.tls_sent, &traffic.tls_recv)
+                                    .await
+                            })
+                        }
+                    };
 
                     self.state = State::Finalizing { fut };
                     self.poll(cx)
@@ -300,6 +410,7 @@ impl TlsClient for ProxyTlsClient {
 fn create_client_config(
     config: &TlsClientConfig,
     provider: CryptoProvider,
+    tls13: bool,
 ) -> Result<rustls::ClientConfig, TlsnError> {
     let mut root_store = RootCertStore::empty();
     for cert in &config.root_store().roots {
@@ -315,7 +426,7 @@ fn create_client_config(
     }
 
     let builder = rustls::ClientConfig::builder_with_provider(Arc::new(provider))
-        .with_protocol_versions(&[&rustls::version::TLS12])
+        .with_protocol_versions(if tls13 { TLS13_ONLY } else { TLS12_ONLY })
         .map_err(|e| {
             TlsnError::config()
                 .with_msg("failed to set protocol versions")

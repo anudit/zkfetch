@@ -1,0 +1,26 @@
+[package]
+name = "zkf-wasm"
+description = "zkfetch prover and verifier for browsers, web workers and extensions"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+zkf-core = { workspace = true }
+zkf-prover = { workspace = true }
+zkf-verifier = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Randomness from crypto.getRandomValues (see .cargo/config.toml).
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+rustls-pki-types = { version = "1", features = ["web"] }

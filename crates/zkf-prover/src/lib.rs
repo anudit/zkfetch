@@ -7,15 +7,15 @@
 
 mod commit;
 mod present;
+mod rt;
 
 pub use present::present;
 
-use std::time::Instant;
+use web_time::Instant;
 
 use anyhow::{Context, Result, anyhow, bail};
 use http_body_util::Full;
 use hyper::{Request, body::Bytes};
-use hyper_util::rt::TokioIo;
 use tlsn::{
     Session,
     attestation::{
@@ -32,8 +32,6 @@ use tlsn::{
     webpki::{CertificateDer, RootCertStore},
 };
 use tlsn_formats::http::{BodyContent, HttpCommit, HttpTranscript};
-use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
-use tokio_util::task::AbortOnDropHandle;
 use tracing::debug;
 use zkf_core::{
     DEFAULT_MAX_RECV, DEFAULT_MAX_SENT, EXT_CONTEXT, EXT_OWNER, HttpResponseView, KeyView,
@@ -51,22 +49,47 @@ pub(crate) fn root_store(extra_b64: &[String]) -> Result<RootCertStore> {
     Ok(store)
 }
 
+/// The prover's own TCP connection to the server (MPC mode).
+#[cfg(not(target_arch = "wasm32"))]
+async fn connect_server(
+    dial: &str,
+    relay_url: Option<&str>,
+) -> Result<impl futures::AsyncRead + futures::AsyncWrite + Send + Unpin + 'static> {
+    use tokio_util::compat::TokioAsyncReadCompatExt;
+    if relay_url.is_some() {
+        bail!("relayUrl is only used by browser builds");
+    }
+    let tcp = tokio::net::TcpStream::connect(dial)
+        .await
+        .with_context(|| format!("failed to connect to {dial}"))?;
+    tcp.set_nodelay(true)?;
+    Ok(tcp.compat())
+}
+
+/// Browsers cannot open TCP sockets: MPC mode tunnels the TLS connection
+/// through a WebSocket-to-TCP relay (`relayUrl?target=host:port`, binary
+/// frames). Proxy mode needs no relay because the notary dials the server.
+#[cfg(target_arch = "wasm32")]
+async fn connect_server(
+    dial: &str,
+    relay_url: Option<&str>,
+) -> Result<impl futures::AsyncRead + futures::AsyncWrite + Send + Unpin + 'static> {
+    let relay = relay_url.ok_or_else(|| {
+        anyhow!("MPC mode in a browser needs zkConfig.relayUrl (a WebSocket-to-TCP relay); or use mode: \"proxy\"")
+    })?;
+    let mut url = url::Url::parse(relay).context("invalid relayUrl")?;
+    url.query_pairs_mut().append_pair("target", dial);
+    Ok(rt::AssertSend(zkf_core::transport::connect(url.as_str()).await?))
+}
+
 /// Performs a notarized HTTPS request.
 ///
 /// `params.tls_version`: "1.3", "1.2" or "auto" (default). "auto" tries TLS
 /// 1.3 first and retries over TLS 1.2 only for idempotent methods, so a
 /// non-idempotent request is never sent twice.
 pub async fn notarize(params: NotarizeParams) -> Result<NotarizeOutput> {
-    match params.mode.as_deref().unwrap_or("mpc") {
-        "mpc" => {}
-        // tlsn proxy mode implements TLS 1.2 only.
-        "proxy" => {
-            return match params.tls_version.as_deref().unwrap_or("auto") {
-                "1.2" | "auto" => notarize_with(params, TlsVersion::V1_2).await,
-                other => bail!("proxy mode supports TLS 1.2 only, got tlsVersion {other:?}"),
-            };
-        }
-        other => bail!("mode must be \"mpc\" or \"proxy\", got {other:?}"),
+    if !matches!(params.mode.as_deref().unwrap_or("mpc"), "mpc" | "proxy") {
+        bail!("mode must be \"mpc\" or \"proxy\", got {:?}", params.mode);
     }
     let method = params
         .method
@@ -142,7 +165,7 @@ async fn notarize_with(params: NotarizeParams, tls_version: TlsVersion) -> Resul
     let notary = transport::connect(&params.notary_url).await?;
     timings.notary_connect_ms = split();
     let (driver, mut handle) = Session::new(notary).split();
-    let driver_task = AbortOnDropHandle::new(tokio::spawn(driver));
+    let driver_task = rt::spawn(driver);
 
     let tls_config = TlsClientConfig::builder()
         .server_name(ServerName::Dns(host.as_str().try_into()?))
@@ -154,6 +177,7 @@ async fn notarize_with(params: NotarizeParams, tls_version: TlsVersion) -> Resul
             .commit(
                 ProxyTlsConfig::builder()
                     .server_name(host.as_str().try_into()?)
+                    .tls_version(tls_version)
                     .build()?,
             )
             .await
@@ -161,7 +185,7 @@ async fn notarize_with(params: NotarizeParams, tls_version: TlsVersion) -> Resul
         timings.setup_ms = split();
         // The notary dials the server and relays this connection.
         let (tls_connection, prover) = prover.connect(tls_config)?;
-        (tls_connection, AbortOnDropHandle::new(tokio::spawn(prover.into_future())))
+        (tls_connection, rt::spawn(prover.into_future()))
     } else {
         let prover = new_prover
             .commit(
@@ -175,18 +199,14 @@ async fn notarize_with(params: NotarizeParams, tls_version: TlsVersion) -> Resul
             .context("notary rejected the session configuration")?;
         timings.setup_ms = split();
 
-        let server_socket = tokio::net::TcpStream::connect(&dial)
-            .await
-            .with_context(|| format!("failed to connect to {dial}"))?;
-        server_socket.set_nodelay(true)?;
-
-        let (tls_connection, prover) = prover.connect(tls_config, server_socket.compat())?;
-        (tls_connection, AbortOnDropHandle::new(tokio::spawn(prover.into_future())))
+        let server_socket = connect_server(&dial, params.relay_url.as_deref()).await?;
+        let (tls_connection, prover) = prover.connect(tls_config, server_socket)?;
+        (tls_connection, rt::spawn(prover.into_future()))
     };
 
     let (mut sender, connection) =
-        hyper::client::conn::http1::handshake(TokioIo::new(tls_connection.compat())).await?;
-    let _connection_task = AbortOnDropHandle::new(tokio::spawn(connection));
+        hyper::client::conn::http1::handshake(rt::HyperIo(tls_connection)).await?;
+    let _connection_task = rt::spawn(connection);
 
     let mut req = Request::builder()
         .method(method.as_str())
@@ -201,9 +221,9 @@ async fn notarize_with(params: NotarizeParams, tls_version: TlsVersion) -> Resul
     let request = req.body(Full::new(Bytes::from(body)))?;
     // Observe TLS failures while HTTP is waiting for bytes. Otherwise a failed
     // handshake can leave Hyper pending forever and prevent auto fallback.
-    let (mut prover, ()) = tokio::try_join!(
+    let (mut prover, ()) = futures::try_join!(
         async {
-            let prover = prover_task.await.context("MPC-TLS client task failed")??;
+            let prover = prover_task.await.context("MPC-TLS client task failed")?;
             Ok::<_, anyhow::Error>(prover)
         },
         async {
@@ -315,7 +335,7 @@ async fn notarize_with(params: NotarizeParams, tls_version: TlsVersion) -> Resul
     let (att_request, secrets) = att_request.build(&CryptoProvider::default())?;
 
     handle.close();
-    let mut socket = driver_task.await??;
+    let mut socket = driver_task.await?;
     transport::write_frame(&mut socket, &bincode::serialize(&att_request)?).await?;
     let attestation: Attestation = bincode::deserialize(&transport::read_frame(&mut socket).await?)
         .context("invalid attestation from notary")?;

@@ -9,6 +9,71 @@ use crate::MAX_FRAME_LEN;
 #[cfg(not(target_arch = "wasm32"))]
 pub use socket::*;
 
+#[cfg(target_arch = "wasm32")]
+pub use browser::*;
+
+#[cfg(target_arch = "wasm32")]
+mod browser {
+    use std::{
+        pin::Pin,
+        task::{Context, Poll},
+    };
+
+    use anyhow::{Result, anyhow, bail};
+    use futures::{AsyncRead, AsyncWrite};
+    use async_io_stream::IoStream;
+    use ws_stream_wasm::{WsMeta, WsStreamIo};
+
+    /// Byte stream over a browser WebSocket. Keeps the socket's metadata
+    /// handle alive for the stream's lifetime.
+    pub struct ClientStream {
+        _meta: WsMeta,
+        io: IoStream<WsStreamIo, Vec<u8>>,
+    }
+
+    /// Connects to a notary (or relay) at `ws://` or `wss://` `url`.
+    pub async fn connect(url: &str) -> Result<ClientStream> {
+        if !(url.starts_with("ws://") || url.starts_with("wss://")) {
+            bail!("notary URL must use ws:// or wss://");
+        }
+        let (meta, ws) = WsMeta::connect(url, None)
+            .await
+            .map_err(|e| anyhow!("failed to connect to {url}: {e}"))?;
+        Ok(ClientStream {
+            _meta: meta,
+            io: ws.into_io(),
+        })
+    }
+
+    impl AsyncRead for ClientStream {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<std::io::Result<usize>> {
+            Pin::new(&mut self.io).poll_read(cx, buf)
+        }
+    }
+
+    impl AsyncWrite for ClientStream {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            Pin::new(&mut self.io).poll_write(cx, buf)
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.io).poll_flush(cx)
+        }
+
+        fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.io).poll_close(cx)
+        }
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 mod socket {
     use anyhow::{Context, Result, bail};

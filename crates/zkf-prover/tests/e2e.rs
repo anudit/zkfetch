@@ -39,6 +39,7 @@ fn params(
         binius: false,
         tls_version: Some("1.2".into()),
         mode: None,
+        relay_url: None,
     }
 }
 
@@ -101,6 +102,7 @@ async fn notarize_present_verify() {
         binius: true,
         tls_version: Some("1.2".into()),
         mode: None,
+        relay_url: None,
     })
     .await
     .expect("notarize");
@@ -553,4 +555,91 @@ async fn tls13_notarize_present_verify() {
             .verify(&provider.cert, time, &wrong_key, secrets.server_name())
             .is_err()
     );
+}
+
+/// Notary that dials the fixture for `SERVER_DOMAIN` in proxy mode.
+async fn spawn_proxy_notary(fixture: &str) -> (String, String) {
+    let config = Arc::new(zkf_notary::NotaryConfig {
+        signing_key: [7u8; 32],
+        extra_roots: vec![CA_CERT_DER.to_vec()],
+    });
+    let key = config.public_key_hex().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}", listener.local_addr().unwrap());
+    let connector = Arc::new(zkf_notary::TcpConnector {
+        resolve: vec![(SERVER_DOMAIN.to_string(), fixture.to_string())],
+    });
+    tokio::spawn(zkf_notary::serve(listener, config, connector));
+    (url, key)
+}
+
+async fn proxy_round_trip(tls13: bool) {
+    let fixture = spawn_fixture_version(tls13).await;
+    let (notary_url, notary_key) = spawn_proxy_notary(&fixture).await;
+    let mut p = params(notary_url, String::new(), vec![gte("id", 1000)]);
+    p.connect_addr = None;
+    p.mode = Some("proxy".into());
+    p.tls_version = Some(if tls13 { "1.3" } else { "1.2" }.into());
+    p.headers = vec![("Authorization".into(), "Bearer proxy-secret".into())];
+    let out = tokio::time::timeout(std::time::Duration::from_secs(45), zkf_prover::notarize(p))
+        .await
+        .expect("proxy session timeout")
+        .expect("proxy notarize");
+    assert_eq!(out.tls_version, if tls13 { "1.3" } else { "1.2" });
+    assert_eq!(out.response.status, 200);
+
+    let opts = VerifyOptions {
+        trusted_notary_keys: vec![notary_key],
+        extra_root_certs: vec![b64::encode(CA_CERT_DER)],
+        ..Default::default()
+    };
+    let spec = RevealSpec {
+        response: ResponseReveal {
+            json_paths: vec!["information.name".into()],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let presentation = zkf_prover::present(&out.attestation, &out.secrets, &spec).unwrap();
+    let v = zkf_verifier::verify(&presentation, &opts).expect("verify proxy presentation");
+    assert_eq!(v.tls_version, if tls13 { "V1_3" } else { "V1_2" });
+    assert_eq!(v.server_name, SERVER_DOMAIN);
+    assert!(v.sent.starts_with("GET /formats/json HTTP/1.1"), "{}", v.sent);
+    assert!(!v.sent.contains("proxy-secret"));
+    assert!(v.recv.contains("\"name\":\"John Doe\""), "{}", v.recv);
+    assert!(!v.recv.contains("1234567890"));
+
+    // QuickSilver predicate attested during the proxy session.
+    let presentation = zkf_prover::present(
+        &out.attestation,
+        &out.secrets,
+        &RevealSpec {
+            prove: vec![gte("id", 1000)],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let v = zkf_verifier::verify(
+        &presentation,
+        &VerifyOptions {
+            expected_predicates: vec![gte("id", 1000)],
+            ..opts
+        },
+    )
+    .expect("verify proxy predicate");
+    assert_eq!(v.predicates.len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn proxy_tls13_notarize_present_verify() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_test_writer()
+        .try_init();
+    proxy_round_trip(true).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn proxy_tls12_notarize_present_verify() {
+    proxy_round_trip(false).await;
 }

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "..",
+    "outDir": "npm/dist/types",
+    "types": []
+  },
+  "files": ["src/core.ts", "src/browser.ts", "../native/src/types.ts", "../wasm/src/index.ts"]
+}

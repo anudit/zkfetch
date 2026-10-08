@@ -97,6 +97,73 @@ impl Tls13KeySched {
         Ok(())
     }
 
+    /// Assigns the whole key schedule at once when both transcript hashes
+    /// are known up front (proxy mode, zkfetch patch P4): one VM execution
+    /// then computes the handshake secrets, master secret and application
+    /// keys. The caller must check `handshake_hash` against the transcript
+    /// once the handshake keys are known. Call [`Self::finish_all`] after
+    /// executing the VM.
+    pub fn assign_all(
+        &mut self,
+        vm: &mut dyn Vm<Binary>,
+        hello_hash: [u8; 32],
+        handshake_hash: [u8; 32],
+    ) -> Result<(), FError> {
+        let State::Handshake {
+            mut secrets,
+            masked_cs,
+            masked_ss,
+            ..
+        } = self.state.take()
+        else {
+            return Err(FError::state("not in Handshake state"));
+        };
+        secrets.set_hello_hash(hello_hash)?;
+        drive!(secrets, vm);
+        if !secrets.is_complete() {
+            return Err(FError::state("handshake secrets need more than one execution"));
+        }
+
+        let mut ms = mem::take(&mut self.master_secret).expect("master secret is set");
+        drive!(ms, vm);
+        if !ms.is_complete() {
+            return Err(FError::state("master secret needs more than one execution"));
+        }
+
+        let mut app = mem::take(&mut self.application).expect("application secrets are set");
+        app.set_handshake_hash(handshake_hash)?;
+        drive!(app, vm);
+        let app_keys = app.keys()?;
+
+        self.state = State::PendingAll {
+            cs: vm.decode(masked_cs).map_err(FError::vm)?,
+            ss: vm.decode(masked_ss).map_err(FError::vm)?,
+            app_keys,
+        };
+        Ok(())
+    }
+
+    /// Returns the decoded handshake keys and the application key references
+    /// after the VM executed the schedule assigned by [`Self::assign_all`].
+    pub fn finish_all(&mut self) -> Result<(HandshakeKeys, ApplicationKeys), FError> {
+        let State::PendingAll { cs, ss, app_keys } = &mut self.state else {
+            return Err(FError::state("not in PendingAll state"));
+        };
+        let cs = cs
+            .try_recv()
+            .map_err(FError::vm)?
+            .ok_or_else(|| FError::state("client handshake secret not decoded"))?;
+        let ss = ss
+            .try_recv()
+            .map_err(FError::vm)?
+            .ok_or_else(|| FError::state("server handshake secret not decoded"))?;
+        let app_keys = *app_keys;
+        self.handshake_secrets = Some((cs, ss));
+        let keys = handshake_keys_from(&cs, &ss);
+        self.state = State::Complete(app_keys);
+        Ok((keys, app_keys))
+    }
+
     /// Whether this functionality needs to be flushed.
     pub fn wants_flush(&self) -> bool {
         match &self.state {
@@ -302,10 +369,44 @@ impl Tls13KeySched {
     }
 }
 
+/// Flushes a stage repeatedly without executing the VM. Normal mode only
+/// assigns public contexts, so this converges without decoded values.
+macro_rules! drive {
+    ($stage:expr, $vm:expr) => {{
+        let mut rounds = 0;
+        while $stage.wants_flush() {
+            rounds += 1;
+            if rounds > 16 {
+                return Err(FError::state("key schedule stage did not converge"));
+            }
+            $stage.flush($vm)?;
+        }
+    }};
+}
+use drive;
+
+fn handshake_keys_from(cs: &[u8; 32], ss: &[u8; 32]) -> HandshakeKeys {
+    let expand = |secret: &[u8; 32], label: &[u8], len| hkdf_expand_label(secret, label, &[], len);
+    HandshakeKeys {
+        client_write_key: expand(cs, b"key", 16).try_into().expect("16 bytes"),
+        client_iv: expand(cs, b"iv", 12).try_into().expect("12 bytes"),
+        server_write_key: expand(ss, b"key", 16).try_into().expect("16 bytes"),
+        server_iv: expand(ss, b"iv", 12).try_into().expect("12 bytes"),
+        client_finished_key: expand(cs, b"finished", 32).try_into().expect("32 bytes"),
+        server_finished_key: expand(ss, b"finished", 32).try_into().expect("32 bytes"),
+    }
+}
+
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum State {
     Initialized,
+    /// zkfetch P4: the whole schedule is assigned; awaiting one execution.
+    PendingAll {
+        cs: mpz_vm_core::memory::DecodeFutureTyped<mpz_core::bitvec::BitVec, [u8; 32]>,
+        ss: mpz_vm_core::memory::DecodeFutureTyped<mpz_core::bitvec::BitVec, [u8; 32]>,
+        app_keys: ApplicationKeys,
+    },
     /// The state in which some of the handshake secrets are computed in MPC.
     Handshake {
         secrets: HandshakeSecrets,

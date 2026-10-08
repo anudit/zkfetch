@@ -351,8 +351,19 @@ impl Verifier<state::CommitAccepted<Proxy>> {
             .first_read()
             .expect("connection time should have been set");
 
-        let (mut ctx, mut vm, output, cf_vd_check, sf_vd_check) =
-            verifier.finalize(&sent_buf, &recv_buf, conn_time).await?;
+        // TLS 1.3 checks the Finished messages while finalizing (zkfetch P4).
+        let (mut ctx, mut vm, output, finished_checks) = match *verifier {
+            crate::proxy::AnyProxyVerifier::V12(verifier) => {
+                let (ctx, vm, output, cf, sf) =
+                    verifier.finalize(&sent_buf, &recv_buf, conn_time).await?;
+                (ctx, vm, output, Some((cf, sf)))
+            }
+            crate::proxy::AnyProxyVerifier::V13(verifier) => {
+                let (ctx, vm, output) =
+                    verifier.finalize(&sent_buf, &recv_buf, conn_time).await?;
+                (ctx, vm, output, None)
+            }
+        };
 
         let keys = output.keys;
         let tls_transcript = output.tls_transcript;
@@ -389,9 +400,11 @@ impl Verifier<state::CommitAccepted<Proxy>> {
         debug!("verified tags successfully");
 
         // Verify finished records
-        cf_vd_check.check(&mut vm)?;
-        sf_vd_check.check(&mut vm)?;
-        debug!("verified finished records successfully");
+        if let Some((cf_vd_check, sf_vd_check)) = finished_checks {
+            cf_vd_check.check(&mut vm)?;
+            sf_vd_check.check(&mut vm)?;
+            debug!("verified finished records successfully");
+        }
 
         Ok(Verifier {
             config: self.config,

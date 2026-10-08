@@ -28,6 +28,11 @@ tlsn-mpc-tls = { workspace = true }
 tlsn-mux = { workspace = true }
 tlsn-tls-client = { workspace = true }
 tlsn-tls-core = { workspace = true }
+# zkfetch patch P4: TLS 1.3 proxy mode.
+tlsn-tls13-schedule = { workspace = true }
+aes-gcm = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
 
 futures-plex = { workspace = true }
 serio = { workspace = true, features = ["compat"] }

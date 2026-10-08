@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "zkfetch example",
+  "version": "0.1.0",
+  "description": "Notarizes an HTTPS response from the extension service worker with zkfetch.",
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "zkfetch" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}
