@@ -4,8 +4,7 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "apps/*",
-    "examples/*"
+    "apps/*"
   ],
   "scripts": {
     "build:bins": "cargo build --release -p zkf-notary -p zkf-fixture",

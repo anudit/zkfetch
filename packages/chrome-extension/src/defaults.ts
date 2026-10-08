@@ -1,6 +1,6 @@
 import deployments from "../../../infra/cloudflare/deployments.json";
 
-// Same hosted region and proxy transport as examples/chrome-extension.
+// Hosted SEA region, proxy transport.
 // TLS auto and the QuickSilver backend are left at their SDK defaults.
 export const NOTARY = deployments.sea;
 export const DUOLINGO = "https://www.duolingo.com";

@@ -19,12 +19,6 @@
         "@omnid/zkfetch": "workspace:*",
       },
     },
-    "examples/chrome-extension": {
-      "name": "zkfetch-chrome-extension-example",
-      "dependencies": {
-        "@omnid/zkfetch": "workspace:*",
-      },
-    },
     "packages/chrome-extension": {
       "name": "@zkfetch/chrome-extension",
       "version": "0.1.0",
@@ -48,7 +42,7 @@
     },
     "packages/sdk": {
       "name": "@omnid/zkfetch",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "@zkfetch/native": "workspace:*",
         "@zkfetch/wasm": "workspace:*",
@@ -92,7 +86,5 @@
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
-
-    "zkfetch-chrome-extension-example": ["zkfetch-chrome-extension-example@workspace:examples/chrome-extension"],
   }
 }
