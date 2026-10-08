@@ -24,7 +24,7 @@ a notary that runs on Cloudflare.
 | **TLS 1.3 (MPC)** | MPC-TLS over TLS 1.3 (AES-128-GCM, P-256): an HKDF key schedule in MPC, public handshake keys, private application keys, authenticated record suffixes. |
 | **Proxy mode, TLS 1.2 and 1.3** | The notary relays the connection and the prover proves the session keys in zero knowledge. Kilobytes of traffic instead of ~66 MB of MPC preprocessing. For TLS 1.3 the notary decrypts and checks the handshake it relayed. |
 | **QuickSilver predicates** | Numeric (`gte`, `gt`) and JSON-shape proofs over hidden plaintext, checked by the notary during the session and signed into the attestation. The default backend. |
-| **Binius64 predicates** | Opt-in. Per-leaf SHA-256 commitments let the user prove new predicates later, offline, without the notary. |
+| **Binius64 predicates** | Opt-in. Per-leaf BLAKE3 commitments let the user prove new predicates later, offline, without the notary. |
 | **JSON selective disclosure** | Reveal by dotted path (`users.0.username`), including array elements, with the JSON structure kept authenticated. |
 | **Session binding** | `zkf.owner` / `zkf.context` attestation extensions for wallet binding and verifier challenges. |
 | **`fetch`-shaped SDK** | `zkFetch(url, init)` returns a standard `Response`. Sessions serialize, so the reveal can be decided later. |

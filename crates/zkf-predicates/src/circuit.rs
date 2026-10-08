@@ -1,6 +1,6 @@
 //! Only the ZK prover/verifier APIs are used. Payloads and blinders are witnesses.
 use anyhow::{Result, ensure};
-use binius_circuits::{fixed_byte_vec::ByteVec, sha256::sha256_varlen};
+use binius_circuits::blake3::blake3_fixed;
 use binius_core::word::Word;
 use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use binius_hash::sha256::Sha256HashSuite;
@@ -10,7 +10,6 @@ use binius_verifier::{
     transcript::{ProverTranscript, VerifierTranscript},
     zk_config::ZKVerifier,
 };
-use sha2::{Digest, Sha256};
 
 use crate::{MAX_HIDDEN_BYTES, MAX_SCALARS, ScalarClaim, ScalarKind};
 
@@ -158,8 +157,9 @@ fn atom(b: &CircuitBuilder, bytes: &[Wire]) {
 }
 
 struct ScalarWires {
-    message: ByteVec,
-    digest: [Wire; 4],
+    /// `data || blinder` as 32-bit little-endian words, 4 bytes per wire.
+    message: Vec<Wire>,
+    digest: [Wire; 8],
     minimum: Option<Wire>,
 }
 
@@ -169,17 +169,18 @@ fn build(b: &CircuitBuilder, claims: &[ScalarClaim]) -> Vec<ScalarWires> {
         .map(|claim| {
             let len = claim.len();
             // Length is public via the signed ranges, but the data and blinder are private.
-            let data = (0..(len + 16).div_ceil(8))
+            // The single-lane gadget hashes only each word's low 32 bits, which are
+            // exactly the bytes extracted below.
+            let message: Vec<Wire> = (0..(len + 16).div_ceil(4))
                 .map(|_| b.add_witness())
                 .collect();
-            let message = ByteVec::new_const_len(b, data, len + 16);
-            let computed = sha256_varlen(b, &message);
+            let computed = blake3_fixed(b, &message, len + 16);
             let digest = std::array::from_fn(|_| b.add_inout());
             for (a, c) in computed.into_iter().zip(digest) {
-                b.assert_eq("SHA256(data || blinder)", a, c);
+                b.assert_eq("BLAKE3(data || blinder)", a, c);
             }
             let bytes: Vec<_> = (0..len)
-                .map(|i| b.extract_byte(message.data[i / 8], (i % 8) as u32))
+                .map(|i| b.extract_byte(message[i / 4], (i % 4) as u32))
                 .collect();
             let minimum = match claim.kind {
                 ScalarKind::StringContent => {
@@ -253,8 +254,8 @@ fn public_inputs(
     claims: &[ScalarClaim],
 ) -> Result<()> {
     for (wire, claim) in wires.iter().zip(claims) {
-        for (i, chunk) in claim.digest.as_chunks::<8>().0.iter().enumerate() {
-            w[wire.digest[i]] = Word(u64::from_be_bytes(*chunk));
+        for (i, chunk) in claim.digest.as_chunks::<4>().0.iter().enumerate() {
+            w[wire.digest[i]] = Word(u32::from_le_bytes(*chunk) as u64);
         }
         if let Some(minimum) = wire.minimum {
             w[minimum] = Word(
@@ -271,6 +272,20 @@ fn public_inputs(
     Ok(())
 }
 
+/// Digest of a leaf commitment opening (`payload || blinder`): BLAKE3, as
+/// TLSNotary's `HashAlgId::BLAKE3` commitment computes it.
+pub(crate) fn leaf_digest(witness: &[u8]) -> [u8; 32] {
+    *blake3::hash(witness).as_bytes()
+}
+
+/// AND constraints of the circuit for `claims` (benchmarks).
+#[cfg(test)]
+pub(crate) fn and_constraints(claims: &[ScalarClaim]) -> usize {
+    let b = CircuitBuilder::new();
+    build(&b, claims);
+    binius_frontend::CircuitStat::collect(&b.build()).n_and_constraints
+}
+
 pub fn prove(claims: &[ScalarClaim], witnesses: &[Vec<u8>], message: &[u8]) -> Result<Vec<u8>> {
     validate(claims)?;
     ensure!(claims.len() == witnesses.len(), "witness count mismatch");
@@ -282,10 +297,14 @@ pub fn prove(claims: &[ScalarClaim], witnesses: &[Vec<u8>], message: &[u8]) -> R
     for ((wire, claim), witness) in wires.iter().zip(claims).zip(witnesses) {
         ensure!(witness.len() == claim.len() + 16, "invalid witness length");
         ensure!(
-            Sha256::digest(witness).as_slice() == claim.digest,
+            leaf_digest(witness) == claim.digest,
             "commitment witness mismatch"
         );
-        wire.message.populate_data(&mut w, witness);
+        for (wire, chunk) in wire.message.iter().zip(witness.chunks(4)) {
+            let mut word = [0u8; 4];
+            word[..chunk.len()].copy_from_slice(chunk);
+            w[*wire] = Word(u32::from_le_bytes(word) as u64);
+        }
     }
     circuit.populate_wire_witness(&mut w)?;
     let values = w.into_value_vec();

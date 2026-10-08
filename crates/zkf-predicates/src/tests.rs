@@ -6,7 +6,7 @@ fn integer(data: &[u8], minimum: u64) -> (ScalarClaim, Vec<u8>) {
     witness.extend_from_slice(&[9; 16]);
     let claim = ScalarClaim {
         idx: (0..data.len()).into(),
-        digest: Sha256::digest(&witness).into(),
+        digest: crate::circuit::leaf_digest(&witness),
         kind: ScalarKind::UnsignedInteger,
         predicate: Some(PredicateSpec {
             json_path: "streak".into(),
@@ -133,4 +133,23 @@ fn ambiguous_json_rejected() {
     assert!(resolve(&doc.root, "items.0.streak").is_ok());
     assert!(resolve(&doc.root, "items.00.streak").is_err());
     assert!(resolve(&doc.root, "items.1.streak").is_err());
+}
+
+/// Benchmark (run with `--ignored --nocapture`): Binius cost of hidden scalars.
+#[test]
+#[ignore]
+fn bench_leaf_hash() {
+    let cases: [(&str, &[u8]); 3] = [("3-digit integer", b"439"), ("10-digit integer", b"1234567890"), ("19-digit integer", b"1234567890123456789")];
+    for (name, data) in cases {
+        let (claim, witness) = integer(data, 1);
+        let claims = vec![claim];
+        let ands = circuit::and_constraints(&claims);
+        let started = std::time::Instant::now();
+        let proof = circuit::prove(&claims, &[witness], b"bench").unwrap();
+        let prove_ms = started.elapsed().as_secs_f64() * 1e3;
+        let started = std::time::Instant::now();
+        circuit::verify(&claims, proof.clone(), b"bench").unwrap();
+        let verify_ms = started.elapsed().as_secs_f64() * 1e3;
+        println!("BENCH {name}: and={ands} prove={prove_ms:.1}ms verify={verify_ms:.1}ms proof={}B", proof.len());
+    }
 }

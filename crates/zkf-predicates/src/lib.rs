@@ -247,14 +247,14 @@ pub fn prepare(
                 TranscriptCommitment::Hash(h)
                     if h.direction == Direction::Received
                         && h.idx == *idx
-                        && h.hash.alg == HashAlgId::SHA256 =>
+                        && h.hash.alg == HashAlgId::BLAKE3 =>
                 {
                     Some(h)
                 }
                 _ => None,
             })
             .ok_or_else(|| {
-                anyhow!("missing SHA256 commitment; fetch a new session to use predicates")
+                anyhow!("missing BLAKE3 commitment; fetch a new session to use Binius predicates")
             })?;
         let secret = blinders
             .iter()
@@ -262,7 +262,7 @@ pub fn prepare(
                 TranscriptSecret::Hash(h)
                     if h.direction == Direction::Received
                         && h.idx == *idx
-                        && h.alg == HashAlgId::SHA256 =>
+                        && h.alg == HashAlgId::BLAKE3 =>
                 {
                     Some(h)
                 }
@@ -319,8 +319,8 @@ pub fn verify(
         );
         claimed.union_mut(&claim.idx);
         ensure!(commits.iter().any(|c| matches!(c, TranscriptCommitment::Hash(h)
-            if h.direction == Direction::Received && h.idx == claim.idx && h.hash.alg == HashAlgId::SHA256
-            && h.hash.value.as_bytes() == claim.digest)), "scalar is not bound to a signed SHA256 commitment");
+            if h.direction == Direction::Received && h.idx == claim.idx && h.hash.alg == HashAlgId::BLAKE3
+            && h.hash.value.as_bytes() == claim.digest)), "scalar is not bound to a signed BLAKE3 commitment");
         hidden.push(Hidden {
             idx: claim.idx.clone(),
             string: claim.kind == ScalarKind::StringContent,

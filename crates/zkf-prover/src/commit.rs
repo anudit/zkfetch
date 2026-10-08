@@ -42,7 +42,7 @@ impl JsonCommit for JsonCommitter {
 
 /// HTTP committer. The JSON skeleton (body minus scalar leaves) is always
 /// committed as one range so presentations can disclose structure for
-/// path-bound predicates; per-leaf SHA-256 commitments are only added for the
+/// path-bound predicates; per-leaf BLAKE3 commitments are only added for the
 /// opt-in Binius64 backend.
 #[derive(Default)]
 pub struct HttpCommitter {
@@ -70,7 +70,7 @@ fn commit_body(
                                 value.view().indices(),
                                 direction,
                                 TranscriptCommitmentKind::Hash {
-                                    alg: HashAlgId::SHA256,
+                                    alg: HashAlgId::BLAKE3,
                                 },
                             )
                             .map_err(|e| {
