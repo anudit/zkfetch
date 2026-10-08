@@ -1,8 +1,8 @@
-import deployments from "../../../infra/cloudflare/deployments.json";
+import deployment from "../../../infra/aws/deployment.json";
 
-// Hosted SEA region, proxy transport.
+// Mumbai (ap-south-1) EC2 notary, proxy transport.
 // TLS auto and the QuickSilver backend are left at their SDK defaults.
-export const NOTARY = deployments.sea;
+export const NOTARY = deployment;
 export const DUOLINGO = "https://www.duolingo.com";
 export const API = `${DUOLINGO}/2017-06-30`;
 export const DEFAULT_USERNAME = "anudit";

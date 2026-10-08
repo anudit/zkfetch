@@ -12,7 +12,7 @@
   ],
   "host_permissions": [
     "https://*.duolingo.com/*",
-    "https://zkfetch-notary-sea.anudit.workers.dev/*"
+    "https://15-207-105-149.sslip.io/*"
   ],
   "background": {
     "service_worker": "dist/background.js",
@@ -25,7 +25,7 @@
     "default_path": "dist/sidepanel.html"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.duolingo.com https://zkfetch-notary-sea.anudit.workers.dev wss://zkfetch-notary-sea.anudit.workers.dev; worker-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.duolingo.com https://15-207-105-149.sslip.io wss://15-207-105-149.sslip.io; worker-src 'self'"
   },
   "cross_origin_embedder_policy": {
     "value": "require-corp"

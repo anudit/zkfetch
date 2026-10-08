@@ -1,5 +1,6 @@
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
+import deployment from "../../infra/aws/deployment.json";
 
 const root = import.meta.dir;
 const dist = join(root, "dist");
@@ -19,6 +20,12 @@ if (!result.success) throw new AggregateError(result.logs, "Extension bundle fai
 // The source manifest loads dist/ so the package directory can also be loaded
 // unpacked. The standalone dist manifest uses paths relative to itself.
 const manifest = await Bun.file(join(root, "manifest.json")).json();
+// The notary host comes from infra/aws/deployment.json, which changes with the
+// instance's IP; manifest.json holds the host from the last deployment.
+const notaryHost = new URL(deployment.health).host;
+manifest.host_permissions = ["https://*.duolingo.com/*", `https://${notaryHost}/*`];
+manifest.content_security_policy.extension_pages = manifest.content_security_policy.extension_pages
+  .replace(/connect-src [^;]*/, `connect-src 'self' https://*.duolingo.com https://${notaryHost} wss://${notaryHost}`);
 manifest.background.service_worker = basename(manifest.background.service_worker);
 manifest.side_panel.default_path = basename(manifest.side_panel.default_path);
 await Bun.write(join(dist, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");

@@ -41,9 +41,11 @@ extension in `chrome://extensions`. A missing background script can cause
 `Service worker registration failed. Status code: 3`; the source folder and
 the standalone `dist` folder both resolve their built background script now.
 
-Defaults match the existing Chrome example: the SEA hosted notary in
-`infra/cloudflare/deployments.json`, proxy transport, automatic TLS selection,
-and the SDK's QuickSilver backend. In proxy mode the notary also provides the
+Defaults: the Mumbai (ap-south-1) EC2 notary in `infra/aws/deployment.json`
+(see [`infra/aws`](../../infra/aws)), proxy transport, automatic TLS selection,
+and the SDK's QuickSilver backend. The build writes that notary's host into
+the dist manifest's host permissions and CSP, so after `infra/aws/up.sh`
+replaces the instance, rebuild and reload the extension. In proxy mode the notary also provides the
 relay. **Notary** checks `/health` and the pinned public key; **Relay** checks
 WebSocket connectivity. Reaching Duolingo through that relay is tested by the
 actual proof request. There is no separate relay server to configure.

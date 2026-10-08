@@ -1,0 +1,18 @@
+# Native linux/arm64 notary for Graviton (PMULL and AES instructions).
+#   docker build --platform linux/arm64 -f infra/aws/Dockerfile.notary .
+FROM rust:1.98-bookworm AS build
+RUN apt-get update && apt-get install -y --no-install-recommends clang cmake pkg-config && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY vendor ./vendor
+RUN cargo build --locked --release -p zkf-notary
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* && useradd -m -u 10001 notary
+COPY --from=build /app/target/release/zkf-notary /usr/local/bin/zkf-notary
+USER notary
+WORKDIR /home/notary
+ENV ZKF_NOTARY_ADDR=0.0.0.0:7047 ZKF_HEALTH_ADDR=0.0.0.0:9001 ZKF_REQUIRE_KEY=1
+EXPOSE 7047 9001
+ENTRYPOINT ["/usr/local/bin/zkf-notary"]

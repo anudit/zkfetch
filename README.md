@@ -15,7 +15,7 @@ forge what the server sent.
 
 It is built on [TLSNotary](https://github.com/tlsnotary/tlsn) (pinned
 `v0.1.0-alpha.15`, vendored and patched), with a Rust core, a Bun/Node SDK and
-a notary that runs on Cloudflare.
+a notary that runs on a small ARM server (AWS Graviton, Mumbai).
 
 ## On top of TLSNotary
 
@@ -32,7 +32,7 @@ a notary that runs on Cloudflare.
 | **Single-threaded MPC** | A patched executor runs MPC without OS threads, for wasm hosts such as Workers. |
 | **Multi-threaded wasm** | A threaded browser build spreads OT work across Web Workers in cross-origin isolated contexts. |
 | **Prepared sessions** | `prepare()` runs the notary connection and preprocessing before the request, so a click only waits for TLS, proofs and attestation. |
-| **Cloudflare notary** | A Rust Worker routes to a Durable Object that runs the native notary in a Cloudflare Container, in US, EU and APAC regions. |
+| **Hosted notary** | The native notary on a `t4g.small` in `ap-south-1` behind Caddy (HTTPS), with scripts that create and delete it ([`infra/aws`](infra/aws)). |
 
 The protocol patches are listed in
 [`vendor/tlsn/ZKFETCH_PATCHES.md`](vendor/tlsn/ZKFETCH_PATCHES.md) and
@@ -52,6 +52,7 @@ provers and notaries interoperate.
 | wasm SIMD128 | browsers | prover CPU −40% (with the two above) |
 | Multi-threaded wasm, 8 threads | isolated browser workers | prover CPU 3.3 s → 1.1 s |
 | `prepare()` ahead of the request | browsers | wait after click 6–9 s → 2.3–3 s (live, proxy) |
+| Notary in Mumbai instead of Cloudflare (reached from India via Hong Kong/Singapore) | hosting | native Duolingo proof, proxy: 15–17 s → 2.1 s (live, from India) |
 
 Live latency is dominated by about 21 sequential prover-notary round trips.
 Measurements and methods:
@@ -65,15 +66,11 @@ sequenceDiagram
     autonumber
     participant App as App (zkFetch)
     participant Prover as Prover (Rust, native addon)
-    participant Worker as Cloudflare Worker (Rust)
-    participant DO as Durable Object (location hint)
-    participant Notary as Notary container (Rust)
+    participant Notary as Notary (Rust, behind Caddy)
     participant Server as HTTPS server
 
     App->>Prover: zkFetch(url, { zkConfig })
-    Prover->>Worker: wss:// /notarize
-    Worker->>DO: route to the regional notary
-    DO->>Notary: start the container if asleep, proxy the WebSocket
+    Prover->>Notary: wss:// /notarize
     Prover->>Notary: commit: mode, TLS version, limits
 
     alt MPC mode
@@ -105,7 +102,7 @@ import { zkFetch, verify } from "@omnid/zkfetch";
 const res = await zkFetch("https://api.example.com/me", {
   headers: { Authorization: `Bearer ${token}` }, // never revealed
   zkConfig: {
-    notaryUrl: "wss://zkfetch-notary-sea.anudit.workers.dev/notarize",
+    notaryUrl: "wss://15-207-105-149.sslip.io/notarize", // infra/aws/deployment.json
     mode: "mpc",           // or "proxy": much less traffic, trusts the notary-to-server path
     tlsVersion: "auto",    // "1.3" | "1.2" | "auto"
     backend: "quicksilver",// or "binius" for offline predicates later
@@ -175,7 +172,7 @@ bun run build            # release binaries + native addon
 bun run test             # Bun + Rust end-to-end tests
 bun run playground       # Duolingo longest-streak demo (see .env.example)
 
-cd infra/cloudflare && bun run deploy   # US, EU and APAC notaries
+infra/aws/up.sh          # hosted notary on EC2 (infra/aws/down.sh deletes it)
 ```
 
 Browser builds need wasm-pack; the threaded build also needs a nightly
