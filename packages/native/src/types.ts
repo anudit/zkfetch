@@ -24,7 +24,10 @@ export interface NotarizeParams {
   connectAddr?: string;
   /** Extra trusted root CAs, base64 DER. */
   extraRootCerts?: string[];
+  /** Request size limit in bytes (MPC mode; default 4096). */
   maxSent?: number;
+  /** Response size limit in bytes. MPC mode preprocesses for it (default
+   * 16384); proxy mode rejects larger responses (default 262144). */
   maxRecv?: number;
   owner?: string;
   context?: string;

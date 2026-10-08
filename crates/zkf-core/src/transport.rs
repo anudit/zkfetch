@@ -12,6 +12,93 @@ pub use socket::*;
 #[cfg(target_arch = "wasm32")]
 pub use browser::*;
 
+/// A WebSocket byte stream that fails writes once the peer has gone.
+///
+/// The WebSocket adapters can leave a write pending forever after the
+/// connection closed. The multiplexer flushes a final frame before it shuts
+/// down, so one such write hangs the whole session (for example when the
+/// notary rejects the target server and disconnects). After a read sees EOF or
+/// any operation fails, writes return `BrokenPipe` and close completes at once.
+pub struct Guarded<S> {
+    inner: S,
+    closed: bool,
+}
+
+impl<S> Guarded<S> {
+    pub fn new(inner: S) -> Self {
+        Self {
+            inner,
+            closed: false,
+        }
+    }
+
+    fn broken() -> std::io::Error {
+        std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "the notary connection is closed",
+        )
+    }
+}
+
+impl<S: AsyncRead + Unpin> AsyncRead for Guarded<S> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut [u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let poll = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        if matches!(
+            &poll,
+            std::task::Poll::Ready(Ok(0)) | std::task::Poll::Ready(Err(_))
+        ) && !buf.is_empty()
+        {
+            self.closed = true;
+        }
+        poll
+    }
+}
+
+impl<S: AsyncWrite + Unpin> AsyncWrite for Guarded<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        if self.closed {
+            return std::task::Poll::Ready(Err(Self::broken()));
+        }
+        let poll = std::pin::Pin::new(&mut self.inner).poll_write(cx, buf);
+        if matches!(poll, std::task::Poll::Ready(Err(_))) {
+            self.closed = true;
+        }
+        poll
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if self.closed {
+            return std::task::Poll::Ready(Err(Self::broken()));
+        }
+        let poll = std::pin::Pin::new(&mut self.inner).poll_flush(cx);
+        if matches!(poll, std::task::Poll::Ready(Err(_))) {
+            self.closed = true;
+        }
+        poll
+    }
+
+    fn poll_close(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if self.closed {
+            return std::task::Poll::Ready(Ok(()));
+        }
+        std::pin::Pin::new(&mut self.inner).poll_close(cx)
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 mod browser {
     use std::{
@@ -20,13 +107,15 @@ mod browser {
     };
 
     use anyhow::{Result, anyhow, bail};
-    use futures::{AsyncRead, AsyncWrite};
     use async_io_stream::IoStream;
+    use futures::{AsyncRead, AsyncWrite};
     use ws_stream_wasm::{WsMeta, WsStreamIo};
 
-    /// Byte stream over a browser WebSocket. Keeps the socket's metadata
-    /// handle alive for the stream's lifetime.
-    pub struct ClientStream {
+    /// Byte stream over a browser WebSocket.
+    pub type ClientStream = super::Guarded<BrowserStream>;
+
+    /// Keeps the socket's metadata handle alive for the stream's lifetime.
+    pub struct BrowserStream {
         _meta: WsMeta,
         io: IoStream<WsStreamIo, Vec<u8>>,
     }
@@ -39,13 +128,13 @@ mod browser {
         let (meta, ws) = WsMeta::connect(url, None)
             .await
             .map_err(|e| anyhow!("failed to connect to {url}: {e}"))?;
-        Ok(ClientStream {
+        Ok(super::Guarded::new(BrowserStream {
             _meta: meta,
             io: ws.into_io(),
-        })
+        }))
     }
 
-    impl AsyncRead for ClientStream {
+    impl AsyncRead for BrowserStream {
         fn poll_read(
             mut self: Pin<&mut Self>,
             cx: &mut Context<'_>,
@@ -55,7 +144,7 @@ mod browser {
         }
     }
 
-    impl AsyncWrite for ClientStream {
+    impl AsyncWrite for BrowserStream {
         fn poll_write(
             mut self: Pin<&mut Self>,
             cx: &mut Context<'_>,
@@ -84,10 +173,10 @@ mod socket {
     use ws_stream_tungstenite::WsStream;
 
     /// Byte stream over a client-side WebSocket.
-    pub type ClientStream = WsStream<async_tungstenite::tokio::ConnectStream>;
+    pub type ClientStream = super::Guarded<WsStream<async_tungstenite::tokio::ConnectStream>>;
 
     /// Byte stream over a server-side WebSocket.
-    pub type ServerStream = WsStream<TokioAdapter<TcpStream>>;
+    pub type ServerStream = super::Guarded<WsStream<TokioAdapter<TcpStream>>>;
 
     /// Connects to a notary at `ws://` or `wss://` `url`.
     pub async fn connect(url: &str) -> Result<ClientStream> {
@@ -105,7 +194,7 @@ mod socket {
         let (ws, _) = client_async_tls_with_connector_and_config(url, tcp, None, None)
             .await
             .with_context(|| format!("failed to connect to notary at {url}"))?;
-        Ok(WsStream::new(ws))
+        Ok(super::Guarded::new(WsStream::new(ws)))
     }
 
     /// Accepts a WebSocket upgrade on an incoming TCP connection.
@@ -114,7 +203,7 @@ mod socket {
         let ws = accept_async(tcp)
             .await
             .context("websocket handshake failed")?;
-        Ok(WsStream::new(ws))
+        Ok(super::Guarded::new(WsStream::new(ws)))
     }
 }
 

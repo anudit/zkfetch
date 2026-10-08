@@ -604,7 +604,11 @@ async fn proxy_round_trip(tls13: bool) {
     let v = zkf_verifier::verify(&presentation, &opts).expect("verify proxy presentation");
     assert_eq!(v.tls_version, if tls13 { "V1_3" } else { "V1_2" });
     assert_eq!(v.server_name, SERVER_DOMAIN);
-    assert!(v.sent.starts_with("GET /formats/json HTTP/1.1"), "{}", v.sent);
+    assert!(
+        v.sent.starts_with("GET /formats/json HTTP/1.1"),
+        "{}",
+        v.sent
+    );
     assert!(!v.sent.contains("proxy-secret"));
     assert!(v.recv.contains("\"name\":\"John Doe\""), "{}", v.recv);
     assert!(!v.recv.contains("1234567890"));
@@ -724,15 +728,23 @@ async fn prepared_round_trip(proxy: bool) {
     assert!(out.timings.prewarmed);
     assert!(out.timings.setup_ms > 0.0);
     let waited = out.timings.tls_ms + out.timings.prove_ms + out.timings.attest_ms;
-    assert!(out.timings.total_ms < waited + out.timings.setup_ms, "total excludes setup");
+    assert!(
+        out.timings.total_ms < waited + out.timings.setup_ms,
+        "total excludes setup"
+    );
 
     let opts = VerifyOptions {
         trusted_notary_keys: vec![notary_key],
         extra_root_certs: vec![b64::encode(CA_CERT_DER)],
         ..Default::default()
     };
-    let presentation = zkf_prover::present(&out.attestation, &out.secrets, &RevealSpec::default()).unwrap();
-    assert!(zkf_verifier::verify(&presentation, &opts).unwrap().notary_trusted);
+    let presentation =
+        zkf_prover::present(&out.attestation, &out.secrets, &RevealSpec::default()).unwrap();
+    assert!(
+        zkf_verifier::verify(&presentation, &opts)
+            .unwrap()
+            .notary_trusted
+    );
 
     // A fresh session reports its own setup as part of the wait.
     let fresh = zkf_prover::notarize(p).await.expect("fresh notarize");
@@ -764,4 +776,45 @@ async fn prepared_session_rejects_other_parameters() {
         .await
         .expect_err("host differs from the prepared proxy session");
     assert!(format!("{err:#}").contains("does not match"), "{err:#}");
+}
+
+/// When the notary cannot reach the server it closes the connection. The
+/// prover must report that promptly rather than wait on the closed socket.
+#[tokio::test(flavor = "multi_thread")]
+async fn proxy_unreachable_server_fails_fast() {
+    // Nothing listens on port 1.
+    let (notary_url, _) = spawn_proxy_notary("127.0.0.1:1").await;
+    let mut p = params(notary_url, String::new(), vec![]);
+    p.connect_addr = None;
+    p.mode = Some("proxy".into());
+    p.tls_version = Some("1.3".into());
+    let err = tokio::time::timeout(std::time::Duration::from_secs(10), zkf_prover::notarize(p))
+        .await
+        .expect("session must fail, not hang")
+        .expect_err("server is unreachable");
+    assert!(
+        format!("{err:#}").contains("notary connection"),
+        "unexpected error: {err:#}"
+    );
+}
+
+/// Proxy mode has no preprocessing limit, so the prover enforces maxRecv
+/// itself before spending minutes proving an oversized response.
+#[tokio::test(flavor = "multi_thread")]
+async fn proxy_response_over_max_recv_fails() {
+    let fixture = spawn_fixture_version(true).await;
+    let (notary_url, _) = spawn_proxy_notary(&fixture).await;
+    let mut p = params(notary_url, String::new(), vec![]);
+    p.connect_addr = None;
+    p.mode = Some("proxy".into());
+    p.tls_version = Some("1.3".into());
+    p.max_recv = Some(64);
+    let err = tokio::time::timeout(std::time::Duration::from_secs(45), zkf_prover::notarize(p))
+        .await
+        .expect("session must fail, not hang")
+        .expect_err("response is larger than maxRecv");
+    assert!(
+        format!("{err:#}").contains("over the 64-byte limit for proxy mode"),
+        "unexpected error: {err:#}"
+    );
 }

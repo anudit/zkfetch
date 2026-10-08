@@ -9,7 +9,9 @@ async fn main() -> anyhow::Result<()> {
         .init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let [notary_url, url, rest @ ..] = args.as_slice() else {
-        anyhow::bail!("usage: notarize_live <notary-ws-url> <https-url> [1.2|1.3|auto] [mpc|proxy]");
+        anyhow::bail!(
+            "usage: notarize_live <notary-ws-url> <https-url> [1.2|1.3|auto] [mpc|proxy]"
+        );
     };
     let params = serde_json::from_value::<zkf_core::NotarizeParams>(serde_json::json!({
         "notaryUrl": notary_url,
@@ -19,6 +21,9 @@ async fn main() -> anyhow::Result<()> {
     }))?;
     let out = zkf_prover::notarize(params).await?;
     println!("ok: status {} in {:?}", out.response.status, out.timings);
-    println!("{}", out.response.body.chars().take(300).collect::<String>());
+    println!(
+        "{}",
+        out.response.body.chars().take(300).collect::<String>()
+    );
     Ok(())
 }
