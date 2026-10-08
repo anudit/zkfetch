@@ -81,7 +81,11 @@ pub struct NotarizeTimings {
     pub prove_ms: f64,
     /// Attestation request -> signed attestation -> local validation.
     pub attest_ms: f64,
+    /// Time the caller waited. Excludes connect and setup when `prewarmed`.
     pub total_ms: f64,
+    /// Connect and setup ran ahead of the request (`prepare`).
+    #[serde(default)]
+    pub prewarmed: bool,
 }
 
 /// Result of notarization. `secrets` is sensitive: it opens every commitment.

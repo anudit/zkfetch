@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "zkfetch · Duolingo",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "description": "Prove your Duolingo username and longest streak, then verify the proof locally.",
+  "permissions": [
+    "sidePanel",
+    "cookies",
+    "storage",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "https://*.duolingo.com/*",
+    "https://zkfetch-notary-sea.anudit.workers.dev/*"
+  ],
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Duolingo proof panel"
+  },
+  "side_panel": {
+    "default_path": "dist/sidepanel.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.duolingo.com https://zkfetch-notary-sea.anudit.workers.dev wss://zkfetch-notary-sea.anudit.workers.dev; worker-src 'self'"
+  },
+  "cross_origin_embedder_policy": {
+    "value": "require-corp"
+  },
+  "cross_origin_opener_policy": {
+    "value": "same-origin"
+  }
+}

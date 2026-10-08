@@ -24,6 +24,12 @@ for (const [entry, target, conditions] of [
   if (!build.success) throw new AggregateError(build.logs, `bundling ${entry} failed`);
 }
 cpSync(join(root, "packages/wasm/pkg/zkf_bg.wasm"), join(out, "dist/zkf_bg.wasm"));
+// Multi-threaded prover for cross-origin isolated workers, loaded by URL at
+// runtime (`init(source, { threads })`), so it is shipped unbundled.
+cpSync(join(root, "packages/wasm/pkg-threads"), join(out, "dist/wasm-threads"), {
+  recursive: true,
+  filter: path => !path.endsWith(".gitignore") && !path.endsWith(".d.ts"),
+});
 const addon = `zkf.${process.platform}-${process.arch}.node`;
 cpSync(join(root, "packages/native/zkf.node"), join(out, "native", addon));
 
@@ -43,7 +49,7 @@ for (const file of new Bun.Glob("**/*.d.ts").scanSync(types)) {
   const path = join(types, file);
   writeFileSync(path, readFileSync(path, "utf8").replace(/(from\s+"\.{1,2}\/[^"]+?)(?<!\.js)"/g, '$1.js"'));
 }
-writeFileSync(join(out, "dist/node.d.ts"), `export * from "./types/sdk/src/core.js";\n/** "native" or "wasm": which prover this process uses. */\nexport declare const runtime: "native" | "wasm";\n/** No-op on Node.js/Bun; accepts the browser build's wasm source for shared code. */\nexport declare function init(source?: unknown): Promise<void>;\n`);
+writeFileSync(join(out, "dist/node.d.ts"), `export * from "./types/sdk/src/core.js";\n/** "native" or "wasm": which prover this process uses. */\nexport declare const runtime: "native" | "wasm";\n/** No-op on Node.js/Bun; accepts the browser build's arguments for shared code. */\nexport declare function init(source?: unknown, options?: unknown): Promise<void>;\n/** Worker threads of the wasm prover; always 0 here. */\nexport declare function threads(): number;\n`);
 writeFileSync(join(out, "dist/browser.d.ts"), `export * from "./types/sdk/src/browser.js";\n`);
 
 const version = JSON.parse(readFileSync(join(sdk, "package.json"), "utf8")).version;
@@ -65,6 +71,7 @@ writeFileSync(join(out, "package.json"), JSON.stringify({
       default: "./dist/node.js",
     },
     "./zkf_bg.wasm": "./dist/zkf_bg.wasm",
+    "./wasm-threads/*": "./dist/wasm-threads/*",
   },
   types: "./dist/node.d.ts",
   files: ["dist", "native", "README.md"],

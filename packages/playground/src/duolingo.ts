@@ -116,7 +116,7 @@ function report(backend: Backend, results: RunResult[], tlsVersion: TlsVersionPr
         : `suite    exact TLS 1.2 suite not exposed by SDK (RSA or ECDSA authentication)`);
     }
   }
-  const phases: [string, keyof NotarizeTimings | "presentMs" | "verifyMs" | "e2eMs" | "baselineMs"][] = [
+  const phases: [string, Exclude<keyof NotarizeTimings, "prewarmed"> | "presentMs" | "verifyMs" | "e2eMs" | "baselineMs"][] = [
     ["notary connect (WebSocket)", "notaryConnectMs"],
     ["MPC setup + preprocessing", "setupMs"],
     ["MPC-TLS session (handshake, req/resp)", "tlsMs"],

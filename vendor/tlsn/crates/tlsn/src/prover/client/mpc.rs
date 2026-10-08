@@ -30,6 +30,9 @@ pub(crate) struct MpcTlsClient {
     decrypt: Arc<DecryptState>,
     client_wants_close: bool,
     server_closed: bool,
+    // Set once the inner client has processed all data received before the
+    // server closed the connection during the handshake.
+    drained_after_close: bool,
 }
 
 enum State {
@@ -88,6 +91,7 @@ impl MpcTlsClient {
             decrypt: Arc::new(decrypt),
             client_wants_close: false,
             server_closed: false,
+            drained_after_close: false,
             state: State::Start {
                 inner: Box::new(inner),
             },
@@ -244,6 +248,16 @@ impl TlsClient for MpcTlsClient {
                         };
                     }
                     return self.poll(cx);
+                }
+                if self.server_closed {
+                    // Process whatever the server sent before closing once;
+                    // if the handshake still has not completed it never will.
+                    if self.drained_after_close {
+                        return Poll::Ready(Err(TlsnError::internal().with_msg(
+                            "server closed the connection during the TLS handshake",
+                        )));
+                    }
+                    self.drained_after_close = true;
                 }
                 self.state = State::Busy {
                     fut: Box::pin(inner.run()),

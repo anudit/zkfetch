@@ -114,3 +114,21 @@ has not been submitted upstream.
 
 Proxy mode (both versions) trusts that nobody can intercept the network path
 between the verifier and the server. P4 needs the same security review as P2.
+
+## P5: fail when the server closes during the handshake
+
+A server that closes the TCP connection during the handshake without an alert
+(for example one without TLS 1.3 support answering a TLS 1.3-only ClientHello)
+made `MpcTlsClient::poll` recurse between `Active` and `Busy` until the stack
+overflowed, and left the proxy client pending forever.
+
+- `tlsn/src/prover/client/mpc.rs`: after the server closes, the client
+  processes the remaining received data once; if the handshake is still
+  incomplete it returns "server closed the connection during the TLS
+  handshake".
+- `tlsn/src/prover/client/proxy/mod.rs`: the handshaking state returns the same
+  error once the server has closed.
+
+zkfetch's `auto` TLS version then falls back to TLS 1.2 for idempotent
+requests. Regression tests: `*_server_hangup_during_handshake_fails` in
+`crates/zkf-prover/tests/e2e.rs`.

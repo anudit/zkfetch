@@ -28,3 +28,7 @@ docs2
 
 # Built npm package (bun packages/sdk/scripts/build-npm.ts)
 packages/sdk/npm/
+
+# Standalone test builds of vendored crates (the root lockfile governs builds)
+vendor/mpz/*/target/
+vendor/mpz/*/Cargo.lock

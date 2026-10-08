@@ -16,8 +16,9 @@ use web_time::Instant;
 use anyhow::{Context, Result, anyhow, bail};
 use http_body_util::Full;
 use hyper::{Request, body::Bytes};
+use futures::future::RemoteHandle;
 use tlsn::{
-    Session,
+    Mpc, Proxy, Session, SessionHandle,
     attestation::{
         Attestation, CryptoProvider, Extension,
         request::{Request as AttestationRequest, RequestConfig},
@@ -27,7 +28,7 @@ use tlsn::{
         tls_commit::{mpc::MpcTlsConfig, proxy::ProxyTlsConfig},
     },
     connection::{HandshakeData, ServerName, TlsVersion},
-    prover::ProverOutput,
+    prover::{Prover, ProverOutput, state::CommitAccepted},
     transcript::TranscriptCommitConfig,
     webpki::{CertificateDer, RootCertStore},
 };
@@ -88,48 +89,223 @@ async fn connect_server(
 /// 1.3 first and retries over TLS 1.2 only for idempotent methods, so a
 /// non-idempotent request is never sent twice.
 pub async fn notarize(params: NotarizeParams) -> Result<NotarizeOutput> {
-    if !matches!(params.mode.as_deref().unwrap_or("mpc"), "mpc" | "proxy") {
-        bail!("mode must be \"mpc\" or \"proxy\", got {:?}", params.mode);
+    notarize_auto(params, None).await
+}
+
+/// Like [`notarize`], but starts from a session set up ahead of time by
+/// [`prepare`], so only the request-dependent phases remain. The prepared
+/// session must match `params` (notary, mode, TLS version, MPC limits and, in
+/// proxy mode, the host). An "auto" TLS 1.2 fallback uses a fresh session.
+pub async fn notarize_prepared(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOutput> {
+    notarize_auto(params, Some(prepared)).await
+}
+
+/// Request-independent setup for [`notarize_prepared`]: the notary connection
+/// and the OT/MPC preprocessing, which dominate latency.
+///
+/// Use it once, before the notary's session timeout (120 s by default,
+/// counted from the connection) leaves too little time for the request.
+/// Dropping it closes the session.
+pub struct Prepared {
+    key: SessionKey,
+    tls_version: TlsVersion,
+    connect_ms: f64,
+    setup_ms: f64,
+    prewarmed: bool,
+    handle: SessionHandle,
+    driver_task: RemoteHandle<tlsn::Result<transport::ClientStream>>,
+    prover: CommittedProver,
+}
+
+enum CommittedProver {
+    Proxy(Prover<CommitAccepted<Proxy>>),
+    Mpc(Prover<CommitAccepted<Mpc>>),
+}
+
+/// The parameters a prepared session is bound to.
+#[derive(Debug, Clone, PartialEq)]
+struct SessionKey {
+    notary_url: String,
+    proxy: bool,
+    /// Proxy mode commits to the server name; MPC mode does not.
+    proxy_host: Option<String>,
+    max_sent: usize,
+    max_recv: usize,
+}
+
+impl SessionKey {
+    fn new(params: &NotarizeParams) -> Result<Self> {
+        let proxy = match params.mode.as_deref().unwrap_or("mpc") {
+            "mpc" => false,
+            "proxy" => true,
+            other => bail!("mode must be \"mpc\" or \"proxy\", got {other:?}"),
+        };
+        Ok(Self {
+            notary_url: params.notary_url.clone(),
+            proxy,
+            proxy_host: if proxy { Some(Target::parse(&params.url)?.host) } else { None },
+            max_sent: params.max_sent.unwrap_or(DEFAULT_MAX_SENT),
+            max_recv: params.max_recv.unwrap_or(DEFAULT_MAX_RECV),
+        })
     }
+}
+
+/// The parts of the request URL the protocol needs.
+struct Target {
+    host: String,
+    port: u16,
+    path_and_query: String,
+}
+
+impl Target {
+    fn parse(url: &str) -> Result<Self> {
+        let url = url::Url::parse(url).context("invalid url")?;
+        if url.scheme() != "https" {
+            bail!("only https:// URLs are supported");
+        }
+        Ok(Self {
+            host: url
+                .host_str()
+                .ok_or_else(|| anyhow!("url has no host"))?
+                .to_string(),
+            port: url.port_or_known_default().unwrap_or(443),
+            path_and_query: match url.query() {
+                Some(q) => format!("{}?{q}", url.path()),
+                None => url.path().to_string(),
+            },
+        })
+    }
+}
+
+/// Connects to the notary and runs the preprocessing for `params`. The TLS
+/// version is `params.tls_version`, with "auto" preparing TLS 1.3.
+pub async fn prepare(params: &NotarizeParams) -> Result<Prepared> {
+    let tls_version = match params.tls_version.as_deref().unwrap_or("auto") {
+        "1.2" => TlsVersion::V1_2,
+        "1.3" | "auto" => TlsVersion::V1_3,
+        other => bail!("tlsVersion must be \"1.2\", \"1.3\" or \"auto\", got {other:?}"),
+    };
+    let mut prepared = prepare_with(params, tls_version).await?;
+    prepared.prewarmed = true;
+    Ok(prepared)
+}
+
+async fn prepare_with(params: &NotarizeParams, tls_version: TlsVersion) -> Result<Prepared> {
+    let key = SessionKey::new(params)?;
+    if key.proxy && params.connect_addr.is_some() {
+        bail!("connectAddr is not supported in proxy mode: the notary dials the server");
+    }
+
+    // Session with the notary.
+    let started = Instant::now();
+    let notary = transport::connect(&params.notary_url).await?;
+    let connect_ms = started.elapsed().as_secs_f64() * 1e3;
+    let (driver, mut handle) = Session::new(notary).split();
+    let driver_task = rt::spawn(driver);
+
+    let setup_started = Instant::now();
+    let new_prover = handle.new_prover(ProverConfig::builder().build()?)?;
+    let prover = match &key.proxy_host {
+        Some(host) => CommittedProver::Proxy(
+            new_prover
+                .commit(
+                    ProxyTlsConfig::builder()
+                        .server_name(host.as_str().try_into()?)
+                        .tls_version(tls_version)
+                        .build()?,
+                )
+                .await
+                .context("notary rejected the proxy session configuration")?,
+        ),
+        None => CommittedProver::Mpc(
+            new_prover
+                .commit(
+                    MpcTlsConfig::builder()
+                        .max_sent_data(key.max_sent)
+                        .max_recv_data(key.max_recv)
+                        .tls_version(tls_version)
+                        .build()?,
+                )
+                .await
+                .context("notary rejected the session configuration")?,
+        ),
+    };
+    Ok(Prepared {
+        key,
+        tls_version,
+        connect_ms,
+        setup_ms: setup_started.elapsed().as_secs_f64() * 1e3,
+        prewarmed: false,
+        handle,
+        driver_task,
+        prover,
+    })
+}
+
+async fn notarize_auto(params: NotarizeParams, prepared: Option<Prepared>) -> Result<NotarizeOutput> {
+    SessionKey::new(&params)?;
     let method = params
         .method
         .clone()
         .unwrap_or_else(|| "GET".into())
         .to_uppercase();
-    match params.tls_version.as_deref().unwrap_or("auto") {
-        "1.3" => notarize_with(params, TlsVersion::V1_3).await,
-        "1.2" => notarize_with(params, TlsVersion::V1_2).await,
-        "auto" => match notarize_with(params.clone(), TlsVersion::V1_3).await {
-            Ok(out) => Ok(out),
-            Err(err) if matches!(method.as_str(), "GET" | "HEAD" | "OPTIONS") => {
-                debug!("TLS 1.3 notarization failed ({err:#}); retrying with TLS 1.2");
-                notarize_with(params, TlsVersion::V1_2)
-                    .await
-                    .with_context(|| format!("TLS 1.3 attempt failed first: {err:#}"))
-            }
-            Err(err) => Err(err.context(
-                "TLS 1.3 notarization failed; set tlsVersion to \"1.2\" to use TLS 1.2 \
-                 (not retried automatically for non-idempotent methods)",
-            )),
+    let requested = params.tls_version.as_deref().unwrap_or("auto");
+    let first = match (requested, prepared.as_ref().map(|p| p.tls_version)) {
+        ("1.2", None | Some(TlsVersion::V1_2)) | ("auto", Some(TlsVersion::V1_2)) => TlsVersion::V1_2,
+        ("1.3" | "auto", None | Some(TlsVersion::V1_3)) => TlsVersion::V1_3,
+        ("1.2" | "1.3", Some(_)) => {
+            bail!("the prepared session uses a different TLS version than tlsVersion {requested:?}")
+        }
+        (other, _) => bail!("tlsVersion must be \"1.2\", \"1.3\" or \"auto\", got {other:?}"),
+    };
+    let result = match prepared {
+        Some(prepared) => finish(prepared, params.clone()).await,
+        None => match prepare_with(&params, first).await {
+            Ok(prepared) => finish(prepared, params.clone()).await,
+            Err(err) => Err(err),
         },
-        other => bail!("tlsVersion must be \"1.2\", \"1.3\" or \"auto\", got {other:?}"),
+    };
+    if requested != "auto" || first != TlsVersion::V1_3 {
+        return result;
+    }
+    match result {
+        Ok(out) => Ok(out),
+        Err(err) if matches!(method.as_str(), "GET" | "HEAD" | "OPTIONS") => {
+            debug!("TLS 1.3 notarization failed ({err:#}); retrying with TLS 1.2");
+            let prepared = prepare_with(&params, TlsVersion::V1_2)
+                .await
+                .with_context(|| format!("TLS 1.3 attempt failed first: {err:#}"))?;
+            finish(prepared, params)
+                .await
+                .with_context(|| format!("TLS 1.3 attempt failed first: {err:#}"))
+        }
+        Err(err) => Err(err.context(
+            "TLS 1.3 notarization failed; set tlsVersion to \"1.2\" to use TLS 1.2 \
+             (not retried automatically for non-idempotent methods)",
+        )),
     }
 }
 
-async fn notarize_with(params: NotarizeParams, tls_version: TlsVersion) -> Result<NotarizeOutput> {
-    let url = url::Url::parse(&params.url).context("invalid url")?;
-    if url.scheme() != "https" {
-        bail!("only https:// URLs are supported");
+/// Runs the request-dependent phases on a prepared session.
+async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOutput> {
+    let Prepared {
+        key,
+        tls_version,
+        connect_ms,
+        setup_ms,
+        prewarmed,
+        handle,
+        driver_task,
+        prover,
+    } = prepared;
+    if key != SessionKey::new(&params)? {
+        bail!("the prepared session does not match these parameters (notary, mode, host or MPC limits)");
     }
-    let host = url
-        .host_str()
-        .ok_or_else(|| anyhow!("url has no host"))?
-        .to_string();
-    let port = url.port_or_known_default().unwrap_or(443);
-    let target = match url.query() {
-        Some(q) => format!("{}?{q}", url.path()),
-        None => url.path().to_string(),
-    };
+    let Target {
+        host,
+        port,
+        path_and_query: target,
+    } = Target::parse(&params.url)?;
     let dial = params
         .connect_addr
         .clone()
@@ -154,54 +330,28 @@ async fn notarize_with(params: NotarizeParams, tls_version: TlsVersion) -> Resul
         lap = now;
         ms
     };
-    let mut timings = NotarizeTimings::default();
-
-    let proxy = params.mode.as_deref() == Some("proxy");
-    if proxy && params.connect_addr.is_some() {
-        bail!("connectAddr is not supported in proxy mode: the notary dials the server");
-    }
-
-    // Session with the notary.
-    let notary = transport::connect(&params.notary_url).await?;
-    timings.notary_connect_ms = split();
-    let (driver, mut handle) = Session::new(notary).split();
-    let driver_task = rt::spawn(driver);
+    let mut timings = NotarizeTimings {
+        notary_connect_ms: connect_ms,
+        setup_ms,
+        prewarmed,
+        ..Default::default()
+    };
 
     let tls_config = TlsClientConfig::builder()
         .server_name(ServerName::Dns(host.as_str().try_into()?))
         .root_store(root_store(&params.extra_root_certs)?)
         .build()?;
-    let new_prover = handle.new_prover(ProverConfig::builder().build()?)?;
-    let (tls_connection, prover_task) = if proxy {
-        let prover = new_prover
-            .commit(
-                ProxyTlsConfig::builder()
-                    .server_name(host.as_str().try_into()?)
-                    .tls_version(tls_version)
-                    .build()?,
-            )
-            .await
-            .context("notary rejected the proxy session configuration")?;
-        timings.setup_ms = split();
-        // The notary dials the server and relays this connection.
-        let (tls_connection, prover) = prover.connect(tls_config)?;
-        (tls_connection, rt::spawn(prover.into_future()))
-    } else {
-        let prover = new_prover
-            .commit(
-                MpcTlsConfig::builder()
-                    .max_sent_data(params.max_sent.unwrap_or(DEFAULT_MAX_SENT))
-                    .max_recv_data(params.max_recv.unwrap_or(DEFAULT_MAX_RECV))
-                    .tls_version(tls_version)
-                    .build()?,
-            )
-            .await
-            .context("notary rejected the session configuration")?;
-        timings.setup_ms = split();
-
-        let server_socket = connect_server(&dial, params.relay_url.as_deref()).await?;
-        let (tls_connection, prover) = prover.connect(tls_config, server_socket)?;
-        (tls_connection, rt::spawn(prover.into_future()))
+    let (tls_connection, prover_task) = match prover {
+        CommittedProver::Proxy(prover) => {
+            // The notary dials the server and relays this connection.
+            let (tls_connection, prover) = prover.connect(tls_config)?;
+            (tls_connection, rt::spawn(prover.into_future()))
+        }
+        CommittedProver::Mpc(prover) => {
+            let server_socket = connect_server(&dial, params.relay_url.as_deref()).await?;
+            let (tls_connection, prover) = prover.connect(tls_config, server_socket)?;
+            (tls_connection, rt::spawn(prover.into_future()))
+        }
     };
 
     let (mut sender, connection) =
@@ -344,7 +494,9 @@ async fn notarize_with(params: NotarizeParams, tls_version: TlsVersion) -> Resul
         .validate(&attestation, &CryptoProvider::default())
         .context("notary returned an attestation inconsistent with our request")?;
     timings.attest_ms = split();
-    timings.total_ms = started.elapsed().as_secs_f64() * 1e3;
+    // What the caller waited for: setup counts only if it was not done ahead.
+    timings.total_ms = started.elapsed().as_secs_f64() * 1e3
+        + if prewarmed { 0.0 } else { connect_ms + setup_ms };
 
     let key = attestation.body.verifying_key();
     Ok(NotarizeOutput {

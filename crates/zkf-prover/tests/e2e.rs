@@ -643,3 +643,125 @@ async fn proxy_tls13_notarize_present_verify() {
 async fn proxy_tls12_notarize_present_verify() {
     proxy_round_trip(false).await;
 }
+
+/// A server that reads the ClientHello and closes without an alert (as
+/// servers without TLS 1.3 support may do) must fail the session cleanly
+/// rather than overflow the stack or hang.
+async fn spawn_hangup_server() -> String {
+    use tokio::io::AsyncReadExt;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    tokio::spawn(async move {
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            tokio::spawn(async move {
+                let mut buf = [0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+            });
+        }
+    });
+    addr
+}
+
+async fn assert_handshake_hangup_fails(proxy: bool) {
+    let server = spawn_hangup_server().await;
+    let (notary_url, _) = if proxy {
+        spawn_proxy_notary(&server).await
+    } else {
+        spawn_notary().await
+    };
+    let mut p = params(notary_url, server, vec![]);
+    p.tls_version = Some("1.3".into());
+    if proxy {
+        p.connect_addr = None;
+        p.mode = Some("proxy".into());
+    }
+    let err = tokio::time::timeout(std::time::Duration::from_secs(45), zkf_prover::notarize(p))
+        .await
+        .expect("session must fail, not hang")
+        .expect_err("handshake cannot complete");
+    assert!(
+        format!("{err:#}").contains("server closed the connection during the TLS handshake"),
+        "unexpected error: {err:#}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mpc_server_hangup_during_handshake_fails() {
+    assert_handshake_hangup_fails(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn proxy_server_hangup_during_handshake_fails() {
+    assert_handshake_hangup_fails(true).await;
+}
+
+/// A session prepared ahead of the request notarizes like a fresh one, and
+/// reports that connect and setup were done ahead.
+async fn prepared_round_trip(proxy: bool) {
+    let fixture = spawn_fixture_version(true).await;
+    let (notary_url, notary_key) = if proxy {
+        spawn_proxy_notary(&fixture).await
+    } else {
+        spawn_notary().await
+    };
+    let mut p = params(notary_url, fixture, vec![gte("id", 1000)]);
+    p.tls_version = Some("auto".into());
+    if proxy {
+        p.connect_addr = None;
+        p.mode = Some("proxy".into());
+    }
+    let prepared = zkf_prover::prepare(&p).await.expect("prepare");
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(45),
+        zkf_prover::notarize_prepared(prepared, p.clone()),
+    )
+    .await
+    .expect("prepared session timeout")
+    .expect("notarize prepared");
+    assert_eq!(out.response.status, 200);
+    assert_eq!(out.tls_version, "1.3");
+    assert!(out.timings.prewarmed);
+    assert!(out.timings.setup_ms > 0.0);
+    let waited = out.timings.tls_ms + out.timings.prove_ms + out.timings.attest_ms;
+    assert!(out.timings.total_ms < waited + out.timings.setup_ms, "total excludes setup");
+
+    let opts = VerifyOptions {
+        trusted_notary_keys: vec![notary_key],
+        extra_root_certs: vec![b64::encode(CA_CERT_DER)],
+        ..Default::default()
+    };
+    let presentation = zkf_prover::present(&out.attestation, &out.secrets, &RevealSpec::default()).unwrap();
+    assert!(zkf_verifier::verify(&presentation, &opts).unwrap().notary_trusted);
+
+    // A fresh session reports its own setup as part of the wait.
+    let fresh = zkf_prover::notarize(p).await.expect("fresh notarize");
+    assert!(!fresh.timings.prewarmed);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn prepared_proxy_session() {
+    prepared_round_trip(true).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn prepared_mpc_session() {
+    prepared_round_trip(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn prepared_session_rejects_other_parameters() {
+    let fixture = spawn_fixture_version(true).await;
+    let (notary_url, _) = spawn_proxy_notary(&fixture).await;
+    let mut p = params(notary_url, String::new(), vec![]);
+    p.connect_addr = None;
+    p.mode = Some("proxy".into());
+    p.tls_version = Some("1.3".into());
+    let prepared = zkf_prover::prepare(&p).await.expect("prepare");
+    let mut other = p.clone();
+    other.url = "https://other.example/formats/json".into();
+    let err = zkf_prover::notarize_prepared(prepared, other)
+        .await
+        .expect_err("host differs from the prepared proxy session");
+    assert!(format!("{err:#}").contains("does not match"), "{err:#}");
+}
