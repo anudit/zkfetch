@@ -1,0 +1,386 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!5},
+}
+
+\title{zkFetch: Fetch with a Proof}
+\author{Anudit Nagar \\ \texttt{zkfetch}}
+\date{October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+zkFetch is a protocol that turns an ordinary HTTPS request into verifiable web data.
+A client fetches a URL together with a \emph{notary} and receives a normal HTTP response
+plus a signed attestation.
+Later, the client decides what to reveal --- a URL, headers, JSON fields --- or proves
+facts about values it keeps hidden, such as \texttt{streak.length >= 365}.
+Anyone can verify the resulting presentation offline, against a pinned notary key.
+The notary never learns private data such as bearer tokens, and the client cannot
+forge bytes the server did not send.
+The protocol is built on TLSNotary with two session modes (MPC-TLS and proxy),
+QuickSilver zero-knowledge proofs over authenticated TLS transcripts, an optional
+offline Binius64 backend, and a \texttt{fetch}-shaped SDK.
+This paper describes the full protocol as implemented: parties and trust model,
+session flow, commitments, disclosure, verification, and measured performance.
+\end{abstract}
+
+\section{Introduction}
+
+The web runs on TLS, but TLS authenticates a connection, not data.
+Once a response is read, there is nothing to show a third party:
+screenshots and copied JSON prove nothing.
+Existing oracles solve this with trusted hardware, trusted servers, or by
+revealing everything.
+
+zkFetch takes a different approach.
+It adds one party, the \emph{notary}, to a normal fetch:
+
+\begin{center}
+\texttt{zkFetch(url)} $\rightarrow$ (\texttt{Response}, attestation, secrets) \\
+\texttt{present(spec)} $\rightarrow$ presentation \qquad
+\texttt{verify(presentation)} $\rightarrow$ accept / reject
+\end{center}
+
+Three properties define the protocol:
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Server authenticity.} If verification succeeds, the disclosed bytes
+and proven predicates describe what the named server actually sent.
+\item \textbf{Privacy.} The notary learns ciphertext, record lengths, and
+proof transcripts, but never plaintext, application keys, or hidden values.
+The verifier learns only what the presentation discloses plus one bit per
+predicate.
+\item \textbf{Selectivity.} Disclosure is decided \emph{after} the fetch.
+A session is stored, and each presentation reveals a subset: headers by name,
+JSON fields by dotted path, the request target or body, or numeric facts
+about hidden fields.
+\end{enumerate}
+
+No change to the server is required. No trusted hardware is used.
+The prover runs on servers (native Rust), in browsers (single- and
+multi-threaded WebAssembly), and in Chrome extensions; the notary is a small
+stateless Rust service suitable for a single ARM machine.
+
+\section{Parties, keys, and artifacts}
+
+There are four roles. The \textbf{prover} $P$ is the client that fetches.
+The \textbf{notary} $N$ co-signs what happened. The \textbf{server} $S$ is an
+unmodified HTTPS origin. The \textbf{verifier} $V$ checks a presentation offline.
+
+$N$ holds a long-term signing key (secp256k1 ECDSA by default); $P$ pins the
+expected public key before connecting and aborts on mismatch.
+$P$ and $N$ communicate over a WebSocket; $N$ rate-limits, authenticates
+tenants by capability token, and enforces byte, record, session, and
+predicate-work caps.
+
+A session produces two artifacts:
+
+\begin{itemize}[leftmargin=2em]
+\item \textbf{Attestation.} $N$'s signature over: TLS version, cipher suite and
+group; server name, dialed IP, port, certificate hashes, and whether $N$
+validated the chain; transcript hashes; byte counts; hash commitments and
+predicate results; session mode (\texttt{mpc} or \texttt{proxy}); wall-clock
+time; and two binding labels, \texttt{owner} and \texttt{context}.
+\item \textbf{Secrets.} Private openings held by $P$: plaintext, keys, and
+commitment randomness. Secrets are treated as credentials; serialised sessions
+must be stored encrypted.
+\end{itemize}
+
+A \textbf{presentation} combines the attestation with openings for exactly the
+disclosed units plus zero-knowledge proofs for each claimed predicate.
+Verification needs only the presentation, the pinned notary key, and a policy
+(expected server, method, target, status, freshness window, challenge context,
+required predicates).
+
+The two binding labels deserve emphasis.
+\texttt{context} carries a verifier-supplied nonce (challenge), which defeats
+replay of old presentations.
+\texttt{owner} carries an application-chosen label such as a wallet address;
+it binds, but does not by itself prove ownership --- the application must still
+check a separate wallet signature.
+
+\section{Protocol overview}
+
+At a high level every session has five phases:
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Open and admit.} $P$ opens a WebSocket to $N$, presents a
+capability, checks $N$'s signed key-possession challenge against the pin, and
+commits to mode, TLS version, and limits.
+\item \textbf{TLS.} $P$ and $N$ jointly (MPC mode) or via $N$'s relay (proxy
+mode) establish TLS with $S$ and exchange one HTTP request and response.
+\item \textbf{Commit and prove.} $P$ commits to the transcript and proves
+selected predicates in zero knowledge to $N$.
+\item \textbf{Attest.} $N$ validates the proofs, then signs the attestation.
+\item \textbf{Present and verify.} At any later time, $P$ builds a presentation
+for a chosen disclosure spec; any $V$ verifies it offline.
+\end{enumerate}
+
+The SDK mirrors \texttt{fetch} deliberately:
+
+\begin{lstlisting}[language=Java]
+const res = await zkFetch("https://api.example.com/me", {
+  headers: { Authorization: `Bearer ${token}` },
+  zkConfig: {
+    notaryUrl, expectedNotaryKey,
+    mode: "proxy",
+    tlsVersion: "auto",
+    backend: "quicksilver",
+    predicates: [{ jsonPath: "streak.length",
+                   predicate: { gte: "365" } }],
+    context: challenge,
+  },
+});
+await res.json();
+const presentation = res.zk.present({
+  response: { jsonPaths: ["username"] },
+  prove: [{ jsonPath: "streak.length",
+            predicate: { gte: "365" } }],
+});
+const result = verify(presentation, {
+  trustedNotaryKeys: [NOTARY_PUBLIC_KEY],
+  expectedContext: challenge,
+});
+\end{lstlisting}
+
+\texttt{res} is a standard \texttt{Response}; the proof lives on
+\texttt{res.zk}. Sessions serialise (\texttt{toJSON} / \texttt{restoreResponse})
+so disclosure can be decided long after the connection closes.
+
+\section{Session modes}
+
+Both modes attest the same object. They differ in who touches the network and
+who knows the keys.
+
+\subsection{MPC mode}
+
+In MPC mode $P$ dials $S$ directly and $P$ and $N$ run the TLS client jointly
+using two-party computation (DEAP garbled circuits, oblivious transfer, Ferret
+VOLE preprocessing).
+Session keys are secret-shared: neither party alone knows them, and plaintext
+stays with $P$.
+The cost is preprocessing of roughly 66~MB, most of it before the request
+(\texttt{prepare()} moves it earlier still).
+Soundness does not depend on the network path: forging would require breaking
+the 2PC or the record authentication.
+
+Browsers cannot open TCP sockets, so MPC mode in a browser needs a
+WebSocket-to-TCP relay configured as \texttt{relayUrl}.
+
+\subsection{Proxy mode}
+
+In proxy mode $N$ dials $S$ (port 443) and relays $P$'s TLS bytes, recording
+the ciphertext.
+$P$ runs a normal TLS client locally, so it knows the keys; afterwards $P$
+proves the TLS key schedule in zero knowledge and $N$, for TLS~1.3, decrypts
+and checks the handshake flight it relayed (Finished messages, certificate
+chain, server name).
+Traffic drops to kilobytes instead of tens of megabytes, and browsers need no
+relay because $N$ dials.
+
+The trade-off is trust: proxy mode additionally assumes nobody tampers with
+the $N \leftrightarrow S$ path, since $P$ knows the server write key and could
+otherwise forge records.
+The notary therefore dials only public addresses, pins and signs the dialed IP
+(verifiers reject a different server name), bounds relayed bytes, and closes
+idle connections.
+High-value verifiers can set \texttt{rejectProxy} and accept only MPC sessions.
+
+TLS version selection is explicit and never retried: \texttt{auto} means
+TLS~1.3 (AES-128-GCM, P-256); TLS~1.2 is available in proxy-compatible
+configurations for legacy servers.
+
+\section{What is proven}
+
+\subsection{Key schedule}
+
+The heart of the protocol is proving that the keys used to read the response
+are the keys the handshake produced.
+In proxy TLS~1.3 sessions $P$ proves the full schedule inside a QuickSilver
+zero-knowledge VM: ECDHE secret through HKDF-Extract and Expand-Label to
+handshake and application traffic secrets, keys, and IVs.
+The default flow uses an ORIGO-minimal schedule that proves only the
+compressions touching secret material (about 16 SHA-256 compressions instead
+of 32) and reveals one-way intermediate states; a conservative flag restores
+the full schedule.
+Either way the relation binds every application key and IV to the
+server-authenticated handshake transcript.
+
+\subsection{Records and completeness}
+
+TLS records are authenticated encryption with associated data
+(AES-128-GCM by default).
+$P$ proves, per touched record, the inner content type and the boundary
+between content, type byte, and padding, so alerts or tickets cannot be passed
+off as HTTP data.
+In proxy mode no GCM tag proof is needed ($P$ knows the key; integrity comes
+from $N$'s recording plus key binding). In MPC mode tags are checked in 2PC.
+
+A response is marked \texttt{complete} when framing proves it:
+\texttt{Content-Length} with matching body length, terminal-chunk framing, or
+a recorded \texttt{close\_notify} to the body end.
+Strict verifiers require completeness; anything else is a proven prefix, and
+applications must treat it as such.
+
+\subsection{Commitments}
+
+Commitments bind the transcript without revealing it.
+By default each header and each JSON node gets a hash commitment computed
+inside the ZK VM, and the notary signs them.
+An important optimisation, \texttt{zkConfig.reveal}, declares the intended
+disclosure up front: $P$ then commits to one BLAKE3 commitment per disclosed
+unit (header, JSON field, target, body, skeleton) and commits nothing for
+hidden values.
+This removes about 54\% of the ZK work (1.62M of 3.0M AND gates per session
+in the measured fixture): proxy proving falls from about 135~ms to 59~ms and
+presentations shrink from 22.8~KB to 6.7~KB.
+The restriction is enforced: later presentations may disclose that spec or
+less (by whole units), never more. The opt-in Binius backend can still prove
+new predicates later.
+
+\subsection{Predicates and JSON disclosure}
+
+Two backends prove facts about hidden values.
+\textbf{QuickSilver} (default) proves numeric predicates (\texttt{gte},
+\texttt{gt} over unsigned integers up to 19 digits) to $N$ during the session;
+$N$ signs the results, so offline verification is a signature check.
+\textbf{Binius64} (opt-in) adds per-leaf BLAKE3 commitments so $P$ can prove
+new predicates later, offline, without $N$ --- at the cost of 734--760~KiB
+proofs and hundreds of milliseconds.
+
+JSON fields are selected by dotted path (e.g.\ \texttt{users.0.username}),
+including array elements.
+With QuickSilver the notary attests the shape of every JSON value, so
+\texttt{verify()} returns each disclosed value with a proven path.
+Disclosing a field also discloses the response's keys and punctuation (the
+skeleton), but not other values.
+A byte-only mode skips the skeleton and returns raw spans without path
+authentication; sessions are capped at 1,024 leaves, and ambiguous paths
+(empty keys, keys containing periods, duplicate decoded keys) are rejected.
+
+\section{Verification}
+
+Offline verification is deliberately boring:
+
+\begin{enumerate}[leftmargin=2em]
+\item Decode strictly; reject unknown critical fields.
+\item Check $N$'s signature against a pinned key within its validity window;
+fail closed on expired revocation data.
+\item Check policy: server name, mode, method, target, status, freshness
+(\texttt{maxAgeSecs} on the verifier's clock), \texttt{context},
+\texttt{owner}, required predicates, completeness, and path authentication.
+\item Check each commitment opening and each predicate proof.
+\item Return the redacted transcript (hidden bytes shown as \texttt{X}),
+the authenticated byte ranges, the proven JSON fields, and the predicate list.
+\end{enumerate}
+
+Applications must decide from the authenticated ranges
+(\texttt{recvAuthed} / \texttt{sentAuthed}), never from the display strings,
+since a hidden byte and a literal \texttt{X} look identical on screen.
+
+\section{Security model}
+
+\textbf{Against a malicious prover,} data integrity and server authenticity
+hold given an honest notary (plus, in proxy mode, an honest $N \leftrightarrow
+S$ path): forging a response, predicate, or server identity requires breaking
+the key-schedule proof, the record proofs, the certificate validation, or the
+signature scheme.
+\textbf{Against a malicious notary,} privacy holds: $N$ sees ciphertext,
+lengths, one-way handshake states, IVs, and zero-knowledge transcripts, but
+never plaintext or application keys.
+\textbf{Against a malicious verifier,} presentations reveal only the selected
+bytes, block positions, total length, and one bit per predicate; replay is
+stopped by the signed \texttt{context} challenge.
+$P$ and $N$ together can always forge; no single-notary protocol avoids this
+without additional trust, so deployments that need it run the notary
+themselves (verifier-as-notary) and publish keys and attestations in a
+transparency log.
+
+Known limits are stated openly: the TLS~1.3 and proxy constructions have not
+had an independent malicious-security review; chunked and EOF-delimited bodies
+satisfy only prefix authentication under the strict completeness policy;
+JSON disclosure leaks structure and lengths; Binius lacks a reviewed soundness
+argument for this use; and several dependencies are flagged for replacement.
+The implementation note \texttt{ZKFETCH\_PATCHES.md} lists every change to the
+vendored TLSNotary and mpz stacks.
+
+\section{Performance}
+
+All optimisations keep every wire byte identical, so old and new provers and
+notaries interoperate.
+Representative measurements (local fixture on an M2 Max; live Duolingo
+from India to a Mumbai \texttt{t4g.small} notary; browser single-threaded
+WebAssembly):
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Session & Time \\
+\midrule
+Local proxy, native (fixture) & $\sim$185~ms total, $\sim$112~ms proving \\
+Local proxy with declared reveal & $\sim$130~ms total, $\sim$59~ms proving \\
+Live proxy, native (Duolingo) & $\sim$2.1~s (was 15--17~s via Cloudflare) \\
+Live proxy, browser, unprepared & $\sim$15~s (connect 0.9, setup 6.9, TLS 1.5, proofs 5.1, attest 0.6) \\
+Live proxy, browser, prepared & 2.3--3.0~s after click \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Latency is dominated by about 21 sequential prover--notary round trips plus
+VOLE preprocessing.
+Persistent Ferret bootstrap pools (single-use, transcript-bound leases kept in
+memory across calls) cut setup from 513~ms to 138~ms and end-to-end
+notarization from 963~ms to 585~ms at 33~ms RTT, with 40\% less traffic.
+A three-exchange session flow and the ORIGO-minimal schedule further cut warm
+medians substantially.
+ARM64 PMULL multiplication, an eight-row LPN encoder, lazy field reduction,
+WebAssembly SIMD, and eight-thread proving (3.3~s $\rightarrow$ 1.1~s prover
+CPU) compound the gains.
+QuickSilver presentations are 14--24~KiB with sub-millisecond verification;
+Binius presentations are two orders of magnitude larger.
+
+\section{Related work and outlook}
+
+zkFetch descends from DECO and TLSNotary: MPC-TLS with garble-then-prove for
+the handshake, now extended with a relayed proxy mode, TLS~1.3 proofs, and
+JSON-shape circuits.
+The planned v2 architecture keeps proxy mode with ZK-proven key derivation
+(the construction that recent analyses by Luo et al.\ and ORIGO show to be
+sound), commits to keys rather than plaintext, minimises the key-schedule
+circuit, collapses the message flow to three round trips, replaces record-layer
+MPC with a key-schedule-only split mode, and swaps Binius64 for
+VOLE-in-the-Head public proofs --- predicting roughly a further halving of
+session time and twenty-fold smaller offline proofs.
+Post-quantum key exchange, anchored JSON disclosure without skeleton leakage,
+and an optional on-chain signed-claim verifier follow the same pattern:
+prove less, in zero knowledge, and sign exactly what was checked.
+
+\section{Conclusion}
+
+zkFetch shows that verifiable web data does not need new servers, new hardware,
+or all-or-nothing disclosure.
+A notary that dials or co-signs, a prover that proves keys rather than trust,
+and a verifier that checks signatures and small proofs are enough to turn any
+HTTPS response into evidence: reveal a name, prove a streak, hide the token.
+The protocol is implemented, measured, and deployed on commodity infrastructure;
+its patches, limits, and next steps are public.
+
+\end{document}

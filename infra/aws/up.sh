@@ -13,6 +13,12 @@ source "$(dirname "$0")/common.sh"
 
 INSTANCE_TYPE=${INSTANCE_TYPE:-t4g.small}
 IMAGE=zkfetch-notary:arm64
+ROOT_VOLUME_GIB=${ROOT_VOLUME_GIB:-4}
+MAX_SESSIONS=${MAX_SESSIONS:-4}
+MAX_SESSIONS_PER_CLIENT=${MAX_SESSIONS_PER_CLIENT:-4}
+[[ "$ROOT_VOLUME_GIB" =~ ^[0-9]+$ && "$ROOT_VOLUME_GIB" -ge 2 ]] || { echo "ROOT_VOLUME_GIB must be >= 2" >&2; exit 1; }
+[[ "$MAX_SESSIONS" =~ ^[0-9]+$ && "$MAX_SESSIONS" -ge 1 && "$MAX_SESSIONS" -le 128 ]] || { echo "MAX_SESSIONS must be 1..128" >&2; exit 1; }
+[[ "$MAX_SESSIONS_PER_CLIENT" =~ ^[0-9]+$ && "$MAX_SESSIONS_PER_CLIENT" -ge 1 ]] || { echo "MAX_SESSIONS_PER_CLIENT must be >= 1" >&2; exit 1; }
 KEY_FILE="$ROOT/.zkf/hosted-notary.key"
 SSH_KEY="$STATE/id_ed25519"
 mkdir -p "$STATE" && chmod 700 "$STATE"
@@ -54,16 +60,22 @@ log "Instance"
 INSTANCE=$(aws ec2 describe-instances --filters "$FILTER" Name=instance-state-name,Values=pending,running \
   --query 'Reservations[0].Instances[0].InstanceId' --output text)
 if [[ "$INSTANCE" == "None" ]]; then
-  AMI=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64 \
+  AMI=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-minimal-kernel-default-arm64 \
     --query Parameter.Value --output text)
   USER_DATA=$(cat <<'EOF'
 #!/bin/bash
 set -e
-dnf install -y docker
+# Keep English locales and translations on this dedicated notary host.
+printf '%%_install_langs en:en_US\n' > /etc/rpm/macros.zkfetch-languages
+dnf install -y docker iptables glibc-langpack-en
+dnf remove -y --setopt=clean_requirements_on_remove=False glibc-all-langpacks
+localectl set-locale LANG=en_US.UTF-8
+systemctl disable --now dnf-makecache.timer || true
+dnf clean all
 systemctl enable --now docker
 usermod -aG docker ec2-user
-# 2 GB of RAM: swap absorbs bursts of concurrent sessions.
-fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+# Small host-only safety margin; the notary container has swap disabled.
+fallocate -l 512M /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
 echo '/swapfile none swap defaults 0 0' >> /etc/fstab
 touch /var/lib/zkf-ready
 EOF
@@ -71,7 +83,7 @@ EOF
   INSTANCE=$(aws ec2 run-instances --image-id "$AMI" --instance-type "$INSTANCE_TYPE" --key-name "$NAME" \
     --security-group-ids "$SG" --user-data "$USER_DATA" \
     --metadata-options HttpTokens=required,HttpEndpoint=enabled \
-    --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=8,VolumeType=gp3,DeleteOnTermination=true}' \
+    --block-device-mappings "DeviceName=/dev/xvda,Ebs={VolumeSize=$ROOT_VOLUME_GIB,VolumeType=gp3,DeleteOnTermination=true}" \
     --tag-specifications "ResourceType=instance,Tags=[{$TAG},{Key=Name,Value=$NAME}]" \
                          "ResourceType=volume,Tags=[{$TAG}]" \
     --query 'Instances[0].InstanceId' --output text)
@@ -99,7 +111,7 @@ docker save "$IMAGE" | gzip -1 | "${SSH[@]}" 'gunzip | sudo docker load'
 cat "$ROOT/infra/aws/notary-egress.sh" | "${SSH[@]}" "sudo sh -c 'cat > /etc/zkfetch/notary-egress.sh'"
 
 log "Starting the notary and Caddy"
-"${SSH[@]}" sudo HOST="$HOST" IMAGE="$IMAGE" bash -s <<'EOF'
+"${SSH[@]}" sudo HOST="$HOST" IMAGE="$IMAGE" MAX_SESSIONS="$MAX_SESSIONS" MAX_SESSIONS_PER_CLIENT="$MAX_SESSIONS_PER_CLIENT" bash -s <<'EOF'
 set -euo pipefail
 cat > /etc/zkf-Caddyfile <<CADDY
 $HOST {
@@ -117,7 +129,7 @@ docker rm -f zkf-notary zkf-caddy >/dev/null 2>&1 || true
 docker run -d --name zkf-notary --network zkf --restart unless-stopped \
   --memory=1536m --memory-swap=1536m --pids-limit=256 \
   --security-opt=no-new-privileges --cap-drop=ALL \
-  --env-file /etc/zkf-notary.env -e ZKF_MAX_SESSIONS=16 -e ZKF_MAX_SESSIONS_PER_CLIENT=4 \
+  --env-file /etc/zkf-notary.env -e ZKF_MAX_SESSIONS="$MAX_SESSIONS" -e ZKF_MAX_SESSIONS_PER_CLIENT="$MAX_SESSIONS_PER_CLIENT" \
   -e ZKF_TRUST_FORWARDED=1 -e ZKF_SESSION_TIMEOUT_SECS=120 -e RAYON_NUM_THREADS=2 \
   --log-opt max-size=10m --log-opt max-file=3 "$IMAGE" >/dev/null
 docker run -d --name zkf-caddy --network zkf --restart unless-stopped \
