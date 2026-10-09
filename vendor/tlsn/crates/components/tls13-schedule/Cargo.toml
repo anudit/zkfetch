@@ -12,6 +12,8 @@ edition = "2024"
 name = "tls13_schedule"
 
 [dependencies]
+zeroize.workspace = true
+serde = { workspace = true, features = ["derive"] }
 mpz-vm-core = { workspace = true }
 mpz-core = { workspace = true }
 mpz-circuits = { workspace = true }
@@ -23,6 +25,7 @@ rand = { workspace = true }
 ring = { workspace = true }
 
 [dev-dependencies]
+futures = { workspace = true }
 mpz-common = { workspace = true, features = ["test-utils"] }
 mpz-ideal-vm = { workspace = true }
 mpz-garble = { workspace = true }

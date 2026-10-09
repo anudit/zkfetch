@@ -18,6 +18,8 @@ export interface NotarizeParams {
   notaryUrl: string;
   /** Reuse single-use in-memory Ferret state in proxy mode (default true). */
   persistentVole?: boolean;
+  /** Enable FLOW2 batching and the ORIGO TLS 1.3 schedule (default true). */
+  protocolV2?: boolean;
   /** Signing key pin, compressed SEC1 hex; required for remote sessions. */
   expectedNotaryKey?: string;
   url: string;

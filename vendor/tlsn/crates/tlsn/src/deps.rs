@@ -111,3 +111,15 @@ fn translate_keys<Mpc, Zk>(keys: &mut SessionKeys, vm: &Deap<Mpc, Zk>) {
         .translate(keys.server_write_mac_key)
         .expect("VM memory should be consistent");
 }
+
+/// Public-statement binding used by the negotiated designated-verifier proof.
+pub(crate) trait StatementBinding {
+    fn bind_statement(&mut self, bytes: &[u8]);
+}
+cfg_select! {
+    tlsn_insecure => { impl StatementBinding for mpz_ideal_vm::IdealVm { fn bind_statement(&mut self, _: &[u8]) {} } }
+    _ => {
+        impl StatementBinding for ProverZk { fn bind_statement(&mut self, bytes: &[u8]) { self.bind_statement(bytes); } }
+        impl StatementBinding for VerifierZk { fn bind_statement(&mut self, bytes: &[u8]) { self.bind_statement(bytes); } }
+    }
+}

@@ -22,9 +22,12 @@ pub(crate) struct ClientLease {
     request: PoolRequest,
     pub(crate) pool: ProverVolePool,
     pub(crate) resumed: bool,
+    pub(crate) low_latency: bool,
+    pub(crate) prefill_check: Vec<u8>,
 }
 impl ClientLease {
-    pub(crate) fn finish(self) {
+    pub(crate) fn finish(mut self) {
+        self.pool.park();
         let Some(generation) = self.request.generation.checked_add(1) else {
             return;
         };
@@ -56,9 +59,11 @@ pub(crate) async fn open(
     stream: &mut transport::ClientStream,
     key: String,
     pin: Option<&str>,
+    proxy_open: Option<notary_auth::ProxyOpen>,
+    low_latency: bool,
 ) -> Result<Option<ClientLease>> {
     use rand::RngCore;
-    let cached = {
+    let mut cached = {
         let mut cache = POOLS.lock().unwrap();
         cache.retain(|_, e| e.inserted.elapsed() < Duration::from_secs(600));
         cache.remove(&key)
@@ -74,7 +79,27 @@ pub(crate) async fn open(
             }
         }
     };
-    let Some(opening) = notary_auth::authenticate_pool(stream, pin, request).await? else {
+    let opening = if low_latency {
+        let ferret = match cached.as_mut() {
+            Some(c) => c.pool.start_prefill().map_err(anyhow::Error::msg)?,
+            None => vec![],
+        };
+        notary_auth::authenticate_pool_setup(
+            stream,
+            pin,
+            request,
+            notary_auth::SetupOpen {
+                // Cold bootstrap completes before forwarding the first TLS flight.
+                proxy: if cached.is_some() { proxy_open } else { None },
+                budget: tlsn::vole_pool::FLOW_BUDGET as u32,
+                ferret,
+            },
+        )
+        .await?
+    } else {
+        notary_auth::authenticate_pool(stream, pin, request).await?
+    };
+    let Some(opening) = opening else {
         return Ok(None);
     };
     let mut pool = if opening.resumed {
@@ -84,11 +109,26 @@ pub(crate) async fn open(
     } else {
         ProverVolePool::new(opening.binding)
     };
+    let prefill_check = if opening.low_latency && opening.resumed {
+        pool.prefill_check(&opening.ferret_reply)
+            .map_err(anyhow::Error::msg)?
+    } else {
+        vec![]
+    };
     pool.bind(opening.binding);
+    pool.set_low_latency(opening.low_latency);
+    pool.set_pipeline_tls(opening.proxy_open.is_some());
+    pool.set_opened_host(if opening.resumed {
+        opening.proxy_open.as_ref().map(|o| o.host.clone())
+    } else {
+        None
+    });
     Ok(Some(ClientLease {
         key,
         request: opening.request,
         pool,
         resumed: opening.resumed,
+        low_latency: opening.low_latency,
+        prefill_check,
     }))
 }

@@ -97,6 +97,10 @@ mpz-common = { path = "vendor/mpz/common" }
 clmul = { path = "vendor/mpz/clmul" }
 mpz-core = { path = "vendor/mpz/core" }
 mpz-zk-core = { path = "vendor/mpz/zk-core" }
+mpz-zk = { path = "vendor/mpz/zk" }
 
 mpz-ot = { path = "vendor/mpz/ot" }
 mpz-ot-core = { path = "vendor/mpz/ot-core" }
+
+[patch."https://github.com/tlsnotary/tlsn-utils"]
+tlsn-mux = { path = "vendor/tlsn-mux" }

@@ -11,6 +11,7 @@ name = "zkf-notary"
 path = "src/main.rs"
 
 [dependencies]
+mpz-common = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
 serde = { workspace = true }
 sha2 = { workspace = true }
 url = { workspace = true }

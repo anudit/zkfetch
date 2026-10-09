@@ -142,7 +142,7 @@ pub(crate) fn hmac_sha256(
 /// * `vm` - Virtual machine.
 /// * `key` - Key to pad and xor.
 /// * `mask`- Mask used for padding.
-fn compute_partial(
+pub(crate) fn compute_partial(
     vm: &mut dyn Vm<Binary>,
     key: Vector<U8>,
     mask: [u8; 64],

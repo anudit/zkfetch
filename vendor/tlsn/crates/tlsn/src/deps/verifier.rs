@@ -116,6 +116,7 @@ impl VerifierMpcDeps {
 
 /// Protocol dependencies for Proxy.
 pub(crate) struct VerifierProxyDeps {
+    pub(crate) pipeline_tls: bool,
     pub(crate) verifier: Box<AnyProxyVerifier>,
     pub(crate) server_name: String,
     pub(crate) id: ContextId,
@@ -133,7 +134,7 @@ impl VerifierProxyDeps {
         ctx: Context,
         pool: Option<&crate::vole_pool::VerifierVolePool>,
     ) -> Self {
-        let vm = cfg_select! {
+        let mut vm = cfg_select! {
             tlsn_insecure => { mpz_ideal_vm::IdealVm::new() }
             _ => {{
                 let fresh;
@@ -146,13 +147,23 @@ impl VerifierProxyDeps {
         let prf_config = PrfConfig::new(NetworkMode::Normal, MSMode::Direct);
         let prf = Prf::new(prf_config);
 
+        if let Some(pool) = pool.filter(|p| p.low_latency) {
+            vm.bind_statement(&pool.binding);
+            vm.bind_statement(&bincode::serialize(config).expect("serializable proxy config"));
+        }
         let id = ctx.id().to_owned();
         let verifier = match config.tls_version() {
             TlsVersion::V1_2 => AnyProxyVerifier::V12(ProxyVerifier::new(prf, vm, ctx)),
-            TlsVersion::V1_3 => AnyProxyVerifier::V13(ProxyVerifier13::new(vm, ctx)),
+            TlsVersion::V1_3 => AnyProxyVerifier::V13(ProxyVerifier13::new(
+                vm,
+                ctx,
+                pool.is_some_and(|p| p.low_latency),
+                pool.and_then(|p| p.ready.clone()),
+            )),
         };
 
         Self {
+            pipeline_tls: pool.is_some_and(|p| p.pipeline_tls),
             verifier: Box::new(verifier),
             server_name: config.server_name().as_str().to_string(),
             id,
@@ -163,7 +174,9 @@ impl VerifierProxyDeps {
         self.verifier.alloc()?;
 
         debug!("setting up proxy-tls");
-        self.verifier.preprocess().await?;
+        if !self.pipeline_tls {
+            self.verifier.preprocess().await?;
+        }
 
         Ok(())
     }

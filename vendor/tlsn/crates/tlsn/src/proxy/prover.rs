@@ -164,6 +164,7 @@ impl ProxyProver {
 
         tracing::info!("Proxy TLS done");
         let output = TlsOutput {
+            deferred_schedule: None,
             keys: refs.keys,
             tls_transcript,
         };

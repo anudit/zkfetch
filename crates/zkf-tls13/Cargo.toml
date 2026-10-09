@@ -21,6 +21,10 @@ mpz-common = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-al
 mpz-circuits = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6", features = ["aes"] }
 
 [dev-dependencies]
+mpz-zk = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
+bincode.workspace = true
+futures.workspace = true
+mpz-ideal-vm = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
 rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
 tlsn-server-fixture-certs.workspace = true
 mpz-common = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6", features = ["test-utils"] }
@@ -28,3 +32,8 @@ mpz-garble = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-al
 mpz-ot = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6", features = ["ideal"] }
 rand = "0.9"
 tokio.workspace = true
+async-trait = "0.1"
+mpz-core = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
+mpz-garble-core = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
+zeroize = "1"
+opaque-debug = "0.3"

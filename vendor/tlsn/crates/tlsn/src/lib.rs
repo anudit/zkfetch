@@ -62,6 +62,11 @@ pub use tlsn_attestation as attestation;
 pub use tlsn_core::{config, connection, hash, transcript, webpki};
 pub use tlsn_mux::Stream;
 
+/// Checks a bounded proxy ClientHello before forwarding any bytes upstream.
+pub fn validate_proxy_open(client_hello: &[u8], host: &str) -> Result<()> {
+    proxy::tls13::validate_open(client_hello, host)
+}
+
 /// Result type.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
@@ -96,6 +101,7 @@ pub(crate) enum Role {
 pub(crate) struct TlsOutput {
     pub(crate) keys: SessionKeys,
     pub(crate) tls_transcript: TlsTranscript,
+    pub(crate) deferred_schedule: Option<proxy::tls13::ScheduleProof>,
 }
 
 /// Protocol variant.

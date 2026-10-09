@@ -53,6 +53,8 @@ impl<C> std::fmt::Debug for CommitAccepted<C> {
 /// State after the TLS transcript has been committed.
 pub struct Committed {
     pub(crate) vm: VerifierZk,
+    pub(crate) deferred_schedule: Option<crate::proxy::tls13::ScheduleProof>,
+    pub(crate) deferred_tags: Option<crate::tag::TagProof>,
     pub(crate) keys: SessionKeys,
     pub(crate) tls_transcript: TlsTranscript,
 }
@@ -62,6 +64,8 @@ opaque_debug::implement!(Committed);
 /// State after receiving a proving request.
 pub struct Verify {
     pub(crate) vm: VerifierZk,
+    pub(crate) deferred_schedule: Option<crate::proxy::tls13::ScheduleProof>,
+    pub(crate) deferred_tags: Option<crate::tag::TagProof>,
     pub(crate) keys: SessionKeys,
     pub(crate) tls_transcript: TlsTranscript,
     pub(crate) request: ProveRequest,

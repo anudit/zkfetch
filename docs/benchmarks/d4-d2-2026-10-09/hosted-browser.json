@@ -1,0 +1,95 @@
+{
+  "testedAt": "2026-10-09",
+  "protocol": "FLOW3",
+  "imageConfig": "sha256:b1ea107ddfaa0c20cefe6f76dce072a25c813f841fb531d9395f3a293f9bacd4",
+  "runs": [
+    {
+      "browser": "chrome-single",
+      "runs": [
+        {
+          "run": 0,
+          "verified": true,
+          "threads": 0,
+          "notaryConnectMs": 378.52000000000004,
+          "setupMs": 3754.625,
+          "tlsMs": 682.0500000000001,
+          "proveMs": 201.84,
+          "attestMs": 126.26,
+          "totalMs": 5143.3,
+          "prewarmed": false,
+          "voleResumed": false
+        },
+        {
+          "run": 1,
+          "verified": true,
+          "threads": 0,
+          "notaryConnectMs": 545.9150000000001,
+          "setupMs": 0.345,
+          "tlsMs": 719.735,
+          "proveMs": 192.83,
+          "attestMs": 239.345,
+          "totalMs": 1698.17,
+          "prewarmed": false,
+          "voleResumed": true
+        },
+        {
+          "run": 2,
+          "verified": true,
+          "threads": 0,
+          "notaryConnectMs": 567.415,
+          "setupMs": 464.90999999999997,
+          "tlsMs": 734.22,
+          "proveMs": 199.29,
+          "attestMs": 179.585,
+          "totalMs": 1113.095,
+          "prewarmed": true,
+          "voleResumed": true
+        }
+      ]
+    },
+    {
+      "browser": "chrome-threaded",
+      "runs": [
+        {
+          "run": 0,
+          "verified": true,
+          "threads": 8,
+          "notaryConnectMs": 120.255127,
+          "setupMs": 1980.5600590000001,
+          "tlsMs": 358.125,
+          "proveMs": 79.289794,
+          "attestMs": 120.73022499999999,
+          "totalMs": 2658.9602050000003,
+          "prewarmed": false,
+          "voleResumed": false
+        },
+        {
+          "run": 1,
+          "verified": true,
+          "threads": 8,
+          "notaryConnectMs": 1096.699951,
+          "setupMs": 0.40503,
+          "tlsMs": 774.340088,
+          "proveMs": 61.819824000000004,
+          "attestMs": 366.915039,
+          "totalMs": 2300.179932,
+          "prewarmed": false,
+          "voleResumed": true
+        },
+        {
+          "run": 2,
+          "verified": true,
+          "threads": 8,
+          "notaryConnectMs": 1034.645019,
+          "setupMs": 217.005127,
+          "tlsMs": 401.75,
+          "proveMs": 66.12011700000001,
+          "attestMs": 265.76489300000003,
+          "totalMs": 733.63501,
+          "prewarmed": true,
+          "voleResumed": true
+        }
+      ]
+    }
+  ]
+}

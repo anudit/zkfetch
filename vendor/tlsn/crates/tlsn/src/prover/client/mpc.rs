@@ -253,9 +253,8 @@ impl TlsClient for MpcTlsClient {
                     // Process whatever the server sent before closing once;
                     // if the handshake still has not completed it never will.
                     if self.drained_after_close {
-                        return Poll::Ready(Err(TlsnError::internal().with_msg(
-                            "server closed the connection during the TLS handshake",
-                        )));
+                        return Poll::Ready(Err(TlsnError::internal()
+                            .with_msg("server closed the connection during the TLS handshake")));
                     }
                     self.drained_after_close = true;
                 }
@@ -323,6 +322,7 @@ impl TlsClient for MpcTlsClient {
                         .into_inner();
 
                     let output = TlsOutput {
+                        deferred_schedule: None,
                         keys,
                         tls_transcript,
                     };

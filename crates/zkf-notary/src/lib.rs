@@ -496,8 +496,29 @@ where
     S: futures::AsyncRead + futures::AsyncWrite + Unpin + 'static,
     C: ServerConnector,
 {
-    let opening =
-        zkf_core::notary_auth::respond_pool(&mut socket, &config.signing_key, scope, &VOLE_POOLS);
+    let opening = zkf_core::notary_auth::respond_pool_with(
+        &mut socket,
+        &config.signing_key,
+        scope,
+        &VOLE_POOLS,
+        |cached, setup| {
+            if let Some(setup) = setup {
+                if let Some(open) = &setup.proxy {
+                    tlsn::validate_proxy_open(&open.client_hello, &open.host)?;
+                }
+                anyhow::ensure!(
+                    setup.budget == tlsn::vole_pool::FLOW_BUDGET as u32,
+                    "unsupported VOLE budget"
+                );
+                if let Some(pool) = cached {
+                    return pool
+                        .accept_prefill(&setup.ferret)
+                        .map_err(anyhow::Error::msg);
+                }
+            }
+            Ok(vec![])
+        },
+    );
     #[cfg(not(target_arch = "wasm32"))]
     let opening = tokio::time::timeout(OPENING_DEADLINE, opening)
         .await
@@ -508,11 +529,101 @@ where
         let mut pool =
             cached.unwrap_or_else(|| tlsn::vole_pool::VerifierVolePool::new(opening.binding));
         pool.bind(opening.binding);
+        pool.set_low_latency(opening.low_latency);
+        pool.set_pipeline_tls(opening.proxy_open.is_some());
+        pool.set_opened_host(if opening.resumed {
+            opening.proxy_open.as_ref().map(|o| o.host.clone())
+        } else {
+            None
+        });
         (opening, pool)
     });
-    let session = Session::new(socket);
+    let low_latency = pool_lease.as_ref().is_some_and(|(o, _)| o.low_latency);
+    let public_open = pool_lease
+        .as_ref()
+        .filter(|(o, _)| o.resumed)
+        .and_then(|(o, _)| o.proxy_open.clone());
+    let opened_server = if let Some(open) = public_open {
+        tlsn::validate_proxy_open(&open.client_hello, &open.host)?;
+        // Capability admission precedes this function. DNS/public-IP checks and
+        // destination policy are enforced by the connector before any forwarding.
+        let mut server = connector.connect(&open.host, 443).await?;
+        futures::AsyncWriteExt::write_all(&mut server, &open.client_hello).await?;
+        futures::AsyncWriteExt::flush(&mut server).await?;
+        Some((server, open))
+    } else {
+        None
+    };
+    let session = if low_latency {
+        Session::pipelined(socket)
+    } else {
+        Session::new(socket)
+    };
     let (driver, mut handle) = session.split();
-    // On failure the protocol future returns early and drops the driver.
+    if low_latency {
+        let mut reply = handle.application_stream(b"zkfetch/flow2/attestation")?;
+        let mut prefill_stream = handle.application_stream(b"zkfetch/flow3/prefill")?;
+        let (opening, pool) = pool_lease.as_mut().expect("flow pool");
+        let cold = !opening.resumed;
+        let worker = pool.prefill_handle();
+        let (tx, rx) = futures::channel::oneshot::channel();
+        use futures::FutureExt;
+        let ready = async move { rx.await.map_err(|_| "prefill cancelled".to_string())? }
+            .boxed()
+            .shared();
+        pool.set_ready(ready.clone());
+        let prefill = async move {
+            let result = async {
+                if cold {
+                    let mut ctx = mpz_common::Context::new_single_threaded(prefill_stream);
+                    worker
+                        .cold_prefill(&mut ctx)
+                        .await
+                        .map_err(anyhow::Error::msg)?;
+                } else {
+                    let check = transport::read_frame(&mut prefill_stream).await?;
+                    let reply = worker.finish_prefill(&check).map_err(anyhow::Error::msg)?;
+                    transport::write_frame(&mut prefill_stream, &reply).await?;
+                }
+                Ok::<_, anyhow::Error>(())
+            }
+            .await;
+            let _ = tx.send(result.as_ref().map(|_| ()).map_err(|e| e.to_string()));
+            result
+        };
+
+        futures::future::try_join(driver.err_into::<anyhow::Error>(), async {
+            let verification = async {
+                if cold {
+                    ready.await.map_err(anyhow::Error::msg)?;
+                }
+                let (commitments, predicates, transcript, host) = verify_session(
+                    &mut handle,
+                    config,
+                    connector,
+                    pool_lease.as_mut().map(|(_, p)| p),
+                    opened_server,
+                )
+                .await?;
+                let bytes = transport::read_frame(&mut reply).await?;
+                let attestation =
+                    sign_attestation(config, &bytes, commitments, predicates, transcript, host)?;
+                // Publish the next lease before replying, so an immediate next session
+                // cannot race attestation delivery and unexpectedly reset the pool.
+                if let Some((opening, mut pool)) = pool_lease.take() {
+                    pool.park();
+                    VOLE_POOLS.put(scope, opening.request, pool);
+                }
+                transport::write_frame(&mut reply, &bincode::serialize(&attestation)?).await?;
+                handle.close();
+                Ok::<_, anyhow::Error>(())
+            };
+            futures::future::try_join(prefill, verification).await?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await?;
+        return Ok(());
+    }
     let (mut socket, (transcript_commitments, verified_predicates, tls_transcript, proxy_host)) =
         futures::future::try_join(driver.err_into::<anyhow::Error>(), async {
             let out = verify_session(
@@ -520,14 +631,38 @@ where
                 config,
                 connector,
                 pool_lease.as_mut().map(|(_, p)| p),
+                None,
             )
             .await;
-            // Reclaim the socket for the attestation exchange.
             handle.close();
             out
         })
         .await?;
+    let request_bytes = transport::read_frame(&mut socket).await?;
+    let attestation = sign_attestation(
+        config,
+        &request_bytes,
+        transcript_commitments,
+        verified_predicates,
+        tls_transcript,
+        proxy_host,
+    )?;
+    transport::write_frame(&mut socket, &bincode::serialize(&attestation)?).await?;
+    if let Some((opening, pool)) = pool_lease {
+        VOLE_POOLS.put(scope, opening.request, pool);
+    }
+    futures::AsyncWriteExt::close(&mut socket).await.ok();
+    Ok(())
+}
 
+fn sign_attestation(
+    config: &NotaryConfig,
+    request_bytes: &[u8],
+    transcript_commitments: Vec<tlsn::transcript::TranscriptCommitment>,
+    verified_predicates: Vec<tlsn::transcript::TranscriptPredicate>,
+    tls_transcript: tlsn::transcript::TlsTranscript,
+    proxy_host: Option<String>,
+) -> Result<Attestation> {
     let app_len = |records: &[tlsn::transcript::Record]| {
         records
             .iter()
@@ -539,12 +674,11 @@ where
     let sent_len = app_len(tls_transcript.sent());
     let recv_len = app_len(tls_transcript.recv());
 
-    let request_bytes = transport::read_frame(&mut socket).await?;
     let request: AttestationRequest = bincode::DefaultOptions::new()
         .with_fixint_encoding()
         .with_limit(zkf_core::MAX_FRAME_LEN as u64)
         .reject_trailing_bytes()
-        .deserialize(&request_bytes)
+        .deserialize(request_bytes)
         .context("invalid attestation request")?;
 
     let signer = Box::new(Secp256k1Signer::new(&config.signing_key)?);
@@ -627,14 +761,7 @@ where
         });
     }
 
-    let attestation = builder.build(&provider)?;
-    transport::write_frame(&mut socket, &bincode::serialize(&attestation)?).await?;
-    if let Some((opening, pool)) = pool_lease {
-        VOLE_POOLS.put(scope, opening.request, pool);
-    }
-    futures::AsyncWriteExt::close(&mut socket).await.ok();
-
-    Ok(())
+    Ok(builder.build(&provider)?)
 }
 
 /// Runs MPC-TLS and the commitment proofs, returning what the attestation
@@ -644,6 +771,7 @@ async fn verify_session<C: ServerConnector>(
     config: &NotaryConfig,
     connector: &C,
     pool: Option<&mut tlsn::vole_pool::VerifierVolePool>,
+    opened_server: Option<(C::Stream, zkf_core::notary_auth::ProxyOpen)>,
 ) -> Result<(
     Vec<tlsn::transcript::TranscriptCommitment>,
     Vec<tlsn::transcript::TranscriptPredicate>,
@@ -663,7 +791,22 @@ async fn verify_session<C: ServerConnector>(
     if let Some(pool) = pool {
         verifier = verifier.with_vole_pool(pool);
     }
-    let commit = verifier.commit();
+    let opened_config = opened_server
+        .as_ref()
+        .map(|(_, open)| {
+            tlsn::config::tls_commit::proxy::ProxyTlsConfig::builder()
+                .server_name(open.host.as_str().try_into()?)
+                .tls_version(tlsn::connection::TlsVersion::V1_3)
+                .build()
+                .map_err(anyhow::Error::from)
+        })
+        .transpose()?;
+    let commit = async move {
+        match opened_config {
+            Some(config) => verifier.commit_opened(config),
+            None => verifier.commit().await,
+        }
+    };
     #[cfg(not(target_arch = "wasm32"))]
     let commit = async {
         tokio::time::timeout(OPENING_DEADLINE, commit)
@@ -673,6 +816,7 @@ async fn verify_session<C: ServerConnector>(
     };
     let verifier = match commit.await? {
         VerifierCommitStart::Mpc(verifier) => {
+            anyhow::ensure!(opened_server.is_none(), "proxy opening cannot select MPC");
             let mpc = verifier.config();
             if mpc.max_sent_data() > MAX_SENT_LIMIT || mpc.max_recv_data() > MAX_RECV_LIMIT {
                 verifier
@@ -686,19 +830,29 @@ async fn verify_session<C: ServerConnector>(
             // Dial the name the prover's TLS client validates, on 443 only, so
             // the prover cannot point the notary at another host or service.
             let host = verifier.config().server_name().as_str().to_string();
-            let server = match connector.connect(&host, 443).await {
-                Ok(server) => server,
-                Err(err) => {
-                    verifier
-                        .reject(Some("notary could not reach the server"))
-                        .await?;
-                    return Err(err);
-                }
+            let (server, hello) = if let Some((server, open)) = opened_server {
+                anyhow::ensure!(
+                    host == open.host
+                        && verifier.config().tls_version() == tlsn::connection::TlsVersion::V1_3,
+                    "session configuration differs from signed opening"
+                );
+                (server, open.client_hello)
+            } else {
+                let server = match connector.connect(&host, 443).await {
+                    Ok(server) => server,
+                    Err(err) => {
+                        verifier
+                            .reject(Some("notary could not reach the server"))
+                            .await?;
+                        return Err(err);
+                    }
+                };
+                (server, Vec::new())
             };
             let accepted = verifier.accept().await?;
             proxy_host = Some(host);
             phase("proxy accepted");
-            accepted.run(server).await?
+            accepted.run_opened(server, hello).await?
         }
     };
 

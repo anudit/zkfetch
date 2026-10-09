@@ -70,3 +70,32 @@ transfer IDs fail on overflow. The protocol's cryptographic messages are
 unchanged; TLSN negotiates pool leases outside these primitives.
 
 Regression: `cargo test --manifest-path vendor/mpz/ot-core/Cargo.toml ferret::tests`.
+
+
+## D4: statement-bound QuickSilver and pool reserve sizing
+
+Vendored `zk` runtime at mpz `6ebfe619` adds explicit length-delimited statement
+binding and absorbs the serialized commitment flush on both sides when FLOW3
+is enabled. Legacy transcripts retain their original behavior. Existing
+Fiat–Shamir challenges and independent ChaCha coefficients remain unchanged.
+
+Ferret configuration adds a minimum retained correlation count independent of
+initial bootstrap cost. Proxy pools retain 160,000 unused seed correlations,
+sufficient to select the existing regular 4M parameter tier directly. This
+avoids repeated small tree iterations after a smaller ORIGO circuit consumes
+most of a batch. It changes neither the vetted LPN parameters nor the
+single-use lease, zeroization or fresh-OT fallback rules.
+
+`vendor/tlsn-mux` and its test helper `vendor/quickcheck-ext` are pinned copies
+from tlsn-utils `64722f7`. FLOW3 mutually configures a 2 MiB per-stream starting
+credit. Connection window limits and dynamic flow-control accounting apply to
+that configured baseline; legacy streams retain 256 KiB.
+
+FLOW3 pipelines the unchanged Ferret messages through the authenticated opening
+and a consistency-check stream. The OT wrapper exposes its existing core state
+for this transport scheduling; a temporary prefill allocation can be released
+once satisfied. TLSN enforces the declared allocation budget, waits for the
+consistency check before using outputs, and burns failed leases. No correlations
+are copied or restored. The mux collects a bounded final flight and drains all
+stream queues before transmitting it; tests verify one underlying write and
+that no bytes escape before release.

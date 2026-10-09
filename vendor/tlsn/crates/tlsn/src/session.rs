@@ -47,10 +47,23 @@ where
 {
     /// Creates a new session.
     pub fn new(io: Io) -> Self {
+        Self::with_close_sync(io, true)
+    }
+
+    /// Creates a session whose final reply is delivered inside the multiplexer.
+    /// No underlying IO is reused, so closing needs no peer acknowledgement.
+    pub fn pipelined(io: Io) -> Self {
+        Self::with_close_sync(io, false)
+    }
+
+    fn with_close_sync(io: Io, close_sync: bool) -> Self {
         let mut mux_config = tlsn_mux::Config::default();
 
         mux_config.set_keep_alive(true);
-        mux_config.set_close_sync(true);
+        mux_config.set_close_sync(close_sync);
+        if !close_sync {
+            mux_config.set_initial_stream_credit(2 * 1024 * 1024);
+        }
 
         let conn = tlsn_mux::Connection::new(io, mux_config);
         let handle = conn.handle().expect("handle should be available");
@@ -255,6 +268,19 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
+    /// Control a bounded noninteractive application proof flight.
+    pub fn proof_batch_control(&self) -> tlsn_mux::Handle {
+        self.handle.clone()
+    }
+
+    /// Opens an application stream within the running authenticated session.
+    /// The driver must be polled while reading or writing this stream.
+    pub fn application_stream(&self, id: &[u8]) -> Result<tlsn_mux::Stream> {
+        self.handle
+            .new_stream(id)
+            .map_err(|e| Error::io().with_source(e))
+    }
+
     /// Creates a new prover.
     pub fn new_prover(
         &mut self,

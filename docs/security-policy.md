@@ -94,10 +94,10 @@ Global/per-IP/tenant session permits cover preprocessing, idle prepared sessions
 active requests and proof completion. Sixteen separate setup permits and 256
 pending-head permits cap opening work. Opening/configuration deadlines are 15 s.
 Tenant start quotas count reconnect attempts even when concurrency is exhausted.
-Hash commitments are capped at 2,048 and 1 MiB summed bytes and twice the
+Hash commitments are capped at 2,048 and 2 MiB summed bytes and twice the
 transcript; the prover partitions overlapping commitments into disjoint spans.
 Predicate operands retain the 256 KiB aggregate budget. Proxy recording is
-bounded to 128 KiB sent / 1 MiB received, 4,096 records per direction and 128 KiB
+bounded to 128 KiB sent / 2 MiB received, 4,096 records per direction and 128 KiB
 plaintext handshake bytes. TLS 1.3 decrypted handshake flights have a 128 KiB cap.
 
 For AWS deployment, set `ZKF_CAPABILITIES_FILE` to the private JSON file. The
@@ -135,6 +135,11 @@ claims signed under a compromised key trustworthy.
 The executable handshake checks close specific equality gaps; they are not an
 independent composable-security proof. Specialized MPC/OT/VOLE, malicious-notary,
 colluding replay-endpoint, Binius and proxy-construction reviews remain required.
+FLOW3 also enables the ORIGO TLS 1.3 schedule by default in pooled proxy
+sessions. Its compression-function assumptions, intermediate disclosures and
+required pre-signing checks are described in [the D4/D2 security boundary](d4-d2-security.md).
+That relation still needs independent cryptographic review. Select
+`zkConfig.protocolV2: false` to retain the full schedule and legacy flow.
 The CI dependency gate intentionally flags unmaintained dependencies (bincode,
 derivative, paste and rustls-pemfile) even when RustSec reports no vulnerability.
 Do not silently ignore those notices; migrate them or record a reviewed exception.

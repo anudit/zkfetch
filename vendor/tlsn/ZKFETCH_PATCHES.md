@@ -135,7 +135,7 @@ zkfetch's `auto` now chooses TLS 1.3 and never retries an attempted session. Reg
 ## P6: bounded proxy traffic
 
 `tlsn/src/proxy.rs`: `InspectReader` records at most `PROXY_MAX_SENT_BYTES`
-(128 KiB) from the prover and `PROXY_MAX_RECV_BYTES` (1 MiB) from the server,
+(128 KiB) from the prover and `PROXY_MAX_RECV_BYTES` (2 MiB) from the server,
 including handshake records, and fails the relay at the first excess byte
 instead of buffering it. `tlsn/src/verifier.rs`: a prover that closes the proxy
 stream without sending anything gets an error instead of a panic.
@@ -190,3 +190,36 @@ acceptance reply. Only negotiated pool sessions use this flow; legacy sessions
 retain their original wire messages. Rejections close the session and burn
 its lease. The host application retains pools only after successful proof and
 attestation exchange, with bounded per-capability caches and fresh-OT fallback.
+
+
+## P5: FLOW3 round-trip reduction and ORIGO schedule (D4 / D2)
+
+`ZKFFLOW3` is authenticated by the notary opening signature, including a
+length-delimited public ClientHello and destination. The proxy validates the
+entire opening and enforces admission/destination policy before forwarding.
+Warm FLOW3 also binds its correlation budget and first Ferret exchange into
+that signature, derives the session configuration from the signed host, and
+overlaps the Ferret consistency check with TLS. The final proof and attestation
+request are collected into one bounded mux flight. Both VMs await successful
+prefill before proving; budget overflow burns the lease and cannot trigger a
+new interactive extension. Fresh pools bootstrap before TLS.
+FLOW3 uses a 2 MiB negotiated mux window, omits the proof-configuration ACK and
+peer close synchronization, and returns the attestation inside the live mux.
+TLS 1.3 schedule, tag, disclosure and predicate circuits execute as one batch;
+claimed handshake keys and IVs are checked before any attestation is signed.
+
+The proxy schedule uses ORIGO Figure 10 with a private dHS inner-hash witness.
+Only HS outer pad, the two handshake inner digests, and the dHS/MS/application
+inner pad states are disclosed. All downstream outer pads and application
+secrets remain private. Both application keys and IVs use 16 SHA-256
+compressions; the IV checks account for two compressions beyond the plan's
+14-key-only estimate. This requires the compression-function assumptions in
+ORIGO, not just the previous full-schedule relation. See
+[security analysis](../../docs/d4-d2-security.md). No independent security review
+is implied. `protocolV2: false` selects the full schedule and old flow.
+
+QuickSilver binds the signed pool lease, proxy configuration, observed TLS
+bytes, all preprocessing/public-key claims, and the complete proof request.
+The mpz runtime also absorbs each canonical commitment flush before deriving
+its subsequent check challenge. Independent ChaCha coefficients remain in use;
+no powers-of-one-seed optimization changes the error bound.

@@ -115,55 +115,26 @@ fn traffic_key(secret: &[u8]) -> ([u8; 16], [u8; 12]) {
     )
 }
 
-pub(crate) struct ProxyTlsClient {
+/// A normal proxy TLS client with its public ClientHello extracted for the
+/// authenticated session opening. Private key material remains on the prover.
+pub struct ProxyClientHello {
     conn: ClientConnection,
     ms_log: Arc<MasterSecretLog>,
-    time: Option<u64>,
-    traffic: TlsBytes,
-    client_closed: bool,
-    server_closed: bool,
-    state: State,
-    decrypt: Arc<DecryptState>,
+    bytes: Vec<u8>,
 }
-
-enum State {
-    Init {
-        prover: Box<AnyProxyProver>,
-    },
-    Handshaking {
-        prover: Box<AnyProxyProver>,
-    },
-    Connected {
-        sent_close_notify: bool,
-        prover: Box<AnyProxyProver>,
-    },
-    Finalizing {
-        fut: Pin<FinalizeFuture>,
-    },
-    Error,
-}
-
-type FinalizeFuture =
-    Box<dyn Future<Output = Result<(Context, ProverZk, TlsOutput), TlsnError>> + Send>;
-
-impl Drop for ProxyTlsClient {
-    fn drop(&mut self) {
-        // Cancellation must remove the captured ECDHE secret immediately,
-        // even when no later handshake arrives to trigger TTL cleanup.
-        if let Ok(share) = client_key_share(&self.traffic.tls_sent) {
-            if let Ok(mut secrets) = SHARED_SECRETS.lock() { secrets.remove(&share); }
-        }
+impl ProxyClientHello {
+    /// Creates a fresh, full TLS handshake and extracts its first flight.
+    pub fn new(config: &TlsClientConfig, tls13: bool) -> Result<Self, TlsnError> {
+        let tlsn_core::connection::ServerName::Dns(name) = config.server_name();
+        let server_name = ServerName::try_from(name.as_ref()).map_err(|_| TlsnError::config())?;
+        Self::build(config, server_name, tls13)
     }
-}
-
-impl ProxyTlsClient {
-    pub(crate) fn new(
-        prover: Box<AnyProxyProver>,
+    fn build(
         config: &TlsClientConfig,
         server_name: ServerName,
+        tls13: bool,
     ) -> Result<Self, TlsnError> {
         let provider = rustls::crypto::ring::default_provider();
-        let tls13 = matches!(*prover, AnyProxyProver::V13(_));
 
         let kx_groups = provider
             .kx_groups
@@ -203,13 +174,103 @@ impl ProxyTlsClient {
         let mut config = create_client_config(config, provider, tls13)?;
         config.key_log = ms_log.clone();
 
-        let conn = ClientConnection::new(Arc::new(config), server_name.into_pki_server_name())
+        let mut conn = ClientConnection::new(Arc::new(config), server_name.into_pki_server_name())
             .map_err(|err| {
                 TlsnError::internal()
                     .with_msg("rustls error")
                     .with_source(err)
             })?;
 
+        let mut bytes = Vec::new();
+        conn.write_tls(&mut bytes)
+            .map_err(|e| TlsnError::io().with_source(e))?;
+        Ok(Self {
+            conn,
+            ms_log,
+            bytes,
+        })
+    }
+    /// Public TLS record bytes to include in the session opening.
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+pub(crate) struct ProxyTlsClient {
+    conn: ClientConnection,
+    ms_log: Arc<MasterSecretLog>,
+    pending_hello: Vec<u8>,
+    time: Option<u64>,
+    traffic: TlsBytes,
+    client_closed: bool,
+    server_closed: bool,
+    state: State,
+    decrypt: Arc<DecryptState>,
+}
+
+enum State {
+    Init {
+        prover: Box<AnyProxyProver>,
+    },
+    Handshaking {
+        prover: Box<AnyProxyProver>,
+    },
+    Connected {
+        sent_close_notify: bool,
+        prover: Box<AnyProxyProver>,
+    },
+    Finalizing {
+        fut: Pin<FinalizeFuture>,
+    },
+    Error,
+}
+
+type FinalizeFuture =
+    Box<dyn Future<Output = Result<(Context, ProverZk, TlsOutput), TlsnError>> + Send>;
+
+impl Drop for ProxyTlsClient {
+    fn drop(&mut self) {
+        // Cancellation must remove the captured ECDHE secret immediately,
+        // even when no later handshake arrives to trigger TTL cleanup.
+        if let Ok(share) = client_key_share(&self.traffic.tls_sent) {
+            if let Ok(mut secrets) = SHARED_SECRETS.lock() {
+                secrets.remove(&share);
+            }
+        }
+    }
+}
+
+impl ProxyTlsClient {
+    pub(crate) fn new(
+        prover: Box<AnyProxyProver>,
+        config: &TlsClientConfig,
+        server_name: ServerName,
+    ) -> Result<Self, TlsnError> {
+        let hello = ProxyClientHello::build(
+            config,
+            server_name,
+            matches!(*prover, AnyProxyProver::V13(_)),
+        )?;
+        Self::from_hello(prover, hello, false)
+    }
+
+    pub(crate) fn from_hello(
+        prover: Box<AnyProxyProver>,
+        hello: ProxyClientHello,
+        already_sent: bool,
+    ) -> Result<Self, TlsnError> {
+        let ProxyClientHello {
+            conn,
+            ms_log,
+            bytes,
+        } = hello;
+        let mut traffic = TlsBytes::default();
+        let pending_hello = if already_sent {
+            traffic.tls_sent.extend_from_slice(&bytes);
+            Vec::new()
+        } else {
+            bytes
+        };
         let decrypt = DecryptState {
             decrypt: AtomicBool::new(true),
         };
@@ -218,7 +279,8 @@ impl ProxyTlsClient {
             conn,
             ms_log,
             time: None,
-            traffic: TlsBytes::default(),
+            traffic,
+            pending_hello,
             client_closed: false,
             server_closed: false,
             state: State::Init { prover },
@@ -273,7 +335,7 @@ impl TlsClient for ProxyTlsClient {
     }
 
     fn wants_write_tls(&self) -> bool {
-        self.conn.wants_write()
+        !self.pending_hello.is_empty() || self.conn.wants_write()
     }
 
     fn read_tls(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
@@ -287,6 +349,15 @@ impl TlsClient for ProxyTlsClient {
     }
 
     fn write_tls(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        if !self.pending_hello.is_empty() {
+            let n = buf.len().min(self.pending_hello.len());
+            buf[..n].copy_from_slice(&self.pending_hello[..n]);
+            self.traffic
+                .tls_sent
+                .extend_from_slice(&self.pending_hello[..n]);
+            self.pending_hello.drain(..n);
+            return Ok(n);
+        }
         let mut writer = buf as &mut [u8];
         let n = self
             .conn

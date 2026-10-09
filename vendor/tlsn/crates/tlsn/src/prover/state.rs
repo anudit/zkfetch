@@ -58,6 +58,7 @@ opaque_debug::implement!(Connected<S>);
 /// State after the TLS transcript has been committed.
 pub struct Committed {
     pub(crate) vm: ProverZk,
+    pub(crate) deferred_schedule: Option<crate::proxy::tls13::ScheduleProof>,
     pub(crate) server_name: ServerName,
     pub(crate) keys: SessionKeys,
     pub(crate) tls_transcript: TlsTranscript,

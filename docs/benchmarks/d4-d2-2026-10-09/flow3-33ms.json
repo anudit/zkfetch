@@ -1,0 +1,150 @@
+{
+  "addedRttMs": 33,
+  "backend": "quicksilver",
+  "binius": false,
+  "logicalCpus": 12,
+  "maxRecv": null,
+  "maxSent": null,
+  "mode": "proxy",
+  "persistentVole": true,
+  "predicates": true,
+  "processLayout": "in process",
+  "protocolV2": true,
+  "requestedRuns": 4,
+  "reveal": true,
+  "runs": [
+    {
+      "bodyBytes": 722,
+      "fullMs": 624.147208,
+      "index": 0,
+      "presentMs": 0.293709,
+      "presentationBytes": 6690,
+      "startMs": 1.145167,
+      "timings": {
+        "attestMs": 65.322,
+        "notaryConnectMs": 75.424375,
+        "prewarmed": false,
+        "proveMs": 35.220208,
+        "setupMs": 370.26712499999996,
+        "tlsMs": 76.74329200000001,
+        "totalMs": 622.977083,
+        "voleResumed": false
+      },
+      "trafficUpDownChanges": [
+        618617,
+        1227393,
+        21
+      ],
+      "verified": true,
+      "verifyMs": 0.330166,
+      "warmup": true
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 254.015125,
+      "index": 1,
+      "presentMs": 0.23550000000000001,
+      "presentationBytes": 6690,
+      "startMs": 625.557625,
+      "timings": {
+        "attestMs": 67.64137500000001,
+        "notaryConnectMs": 103.452917,
+        "prewarmed": false,
+        "proveMs": 31.569958000000003,
+        "setupMs": 0.209583,
+        "tlsMs": 50.364917000000005,
+        "totalMs": 253.238833,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": [
+        168335,
+        613639,
+        8
+      ],
+      "verified": true,
+      "verifyMs": 0.32766700000000004,
+      "warmup": false
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 236.30175,
+      "index": 2,
+      "presentMs": 0.22287500000000002,
+      "presentationBytes": 6690,
+      "startMs": 879.870292,
+      "timings": {
+        "attestMs": 63.899541000000006,
+        "notaryConnectMs": 90.459667,
+        "prewarmed": false,
+        "proveMs": 31.224417000000003,
+        "setupMs": 0.19591699999999998,
+        "tlsMs": 49.750958,
+        "totalMs": 235.530625,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": [
+        168335,
+        613639,
+        8
+      ],
+      "verified": true,
+      "verifyMs": 0.341709,
+      "warmup": false
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 237.754166,
+      "index": 3,
+      "presentMs": 0.228542,
+      "presentationBytes": 6690,
+      "startMs": 1116.4143339999998,
+      "timings": {
+        "attestMs": 66.4565,
+        "notaryConnectMs": 91.62812500000001,
+        "prewarmed": false,
+        "proveMs": 30.256249999999998,
+        "setupMs": 0.196083,
+        "tlsMs": 48.3875,
+        "totalMs": 236.92450000000002,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": [
+        168335,
+        613639,
+        8
+      ],
+      "verified": true,
+      "verifyMs": 0.405917,
+      "warmup": false
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 264.21916699999997,
+      "index": 4,
+      "presentMs": 0.237375,
+      "presentationBytes": 6690,
+      "startMs": 1354.411792,
+      "timings": {
+        "attestMs": 66.70125,
+        "notaryConnectMs": 103.27304199999999,
+        "prewarmed": false,
+        "proveMs": 30.796,
+        "setupMs": 0.16425,
+        "tlsMs": 62.446417,
+        "totalMs": 263.381,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": [
+        168583,
+        677643,
+        8
+      ],
+      "verified": true,
+      "verifyMs": 0.330041,
+      "warmup": false
+    }
+  ],
+  "tls": "1.3",
+  "warmup": 1,
+  "workload": "local TLS fixture /formats/json, hidden id >= 1000"
+}

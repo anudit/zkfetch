@@ -15,7 +15,7 @@ pub use present::present;
 use web_time::Instant;
 
 use anyhow::{Context, Result, anyhow, bail};
-use futures::future::RemoteHandle;
+use futures::{FutureExt, future::RemoteHandle};
 use http_body_util::Full;
 use hyper::{Request, body::Bytes};
 use tlsn::{
@@ -124,6 +124,8 @@ pub struct Prepared {
     driver_task: RemoteHandle<tlsn::Result<transport::ClientStream>>,
     prover: CommittedProver,
     pool_lease: Option<setup_pool::ClientLease>,
+    client_hello: Option<tlsn::prover::ProxyClientHello>,
+    prefill_task: Option<RemoteHandle<Result<()>>>,
 }
 
 enum CommittedProver {
@@ -138,6 +140,7 @@ struct SessionKey {
     expected_notary_key: Option<String>,
     proxy: bool,
     persistent_vole: bool,
+    protocol_v2: bool,
     /// Proxy mode commits to the server name; MPC mode does not.
     proxy_host: Option<String>,
     max_sent: usize,
@@ -156,6 +159,7 @@ impl SessionKey {
             expected_notary_key: params.expected_notary_key.clone(),
             proxy,
             persistent_vole: params.persistent_vole.unwrap_or(true),
+            protocol_v2: params.protocol_v2.unwrap_or(true),
             proxy_host: if proxy {
                 Some(Target::parse(&params.url)?.host)
             } else {
@@ -202,12 +206,16 @@ pub async fn prepare(params: &NotarizeParams) -> Result<Prepared> {
         "1.3" | "auto" => TlsVersion::V1_3,
         other => bail!("tlsVersion must be \"1.2\", \"1.3\" or \"auto\", got {other:?}"),
     };
-    let mut prepared = prepare_with(params, tls_version).await?;
+    let mut prepared = prepare_with(params, tls_version, false).await?;
     prepared.prewarmed = true;
     Ok(prepared)
 }
 
-async fn prepare_with(params: &NotarizeParams, tls_version: TlsVersion) -> Result<Prepared> {
+async fn prepare_with(
+    params: &NotarizeParams,
+    tls_version: TlsVersion,
+    pipeline_tls: bool,
+) -> Result<Prepared> {
     let key = SessionKey::new(params)?;
     if key.proxy && params.connect_addr.is_some() {
         bail!("connectAddr is not supported in proxy mode: the notary dials the server");
@@ -219,22 +227,46 @@ async fn prepare_with(params: &NotarizeParams, tls_version: TlsVersion) -> Resul
     if endpoint.scheme() == "wss" && params.expected_notary_key.is_none() {
         bail!("remote sessions require expectedNotaryKey before MPC setup");
     }
+    let mut client_hello = if pipeline_tls
+        && key.protocol_v2
+        && key.proxy
+        && key.persistent_vole
+        && tls_version == TlsVersion::V1_3
+    {
+        let host = key.proxy_host.as_ref().expect("proxy host");
+        let config = TlsClientConfig::builder()
+            .server_name(ServerName::Dns(host.as_str().try_into()?))
+            .root_store(root_store(&params.extra_root_certs)?)
+            .build()?;
+        Some(tlsn::prover::ProxyClientHello::new(&config, true)?)
+    } else {
+        None
+    };
+    let public_open = client_hello
+        .as_ref()
+        .map(|hello| zkf_core::notary_auth::ProxyOpen {
+            host: key.proxy_host.clone().expect("proxy host"),
+            client_hello: hello.bytes().to_vec(),
+        });
     let mut notary = transport::connect(&params.notary_url).await?;
     let opening = async {
         if key.proxy && key.persistent_vole {
             let cache_key = format!(
-                "{}|{:?}|{:?}",
-                key.notary_url, key.expected_notary_key, tls_version
+                "{}|{:?}|{:?}|v2={}",
+                key.notary_url, key.expected_notary_key, tls_version, key.protocol_v2
             );
             if let Some(lease) = setup_pool::open(
                 &mut notary,
                 cache_key,
                 params.expected_notary_key.as_deref(),
+                public_open,
+                key.protocol_v2 && tls_version == TlsVersion::V1_3,
             )
             .await?
             {
                 return Ok::<_, anyhow::Error>(Some(lease));
             }
+            client_hello = None;
             // A verified legacy opening: reconnect without the pool extension.
             notary = transport::connect(&params.notary_url).await?;
         }
@@ -248,11 +280,62 @@ async fn prepare_with(params: &NotarizeParams, tls_version: TlsVersion) -> Resul
         .context("notary authentication opening deadline exceeded")??;
     #[cfg(target_arch = "wasm32")]
     let mut pool_lease = opening.await?;
+    if pool_lease.as_ref().is_some_and(|p| !p.resumed) {
+        client_hello = None;
+    }
     let connect_ms = started.elapsed().as_secs_f64() * 1e3;
-    let (driver, mut handle) = Session::new(notary).split();
+    let low_latency = pool_lease.as_ref().is_some_and(|p| p.low_latency);
+    let session = if low_latency {
+        Session::pipelined(notary)
+    } else {
+        Session::new(notary)
+    };
+    let (driver, mut handle) = session.split();
     let mut driver_task = rt::spawn(driver);
 
     let setup_started = Instant::now();
+    let mut prefill_task = None;
+    if let Some(lease) = pool_lease.as_mut().filter(|p| p.low_latency) {
+        let control = handle.proof_batch_control();
+        lease
+            .pool
+            .set_begin_proof(std::sync::Arc::new(move || control.begin_batch()));
+        let mut stream = handle.application_stream(b"zkfetch/flow3/prefill")?;
+        if lease.resumed {
+            let pool = lease.pool.prefill_handle();
+            let check = std::mem::take(&mut lease.prefill_check);
+            let (tx, rx) = futures::channel::oneshot::channel();
+            let ready = async move { rx.await.map_err(|_| "prefill cancelled".to_string())? }
+                .boxed()
+                .shared();
+            lease.pool.set_ready(ready.clone());
+            prefill_task = Some(rt::spawn(async move {
+                let result = async {
+                    transport::write_frame(&mut stream, &check).await?;
+                    let reply = transport::read_frame(&mut stream).await?;
+                    pool.finish_prefill(&reply).map_err(anyhow::Error::msg)?;
+                    Ok::<_, anyhow::Error>(())
+                }
+                .await;
+                let _ = tx.send(result.as_ref().map(|_| ()).map_err(|e| e.to_string()));
+                result
+            }));
+            // Prepared sessions complete preprocessing ahead of the click path.
+            if !pipeline_tls {
+                ready.await.map_err(anyhow::Error::msg)?;
+            }
+        } else {
+            let mut ctx = mpz_common::Context::new_single_threaded(stream);
+            lease
+                .pool
+                .cold_prefill(&mut ctx)
+                .await
+                .map_err(anyhow::Error::msg)?;
+            lease
+                .pool
+                .set_ready(futures::future::ready(Ok(())).boxed().shared());
+        }
+    }
     let mut new_prover = handle.new_prover(ProverConfig::builder().build()?)?;
     if let Some(lease) = pool_lease.as_mut() {
         new_prover = new_prover.with_vole_pool(&mut lease.pool);
@@ -295,6 +378,8 @@ async fn prepare_with(params: &NotarizeParams, tls_version: TlsVersion) -> Resul
         driver_task,
         prover,
         pool_lease,
+        client_hello,
+        prefill_task,
     })
 }
 
@@ -316,7 +401,7 @@ async fn notarize_auto(
     };
     let result = match prepared {
         Some(prepared) => finish(prepared, params.clone()).await,
-        None => match prepare_with(&params, first).await {
+        None => match prepare_with(&params, first, true).await {
             Ok(prepared) => finish(prepared, params.clone()).await,
             Err(err) => Err(err),
         },
@@ -337,8 +422,13 @@ async fn watch_notary<T>(
     futures::pin_mut!(work);
     match futures::future::select(work, driver).await {
         futures::future::Either::Left((result, _)) => result,
-        futures::future::Either::Right((Err(err), _)) => {
-            Err(anyhow!("the notary connection failed: {err}"))
+        futures::future::Either::Right((Err(err), remaining)) => {
+            // Dropping a failed proof closes its context streams. Prefer an
+            // already-completed local error over that secondary mux failure.
+            match remaining.now_or_never() {
+                Some(Err(local)) => Err(local),
+                _ => Err(anyhow!("the notary connection failed: {err}")),
+            }
         }
         futures::future::Either::Right((Ok(_), _)) => {
             Err(anyhow!("the notary closed the connection"))
@@ -357,6 +447,8 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
         mut driver_task,
         prover,
         pool_lease,
+        client_hello,
+        prefill_task: _prefill_task,
     } = prepared;
     if key != SessionKey::new(&params)? {
         bail!(
@@ -407,7 +499,10 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
     let (tls_connection, prover_task) = match prover {
         CommittedProver::Proxy(prover) => {
             // The notary dials the server and relays this connection.
-            let (tls_connection, prover) = prover.connect(tls_config)?;
+            let (tls_connection, prover) = match client_hello {
+                Some(hello) => prover.connect_opened(tls_config, hello)?,
+                None => prover.connect(tls_config)?,
+            };
             (tls_connection, rt::spawn(prover.into_future()))
         }
         CommittedProver::Mpc(prover) => {
@@ -608,10 +703,24 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
         .transcript_commitments(transcript_secrets, transcript_commitments);
     let (att_request, secrets) = att_request.build(&CryptoProvider::default())?;
 
-    handle.close();
-    let mut socket = driver_task.await?;
-    transport::write_frame(&mut socket, &bincode::serialize(&att_request)?).await?;
-    let bytes = transport::read_frame(&mut socket).await?;
+    let low_latency = pool_lease.as_ref().is_some_and(|p| p.low_latency);
+    let bytes = if low_latency {
+        let mut reply = handle.application_stream(b"zkfetch/flow2/attestation")?;
+        let bytes = watch_notary(&mut driver_task, async {
+            transport::write_frame(&mut reply, &bincode::serialize(&att_request)?).await?;
+            handle.proof_batch_control().end_batch().await?;
+            transport::read_frame(&mut reply).await
+        })
+        .await?;
+        handle.close();
+        driver_task.forget();
+        bytes
+    } else {
+        handle.close();
+        let mut socket = driver_task.await?;
+        transport::write_frame(&mut socket, &bincode::serialize(&att_request)?).await?;
+        transport::read_frame(&mut socket).await?
+    };
     let attestation: Attestation = {
         use bincode::Options;
         bincode::DefaultOptions::new()

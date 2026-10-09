@@ -19,7 +19,7 @@ pub(crate) use prover::ProxyProver;
 mod verifier;
 pub(crate) use verifier::ProxyVerifier;
 
-mod tls13;
+pub(crate) mod tls13;
 pub(crate) use tls13::{
     ProxyProver13, ProxyVerifier13, Tls13ClientSecrets, client_key_share, hkdf_expand_label,
     validate_sni,

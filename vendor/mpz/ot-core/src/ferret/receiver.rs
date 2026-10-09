@@ -80,7 +80,12 @@ where
         self.macs.len() < self.config.bootstrap_cost()
     }
 
-    /// Returns `true` if the receiver wants to extend.
+    /// Release a prefill reservation if extension has not already fulfilled it.
+    pub fn cancel_alloc(&mut self, count: usize) {
+        self.alloc = self.alloc.saturating_sub(count);
+    }
+
+    /// Returns whether more correlations are required.
     pub fn wants_extend(&self) -> bool {
         self.available() < self.alloc
     }
@@ -328,7 +333,7 @@ where
 
     fn available(&self) -> usize {
         if self.config.reserve_bootstrap() {
-            self.macs.len().saturating_sub(self.config.bootstrap_cost())
+            self.macs.len().saturating_sub(self.config.reserve_cost())
         } else {
             self.macs.len()
         }

@@ -44,6 +44,7 @@ pub struct Verifier<T: state::VerifierState = state::Initialized> {
     span: Span,
     ctx: Option<Context>,
     mux_handle: Handle,
+    low_latency: bool,
     state: T,
 }
 
@@ -62,14 +63,49 @@ impl Verifier<state::Initialized> {
             span,
             ctx: Some(ctx),
             mux_handle,
+            low_latency: false,
             state: state::Initialized::default(),
         }
     }
 
     /// Uses an exclusively leased persistent Ferret pool for a proxy session.
     pub fn with_vole_pool(mut self, pool: &mut crate::vole_pool::VerifierVolePool) -> Self {
+        self.low_latency = pool.low_latency;
         self.state.pool = Some(pool.session_handle());
         self
+    }
+
+    /// Start from the proxy configuration already authenticated in the opening.
+    pub fn commit_opened(mut self, config: ProxyTlsConfig) -> Result<VerifierCommitStart> {
+        let pool = self
+            .state
+            .pool
+            .as_ref()
+            .ok_or_else(|| Error::config().with_msg("opened configuration requires a pool"))?;
+        if !pool.low_latency
+            || pool.opened_host.as_deref() != Some(config.server_name().as_str())
+            || config.tls_version() != tlsn_core::connection::TlsVersion::V1_3
+        {
+            return Err(
+                Error::config().with_msg("configuration differs from authenticated opening")
+            );
+        }
+        let ctx = self
+            .ctx
+            .take()
+            .ok_or_else(|| Error::internal().with_msg("commitment protocol context was dropped"))?;
+        Ok(VerifierCommitStart::Proxy(Verifier {
+            config: self.config,
+            span: self.span,
+            ctx: Some(ctx),
+            mux_handle: self.mux_handle,
+            low_latency: self.low_latency,
+            state: state::CommitStart {
+                config: config.into(),
+                pool: self.state.pool,
+                _pd: PhantomData,
+            },
+        }))
     }
 
     /// Starts the TLS commitment protocol.
@@ -129,6 +165,7 @@ impl Verifier<state::Initialized> {
                 span: self.span,
                 ctx: Some(ctx),
                 mux_handle: self.mux_handle,
+                low_latency: self.low_latency,
                 state: state::CommitStart {
                     config,
                     pool: self.state.pool,
@@ -140,6 +177,7 @@ impl Verifier<state::Initialized> {
                 span: self.span,
                 ctx: Some(ctx),
                 mux_handle: self.mux_handle,
+                low_latency: self.low_latency,
                 state: state::CommitStart {
                     config,
                     pool: self.state.pool,
@@ -188,6 +226,7 @@ impl<P> Verifier<state::CommitStart<P>> {
             span: self.span,
             ctx: None,
             mux_handle: self.mux_handle,
+            low_latency: self.low_latency,
             state: state::CommitAccepted {
                 deps,
                 _pd: PhantomData,
@@ -312,7 +351,10 @@ impl Verifier<state::CommitAccepted<Mpc>> {
             span: self.span,
             ctx: Some(ctx),
             mux_handle: self.mux_handle,
+            low_latency: self.low_latency,
             state: state::Committed {
+                deferred_schedule: None,
+                deferred_tags: None,
                 vm,
                 keys,
                 tls_transcript,
@@ -334,8 +376,22 @@ impl Verifier<state::CommitAccepted<Proxy>> {
     where
         T: AsyncRead + AsyncWrite + Send + Unpin,
     {
+        self.run_opened(server_socket, Vec::new()).await
+    }
+
+    /// Relays a connection whose public ClientHello was already policy-checked
+    /// and forwarded by the session opening. The bytes remain in the transcript.
+    pub async fn run_opened<T>(
+        self,
+        server_socket: T,
+        client_hello: Vec<u8>,
+    ) -> Result<Verifier<state::Committed>>
+    where
+        T: AsyncRead + AsyncWrite + Send + Unpin,
+    {
         let VerifierDeps::Proxy(VerifierProxyDeps {
             verifier,
+            pipeline_tls,
             id,
             server_name,
         }) = self.state.deps
@@ -343,7 +399,12 @@ impl Verifier<state::CommitAccepted<Proxy>> {
             unreachable!("proxy-tls received incorrect deps")
         };
 
-        let mut sent_buf = Vec::new();
+        let opened = !client_hello.is_empty();
+        let opened_time = web_time::UNIX_EPOCH
+            .elapsed()
+            .expect("system time")
+            .as_secs();
+        let mut sent_buf = client_hello;
         let mut recv_buf = Vec::new();
 
         info!("starting Proxy-TLS");
@@ -367,28 +428,34 @@ impl Verifier<state::CommitAccepted<Proxy>> {
             crate::proxy::PROXY_MAX_RECV_BYTES,
         );
 
-        futures::future::try_join(
-            async {
-                futures::io::copy(&mut prover_reader, &mut server_write).await?;
-                server_write.close().await
-            },
-            async {
-                futures::io::copy(&mut server_reader, &mut prover_write).await?;
-                prover_write.close().await
-            },
-        )
-        .await
-        .map_err(|e| {
-            Error::io()
-                .with_msg("proxy traffic forwarding failed")
-                .with_source(e)
-        })?;
+        let relay = async {
+            futures::future::try_join(
+                async {
+                    futures::io::copy(&mut prover_reader, &mut server_write).await?;
+                    server_write.close().await
+                },
+                async {
+                    futures::io::copy(&mut server_reader, &mut prover_write).await?;
+                    prover_write.close().await
+                },
+            )
+            .await
+            .map_err(|e| {
+                Error::io()
+                    .with_msg("proxy traffic forwarding failed")
+                    .with_source(e)
+            })?;
+            Ok::<_, Error>(())
+        };
+        let _ = pipeline_tls;
+        relay.await?;
         info!("proxying TLS traffic finished");
 
         // A prover that closes without sending anything must not panic the
         // notary (zkfetch P6).
         let conn_time = prover_reader
             .first_read()
+            .or_else(|| opened.then_some(opened_time))
             .ok_or_else(|| Error::io().with_msg("prover sent no TLS traffic"))?;
 
         crate::proxy::validate_sni(&sent_buf, &server_name)?;
@@ -406,6 +473,7 @@ impl Verifier<state::CommitAccepted<Proxy>> {
             }
         };
 
+        let deferred_schedule = output.deferred_schedule;
         let keys = output.keys;
         let tls_transcript = output.tls_transcript;
 
@@ -424,21 +492,27 @@ impl Verifier<state::CommitAccepted<Proxy>> {
                 .with_source(e)
         })?;
 
-        vm.execute_all(&mut ctx).await.map_err(|e| {
-            Error::internal()
-                .with_msg("tag verification zk execution failed")
-                .with_source(e)
-        })?;
+        let deferred_tags = if deferred_schedule.is_some() {
+            Some(tag_proof)
+        } else {
+            vm.execute_all(&mut ctx).await.map_err(|e| {
+                Error::internal()
+                    .with_msg("tag verification zk execution failed")
+                    .with_source(e)
+            })?;
 
-        // Verify the tags.
-        // After the verification, the entire TLS trancript becomes
-        // authenticated from the verifier's perspective.
-        tag_proof.verify().map_err(|e| {
-            Error::internal()
-                .with_msg("tag verification failed")
-                .with_source(e)
-        })?;
-        debug!("verified tags successfully");
+            // Verify the tags.
+            // After the verification, the entire TLS trancript becomes
+            // authenticated from the verifier's perspective.
+            tag_proof.verify().map_err(|e| {
+                Error::internal()
+                    .with_msg("tag verification failed")
+                    .with_source(e)
+            })?;
+            debug!("verified tags successfully");
+
+            None
+        };
 
         // Verify finished records
         if let Some((cf_vd_check, sf_vd_check)) = finished_checks {
@@ -452,7 +526,10 @@ impl Verifier<state::CommitAccepted<Proxy>> {
             span: self.span,
             ctx: Some(ctx),
             mux_handle: self.mux_handle,
+            low_latency: self.low_latency,
             state: state::Committed {
+                deferred_schedule,
+                deferred_tags,
                 vm,
                 keys,
                 tls_transcript,
@@ -475,30 +552,42 @@ impl Verifier<state::Committed> {
             .take()
             .ok_or_else(|| Error::internal().with_msg("verification context was dropped"))?;
         let state::Committed {
-            vm,
+            mut vm,
             keys,
             tls_transcript,
+            deferred_schedule,
+            deferred_tags,
         } = self.state;
 
-        let ProveRequestMsg {
-            request,
-            handshake,
-            transcript,
-        } = ctx.io_mut().expect_next().await.map_err(|e| {
+        let msg: ProveRequestMsg = ctx.io_mut().expect_next().await.map_err(|e| {
             Error::io()
                 .with_msg("verification failed to receive prove request")
                 .with_source(e)
         })?;
+
+        if self.low_latency {
+            vm.bind_statement(
+                &bincode::serialize(&msg).map_err(|e| Error::internal().with_source(e))?,
+            );
+        }
+        let ProveRequestMsg {
+            request,
+            handshake,
+            transcript,
+        } = msg;
 
         Ok(Verifier {
             config: self.config,
             span: self.span,
             ctx: Some(ctx),
             mux_handle: self.mux_handle,
+            low_latency: self.low_latency,
             state: state::Verify {
                 vm,
                 keys,
                 tls_transcript,
+                deferred_schedule,
+                deferred_tags,
                 request,
                 handshake,
                 transcript,
@@ -529,16 +618,20 @@ impl Verifier<state::Verify> {
             mut vm,
             keys,
             tls_transcript,
+            deferred_schedule,
+            deferred_tags,
             request,
             handshake,
             transcript,
         } = self.state;
 
-        ctx.io_mut().send(Response::ok()).await.map_err(|e| {
-            Error::io()
-                .with_msg("verification failed to send acceptance")
-                .with_source(e)
-        })?;
+        if !self.low_latency {
+            ctx.io_mut().send(Response::ok()).await.map_err(|e| {
+                Error::io()
+                    .with_msg("verification failed to send acceptance")
+                    .with_source(e)
+            })?;
+        }
 
         let cert_verifier = ServerCertVerifier::new(self.config.root_store()).map_err(|e| {
             Error::config()
@@ -557,6 +650,16 @@ impl Verifier<state::Verify> {
             transcript,
         )
         .await?;
+        if let Some(schedule) = deferred_schedule {
+            schedule.verify()?;
+        }
+        if let Some(tags) = deferred_tags {
+            tags.verify().map_err(|e| {
+                Error::internal()
+                    .with_msg("tag verification failed")
+                    .with_source(e)
+            })?;
+        }
 
         Ok((
             output,
@@ -565,10 +668,13 @@ impl Verifier<state::Verify> {
                 span: self.span,
                 ctx: Some(ctx),
                 mux_handle: self.mux_handle,
+                low_latency: self.low_latency,
                 state: state::Committed {
                     vm,
                     keys,
                     tls_transcript,
+                    deferred_schedule: None,
+                    deferred_tags: None,
                 },
             },
         ))
@@ -584,6 +690,8 @@ impl Verifier<state::Verify> {
             vm,
             keys,
             tls_transcript,
+            deferred_schedule,
+            deferred_tags,
             ..
         } = self.state;
 
@@ -598,10 +706,13 @@ impl Verifier<state::Verify> {
             span: self.span,
             ctx: Some(ctx),
             mux_handle: self.mux_handle,
+            low_latency: self.low_latency,
             state: state::Committed {
                 vm,
                 keys,
                 tls_transcript,
+                deferred_schedule,
+                deferred_tags,
             },
         })
     }

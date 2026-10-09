@@ -46,7 +46,7 @@ use tls_core::msgs::{
     handshake::{HandshakeMessagePayload, HandshakePayload, HasServerExtensions},
     message::OpaqueMessage,
 };
-use tls13_schedule::{HandshakeKeys, Mode, Role, Tls13KeySched};
+use tls13_schedule::{HandshakeKeys, Mode, OrigoClaim, OrigoSchedule, Role, Tls13KeySched};
 use tlsn_core::{
     connection::{
         CertBinding, CertBindingV1_3, KeyType, ServerEphemKey, ServerSignature, SignatureAlgorithm,
@@ -79,8 +79,10 @@ type IvFuture = DecodeFutureTyped<BitVec, [u8; 12]>;
 
 /// VM state shared by the TLS 1.3 proxy prover and verifier.
 struct Schedule {
-    ks: Tls13KeySched,
-    pms: Array<U8, 32>,
+    ks: Option<Tls13KeySched>,
+    origo: Option<OrigoSchedule>,
+    origo_claim: Option<OrigoClaim>,
+    pms: Option<Array<U8, 32>>,
     keys: SessionKeys,
     civ: IvFuture,
     siv: IvFuture,
@@ -95,18 +97,28 @@ fn iv_prefix(iv: Array<U8, 12>) -> Array<U8, 4> {
 }
 
 impl Schedule {
-    fn alloc(vm: &mut dyn Vm<Binary>, prover: bool) -> Result<Self, TlsnError> {
-        let pms: Array<U8, 32> = vm.alloc().map_err(vm_err)?;
-        if prover {
-            vm.mark_private(pms).map_err(vm_err)?;
+    fn alloc(
+        vm: &mut dyn Vm<Binary>,
+        prover: bool,
+        origo_enabled: bool,
+    ) -> Result<Self, TlsnError> {
+        let (ks, pms, origo, app) = if origo_enabled {
+            let origo = OrigoSchedule::alloc(vm, prover).map_err(vm_err)?;
+            let app = origo.keys;
+            (None, None, Some(origo), app)
         } else {
-            vm.mark_blind(pms).map_err(vm_err)?;
-        }
-
-        let role = if prover { Role::Leader } else { Role::Follower };
-        let mut ks = Tls13KeySched::new(Mode::Normal, role);
-        ks.alloc(vm, pms).map_err(vm_err)?;
-        let app = ks.application_key_refs().map_err(vm_err)?;
+            let pms: Array<U8, 32> = vm.alloc().map_err(vm_err)?;
+            if prover {
+                vm.mark_private(pms).map_err(vm_err)?;
+            } else {
+                vm.mark_blind(pms).map_err(vm_err)?;
+            }
+            let role = if prover { Role::Leader } else { Role::Follower };
+            let mut ks = Tls13KeySched::new(Mode::Normal, role);
+            ks.alloc(vm, pms).map_err(vm_err)?;
+            let app = ks.application_key_refs().map_err(vm_err)?;
+            (Some(ks), Some(pms), None, app)
+        };
 
         let mut encrypt = Aes128::default();
         encrypt.set_key(app.client_write_key);
@@ -121,6 +133,8 @@ impl Schedule {
 
         Ok(Self {
             ks,
+            origo,
+            origo_claim: None,
             pms,
             keys: SessionKeys {
                 client_write_key: app.client_write_key,
@@ -145,18 +159,70 @@ impl Schedule {
         handshake_hash: [u8; 32],
         shared_secret: Option<[u8; 32]>,
     ) -> Result<(HandshakeKeys, [u8; 12], [u8; 12]), TlsnError> {
+        self.assign(vm, hello_hash, handshake_hash, shared_secret)?;
+        vm.execute_all(ctx).await.map_err(vm_err)?;
+        self.finish()
+    }
+
+    fn assign<V: Vm<Binary>>(
+        &mut self,
+        vm: &mut V,
+        hello_hash: [u8; 32],
+        handshake_hash: [u8; 32],
+        shared_secret: Option<[u8; 32]>,
+    ) -> Result<(), TlsnError> {
         if let Some(mut secret) = shared_secret {
             use zeroize::Zeroize;
-            let result = vm.assign(self.pms, secret).map_err(vm_err);
+            let result = vm
+                .assign(self.pms.expect("normal schedule"), secret)
+                .map_err(vm_err);
             secret.zeroize();
             result?;
         }
-        vm.commit(self.pms).map_err(vm_err)?;
+        vm.commit(self.pms.expect("normal schedule"))
+            .map_err(vm_err)?;
         self.ks
+            .as_mut()
+            .expect("normal schedule")
             .assign_all(vm, hello_hash, handshake_hash)
             .map_err(vm_err)?;
-        vm.execute_all(ctx).await.map_err(vm_err)?;
-        let (hs_keys, _) = self.ks.finish_all().map_err(vm_err)?;
+        Ok(())
+    }
+
+    fn assign_origo<V: Vm<Binary>>(
+        &mut self,
+        vm: &mut V,
+        claim: OrigoClaim,
+        handshake_hash: [u8; 32],
+        mut witness: Option<[u8; 32]>,
+    ) -> Result<(), TlsnError> {
+        use zeroize::Zeroize;
+        let result = self
+            .origo
+            .as_mut()
+            .expect("ORIGO schedule")
+            .assign(vm, &claim, handshake_hash, witness)
+            .map_err(vm_err);
+        witness.zeroize();
+        result?;
+        self.origo_claim = Some(claim);
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<(HandshakeKeys, [u8; 12], [u8; 12]), TlsnError> {
+        let hs_keys = if let Some(origo) = &mut self.origo {
+            let claim = self.origo_claim.as_ref().expect("ORIGO assigned");
+            origo.verify(claim).map_err(vm_err)?;
+            let (client, server) = claim.handshake_secrets();
+            native_handshake_keys(&client, &server)
+        } else {
+            self.ks
+                .as_mut()
+                .expect("normal schedule")
+                .finish_all()
+                .map_err(vm_err)?
+                .0
+        };
 
         let civ = self
             .civ
@@ -169,6 +235,67 @@ impl Schedule {
             .map_err(vm_err)?
             .ok_or_else(|| err("server application IV not decoded"))?;
         Ok((hs_keys, civ, siv))
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct PublicKeys {
+    client_write_key: [u8; 16],
+    server_write_key: [u8; 16],
+    client_iv: [u8; 12],
+    server_iv: [u8; 12],
+    client_finished_key: [u8; 32],
+    server_finished_key: [u8; 32],
+    civ: [u8; 12],
+    siv: [u8; 12],
+    origo: OrigoClaim,
+}
+impl PublicKeys {
+    fn new(keys: HandshakeKeys, civ: [u8; 12], siv: [u8; 12], origo: OrigoClaim) -> Self {
+        let HandshakeKeys {
+            client_write_key,
+            server_write_key,
+            client_iv,
+            server_iv,
+            client_finished_key,
+            server_finished_key,
+        } = keys;
+        Self {
+            client_write_key,
+            server_write_key,
+            client_iv,
+            server_iv,
+            client_finished_key,
+            server_finished_key,
+            civ,
+            siv,
+            origo,
+        }
+    }
+    fn handshake(&self) -> HandshakeKeys {
+        HandshakeKeys {
+            client_write_key: self.client_write_key,
+            server_write_key: self.server_write_key,
+            client_iv: self.client_iv,
+            server_iv: self.server_iv,
+            client_finished_key: self.client_finished_key,
+            server_finished_key: self.server_finished_key,
+        }
+    }
+}
+/// Deferred equality check between disclosed handshake keys/IVs and the VM's
+/// key-schedule outputs. No attestation may be issued before this succeeds.
+pub(crate) struct ScheduleProof {
+    schedule: Schedule,
+    claimed: PublicKeys,
+}
+impl ScheduleProof {
+    pub(crate) fn verify(mut self) -> Result<(), TlsnError> {
+        let (keys, civ, siv) = self.schedule.finish()?;
+        if keys != self.claimed.handshake() || civ != self.claimed.civ || siv != self.claimed.siv {
+            return Err(peer("disclosed TLS keys differ from proven key schedule"));
+        }
+        Ok(())
     }
 }
 
@@ -739,6 +866,9 @@ pub(crate) struct ProxyProver13<V> {
     ctx: Context,
     vm: V,
     schedule: Option<Schedule>,
+    deferred: bool,
+    ready: Option<crate::vole_pool::PrefillReady>,
+    begin_proof: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
 }
 
 /// Secrets the prover's TLS client exposes for TLS 1.3 proxy mode.
@@ -766,17 +896,26 @@ impl Drop for Tls13ClientSecrets {
     }
 }
 
-impl<V: Vm<Binary> + Execute + Send> ProxyProver13<V> {
-    pub(crate) fn new(vm: V, ctx: Context) -> Self {
+impl<V: Vm<Binary> + Execute + Send + crate::deps::StatementBinding> ProxyProver13<V> {
+    pub(crate) fn new(
+        vm: V,
+        ctx: Context,
+        deferred: bool,
+        ready: Option<crate::vole_pool::PrefillReady>,
+        begin_proof: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
+    ) -> Self {
         Self {
             ctx,
             vm,
             schedule: None,
+            deferred,
+            ready,
+            begin_proof,
         }
     }
 
     pub(crate) fn alloc(&mut self) -> Result<(), TlsnError> {
-        self.schedule = Some(Schedule::alloc(&mut self.vm, true)?);
+        self.schedule = Some(Schedule::alloc(&mut self.vm, true, self.deferred)?);
         Ok(())
     }
 
@@ -794,6 +933,16 @@ impl<V: Vm<Binary> + Execute + Send> ProxyProver13<V> {
         tls_sent: &[u8],
         tls_recv: &[u8],
     ) -> Result<(Context, V, TlsOutput), TlsnError> {
+        if let Some(ready) = self.ready.take() {
+            ready.await.map_err(err)?;
+        }
+        if let Some(begin) = self.begin_proof.take() {
+            begin();
+        }
+        if self.deferred {
+            self.vm.bind_statement(tls_sent);
+            self.vm.bind_statement(tls_recv);
+        }
         let traffic = Traffic::parse(tls_sent, tls_recv)?;
         let hello = traffic.hello()?;
         let native_keys = native_handshake_keys(&secrets.client_hs, &secrets.server_hs);
@@ -815,29 +964,65 @@ impl<V: Vm<Binary> + Execute + Send> ProxyProver13<V> {
         let (mut recv, recv_suffixes) =
             records(&traffic.recv, handshake.recv_app, secrets.server_app)?;
 
+        let claim = Claim {
+            handshake_hash: handshake.application_hash,
+            sent: sent_suffixes.clone(),
+            recv: recv_suffixes.clone(),
+        };
+        if self.deferred {
+            self.vm
+                .bind_statement(&bincode::serialize(&claim).map_err(vm_err)?);
+        }
         self.ctx
             .io_mut()
-            .send(Claim {
-                handshake_hash: handshake.application_hash,
-                sent: sent_suffixes.clone(),
-                recv: recv_suffixes.clone(),
-            })
+            .send(claim)
             .await
             .map_err(|e| err("failed to send TLS 1.3 claim").with_source(e))?;
 
         let mut schedule = self.schedule.take().expect("schedule allocated");
-        let (hs_keys, proven_civ, proven_siv) = schedule
-            .run(
-                &mut self.vm,
-                &mut self.ctx,
+        let keys = schedule.keys.clone();
+        let deferred_schedule = if self.deferred {
+            let (origo, mut witness) = OrigoClaim::preprocess(
+                &secrets.shared_secret,
                 hello.hash,
                 handshake.application_hash,
-                Some(secrets.shared_secret),
-            )
-            .await?;
-        if hs_keys != native_keys || proven_civ != civ || proven_siv != siv {
-            return Err(err("proven TLS 1.3 keys differ from the TLS client's"));
-        }
+            );
+            let claimed = PublicKeys::new(native_keys, civ, siv, origo);
+            self.vm
+                .bind_statement(&bincode::serialize(&claimed).map_err(vm_err)?);
+            self.ctx
+                .io_mut()
+                .send(claimed.clone())
+                .await
+                .map_err(|e| err("failed to send public TLS keys").with_source(e))?;
+            let result = schedule.assign_origo(
+                &mut self.vm,
+                claimed.origo.clone(),
+                handshake.application_hash,
+                Some(witness),
+            );
+            {
+                use zeroize::Zeroize;
+                witness.zeroize();
+            }
+            result?;
+            Some(ScheduleProof { schedule, claimed })
+        } else {
+            let (hs_keys, proven_civ, proven_siv) = schedule
+                .run(
+                    &mut self.vm,
+                    &mut self.ctx,
+                    hello.hash,
+                    handshake.application_hash,
+                    Some(secrets.shared_secret),
+                )
+                .await?;
+            if hs_keys != native_keys || proven_civ != civ || proven_siv != siv {
+                return Err(err("proven TLS 1.3 keys differ from the TLS client's"));
+            }
+
+            None
+        };
 
         apply_suffixes(&mut sent, sent_suffixes)?;
         apply_suffixes(&mut recv, recv_suffixes)?;
@@ -847,8 +1032,9 @@ impl<V: Vm<Binary> + Execute + Send> ProxyProver13<V> {
             self.ctx,
             self.vm,
             TlsOutput {
-                keys: schedule.keys,
+                keys,
                 tls_transcript,
+                deferred_schedule,
             },
         ))
     }
@@ -859,19 +1045,28 @@ pub(crate) struct ProxyVerifier13<V> {
     ctx: Context,
     vm: V,
     schedule: Option<Schedule>,
+    deferred: bool,
+    ready: Option<crate::vole_pool::PrefillReady>,
 }
 
-impl<V: Vm<Binary> + Execute + Send> ProxyVerifier13<V> {
-    pub(crate) fn new(vm: V, ctx: Context) -> Self {
+impl<V: Vm<Binary> + Execute + Send + crate::deps::StatementBinding> ProxyVerifier13<V> {
+    pub(crate) fn new(
+        vm: V,
+        ctx: Context,
+        deferred: bool,
+        ready: Option<crate::vole_pool::PrefillReady>,
+    ) -> Self {
         Self {
             ctx,
             vm,
             schedule: None,
+            deferred,
+            ready,
         }
     }
 
     pub(crate) fn alloc(&mut self) -> Result<(), TlsnError> {
-        self.schedule = Some(Schedule::alloc(&mut self.vm, false)?);
+        self.schedule = Some(Schedule::alloc(&mut self.vm, false, self.deferred)?);
         Ok(())
     }
 
@@ -888,6 +1083,13 @@ impl<V: Vm<Binary> + Execute + Send> ProxyVerifier13<V> {
         tls_recv: &[u8],
         time: u64,
     ) -> Result<(Context, V, TlsOutput), TlsnError> {
+        if let Some(ready) = self.ready.take() {
+            ready.await.map_err(err)?;
+        }
+        if self.deferred {
+            self.vm.bind_statement(tls_sent);
+            self.vm.bind_statement(tls_recv);
+        }
         let traffic = Traffic::parse(tls_sent, tls_recv)?;
         let hello = traffic.hello()?;
         let claim: Claim = self
@@ -897,16 +1099,47 @@ impl<V: Vm<Binary> + Execute + Send> ProxyVerifier13<V> {
             .await
             .map_err(|e| err("failed to receive TLS 1.3 claim").with_source(e))?;
 
+        if self.deferred {
+            self.vm
+                .bind_statement(&bincode::serialize(&claim).map_err(vm_err)?);
+        }
         let mut schedule = self.schedule.take().expect("schedule allocated");
-        let (hs_keys, civ, siv) = schedule
-            .run(
+        let keys = schedule.keys.clone();
+        let (hs_keys, civ, siv, deferred_schedule) = if self.deferred {
+            let claimed: PublicKeys = self
+                .ctx
+                .io_mut()
+                .expect_next()
+                .await
+                .map_err(|e| err("missing public TLS keys").with_source(e))?;
+            self.vm
+                .bind_statement(&bincode::serialize(&claimed).map_err(vm_err)?);
+            schedule.assign_origo(
                 &mut self.vm,
-                &mut self.ctx,
-                hello.hash,
+                claimed.origo.clone(),
                 claim.handshake_hash,
                 None,
+            )?;
+            let public = (claimed.handshake(), claimed.civ, claimed.siv);
+            (
+                public.0,
+                public.1,
+                public.2,
+                Some(ScheduleProof { schedule, claimed }),
             )
-            .await?;
+        } else {
+            let (hs_keys, civ, siv) = schedule
+                .run(
+                    &mut self.vm,
+                    &mut self.ctx,
+                    hello.hash,
+                    claim.handshake_hash,
+                    None,
+                )
+                .await?;
+
+            (hs_keys, civ, siv, None)
+        };
 
         // The application keys were derived from the claimed hash; it must be
         // the hash of the handshake the verifier relayed and now decrypts.
@@ -928,8 +1161,9 @@ impl<V: Vm<Binary> + Execute + Send> ProxyVerifier13<V> {
             self.ctx,
             self.vm,
             TlsOutput {
-                keys: schedule.keys,
+                keys,
                 tls_transcript,
+                deferred_schedule,
             },
         ))
     }
@@ -938,6 +1172,61 @@ impl<V: Vm<Binary> + Execute + Send> ProxyVerifier13<V> {
 pub(crate) fn validate_sni(sent: &[u8], expected: &str) -> Result<(), TlsnError> {
     Traffic {
         sent: parse_records(sent)?,
+        recv: Vec::new(),
+    }
+    .validate_sni(expected)
+}
+
+/// Validates the entire public TLS 1.3 ClientHello before it leaves the notary.
+pub(crate) fn validate_open(sent: &[u8], expected: &str) -> Result<(), TlsnError> {
+    if sent.len() > 16 * 1024 {
+        return Err(peer("ClientHello too large"));
+    }
+    let records = parse_records(sent)?;
+    let (wire, used_records) = Traffic::plaintext_message(&records, 0)?;
+    if used_records != records.len() {
+        return Err(peer("extra records in public opening"));
+    }
+    let (message, used) = handshake_message(&wire)?;
+    let HandshakePayload::ClientHello(client) = message.payload else {
+        return Err(peer("expected ClientHello"));
+    };
+    if used != wire.len()
+        || client.has_duplicate_extension()
+        || client.get_psk().is_some()
+        || client.early_data_extension_offered()
+    {
+        return Err(peer("unsupported ClientHello policy"));
+    }
+    let versions = client
+        .extensions
+        .iter()
+        .find_map(|ext| match ext {
+            tls_core::msgs::handshake::ClientExtension::SupportedVersions(v) => Some(v),
+            _ => None,
+        })
+        .ok_or_else(|| peer("missing TLS versions"))?;
+    if !versions.contains(&ProtocolVersion::TLSv1_3) {
+        return Err(peer("opening requires TLS 1.3"));
+    }
+    if client
+        .extensions
+        .iter()
+        .any(|ext| ext.get_type().get_u16() == 0xfe0d)
+    {
+        return Err(peer("ECH is not supported"));
+    }
+    let shares = client
+        .get_keyshare_extension()
+        .ok_or_else(|| peer("missing key share"))?;
+    if shares.len() != 1
+        || shares[0].group != NamedGroup::secp256r1
+        || shares[0].payload.0.len() != 65
+    {
+        return Err(peer("opening requires one P-256 share"));
+    }
+    Traffic {
+        sent: records,
         recv: Vec::new(),
     }
     .validate_sni(expected)

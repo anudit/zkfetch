@@ -19,6 +19,11 @@ impl<COT> Sender<COT>
 where
     COT: RCOTSender<Block>,
 {
+    /// Access the protocol state to pipeline authenticated preprocessing flights.
+    pub fn core_mut(&mut self) -> &mut Core<COT> {
+        &mut self.core
+    }
+
     /// Creates a new Sender.
     ///
     /// # Arguments

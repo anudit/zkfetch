@@ -1,0 +1,130 @@
+{
+  "addedRttMs": 0,
+  "backend": "quicksilver",
+  "binius": false,
+  "logicalCpus": 12,
+  "maxRecv": null,
+  "maxSent": null,
+  "mode": "proxy",
+  "persistentVole": true,
+  "predicates": true,
+  "processLayout": "in process",
+  "protocolV2": true,
+  "requestedRuns": 4,
+  "reveal": true,
+  "runs": [
+    {
+      "bodyBytes": 722,
+      "fullMs": 232.83304199999998,
+      "index": 0,
+      "presentMs": 0.562917,
+      "presentationBytes": 6690,
+      "startMs": 1.238083,
+      "timings": {
+        "attestMs": 31.054041,
+        "notaryConnectMs": 6.879625000000001,
+        "prewarmed": false,
+        "proveMs": 61.651709,
+        "setupMs": 129.171125,
+        "tlsMs": 2.221458,
+        "totalMs": 230.978042,
+        "voleResumed": false
+      },
+      "trafficUpDownChanges": null,
+      "verified": true,
+      "verifyMs": 0.370166,
+      "warmup": true
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 90.704666,
+      "index": 1,
+      "presentMs": 0.233958,
+      "presentationBytes": 6690,
+      "startMs": 234.382375,
+      "timings": {
+        "attestMs": 29.419875,
+        "notaryConnectMs": 17.472167,
+        "prewarmed": false,
+        "proveMs": 30.965708000000003,
+        "setupMs": 0.195041,
+        "tlsMs": 11.900875,
+        "totalMs": 89.953708,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": null,
+      "verified": true,
+      "verifyMs": 0.329125,
+      "warmup": false
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 86.852166,
+      "index": 2,
+      "presentMs": 0.232333,
+      "presentationBytes": 6690,
+      "startMs": 325.33162500000003,
+      "timings": {
+        "attestMs": 29.039709000000002,
+        "notaryConnectMs": 14.602625,
+        "prewarmed": false,
+        "proveMs": 31.002791,
+        "setupMs": 0.161292,
+        "tlsMs": 11.246125,
+        "totalMs": 86.052583,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": null,
+      "verified": true,
+      "verifyMs": 0.331958,
+      "warmup": false
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 87.245958,
+      "index": 3,
+      "presentMs": 0.21845799999999999,
+      "presentationBytes": 6690,
+      "startMs": 412.430208,
+      "timings": {
+        "attestMs": 30.586916,
+        "notaryConnectMs": 14.291459,
+        "prewarmed": false,
+        "proveMs": 30.874,
+        "setupMs": 0.18770799999999999,
+        "tlsMs": 10.499417000000001,
+        "totalMs": 86.439542,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": null,
+      "verified": true,
+      "verifyMs": 0.379583,
+      "warmup": false
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 117.612291,
+      "index": 4,
+      "presentMs": 0.2575,
+      "presentationBytes": 6690,
+      "startMs": 500.011625,
+      "timings": {
+        "attestMs": 30.629458,
+        "notaryConnectMs": 26.556709,
+        "prewarmed": false,
+        "proveMs": 32.092209,
+        "setupMs": 0.192416,
+        "tlsMs": 27.280333,
+        "totalMs": 116.75116700000001,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": null,
+      "verified": true,
+      "verifyMs": 0.37316699999999997,
+      "warmup": false
+    }
+  ],
+  "tls": "1.3",
+  "warmup": 1,
+  "workload": "local TLS fixture /formats/json, hidden id >= 1000"
+}

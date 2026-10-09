@@ -28,6 +28,10 @@ pub struct FerretConfig {
     /// Whether to reserve bootstrap COTs.
     #[builder(default = "true")]
     reserve_bootstrap: bool,
+    /// Minimum correlations retained for subsequent extensions.
+    /// Does not change initial base-OT bootstrapping or LPN parameters.
+    #[builder(default = "0")]
+    reserve_count: usize,
     #[builder(setter(custom), default = "Arc::new(default_parameter_selector)")]
     param_selector: Arc<dyn Fn(LpnType, usize, usize) -> LpnParameters + Send + Sync + 'static>,
 }
@@ -46,6 +50,7 @@ impl Default for FerretConfig {
         Self {
             lpn_type: LpnType::Uniform,
             reserve_bootstrap: true,
+            reserve_count: 0,
             param_selector: Arc::new(default_parameter_selector),
         }
     }
@@ -91,6 +96,10 @@ impl FerretConfig {
             LpnType::Uniform => iteration_cost(self.lpn_type, UNIFORM_PARAMS[0]),
             LpnType::Regular => iteration_cost(self.lpn_type, REGULAR_PARAMS[0]),
         }
+    }
+
+    pub(crate) fn reserve_cost(&self) -> usize {
+        self.bootstrap_cost().max(self.reserve_count)
     }
 
     pub(crate) fn select_params(&self, available: usize, additional: usize) -> LpnParameters {

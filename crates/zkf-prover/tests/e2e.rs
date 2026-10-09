@@ -26,6 +26,7 @@ fn params(
     NotarizeParams {
         notary_url,
         persistent_vole: None,
+        protocol_v2: None,
         expected_notary_key: None,
         url: format!("https://{SERVER_DOMAIN}/formats/json"),
         method: None,
@@ -90,6 +91,7 @@ async fn notarize_present_verify() {
     let out = zkf_prover::notarize(NotarizeParams {
         notary_url,
         persistent_vole: None,
+        protocol_v2: None,
         expected_notary_key: None,
         url: format!("https://{SERVER_DOMAIN}/formats/json"),
         method: None,
@@ -885,7 +887,8 @@ async fn proxy_unreachable_server_fails_fast() {
         .expect("session must fail, not hang")
         .expect_err("server is unreachable");
     assert!(
-        format!("{err:#}").contains("notary connection"),
+        (format!("{err:#}").contains("notary connection")
+            || format!("{err:#}").contains("server closed the connection")),
         "unexpected error: {err:#}"
     );
 }
@@ -1158,4 +1161,34 @@ async fn persistent_vole_resumes_and_burns_cancelled_or_failed_sessions() {
     p.persistent_vole = Some(false);
     let out = zkf_prover::notarize(p).await.unwrap();
     assert!(!out.timings.vole_resumed);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn d4_budget_overflow_fails_without_interactive_proof_extension() {
+    let fixture = spawn_fixture_version(true).await;
+    let (notary_url, _) = spawn_proxy_notary(&fixture).await;
+    let mut request = params(notary_url, fixture, vec![]);
+    request.mode = Some("proxy".into());
+    request.tls_version = Some("1.3".into());
+    request.connect_addr = None;
+    request.headers = vec![("X-Padding".into(), "x".repeat(32 * 1024))];
+    // The same HTTP request remains valid through the unbounded legacy flow.
+    let mut legacy = request.clone();
+    legacy.protocol_v2 = Some(false);
+    zkf_prover::notarize(legacy)
+        .await
+        .expect("large request works with legacy extension");
+    tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        zkf_prover::notarize(request.clone()),
+    )
+    .await
+    .expect("oversized proof must fail promptly")
+    .expect_err("budget overflow must not attest");
+    // A failed allocation burns its lease rather than restoring prefill state.
+    request.headers.clear();
+    let next = zkf_prover::notarize(request)
+        .await
+        .expect("fresh fallback after overflow");
+    assert!(!next.timings.vole_resumed);
 }

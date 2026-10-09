@@ -14,6 +14,7 @@ pub(crate) use mpc::MpcTlsClient;
 
 mod proxy;
 use mpz_common::Context;
+pub use proxy::ProxyClientHello;
 pub(crate) use proxy::ProxyTlsClient;
 
 /// TLS client for MPC and proxy-based TLS implementations.

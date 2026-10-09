@@ -9,6 +9,9 @@ mod hmac;
 #[cfg(test)]
 mod test_utils;
 
+mod origo;
+pub use origo::{OrigoClaim, OrigoSchedule};
+
 mod config;
 pub use config::Mode;
 

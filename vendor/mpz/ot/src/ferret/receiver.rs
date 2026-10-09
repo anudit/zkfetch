@@ -20,6 +20,11 @@ impl<COT> Receiver<COT>
 where
     COT: RCOTReceiver<bool, Block>,
 {
+    /// Access the protocol state to pipeline authenticated preprocessing flights.
+    pub fn core_mut(&mut self) -> &mut Core<COT> {
+        &mut self.core
+    }
+
     /// Creates a new Receiver.
     ///
     /// # Arguments

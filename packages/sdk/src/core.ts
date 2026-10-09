@@ -39,6 +39,8 @@ export interface ZkConfig {
   notaryUrl: string;
   /** Reuse single-use in-memory Ferret state in proxy mode (default true). */
   persistentVole?: boolean;
+  /** FLOW2 batching and ORIGO TLS 1.3 schedule; false selects the conservative legacy flow. */
+  protocolV2?: boolean;
   /** Signing key pin, compressed SEC1 hex; required for remote sessions. */
   expectedNotaryKey?: string;
   /** Bound into the attestation (`zkf.owner`). */
@@ -248,6 +250,7 @@ function notarizeParams(
     binius: backend === "binius",
     reveal: zkConfig.reveal,
     tlsVersion: zkConfig.tlsVersion,
+    protocolV2: zkConfig.protocolV2,
     mode: zkConfig.mode,
     relayUrl: zkConfig.relayUrl,
   };

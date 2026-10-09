@@ -26,6 +26,7 @@ struct Options {
     predicates: bool,
     reveal: bool,
     persistent_vole: bool,
+    protocol_v2: bool,
     delay_ms: u64,
     rtt_ms: u64,
     out: PathBuf,
@@ -46,6 +47,7 @@ impl Options {
             predicates: true,
             reveal: false,
             persistent_vole: true,
+            protocol_v2: true,
             delay_ms: 0,
             rtt_ms: 0,
             out: "qs-baseline.json".into(),
@@ -55,6 +57,10 @@ impl Options {
         };
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
+            if arg == "--legacy-flow" {
+                opts.protocol_v2 = false;
+                continue;
+            }
             if arg == "--fresh-ot" {
                 opts.persistent_vole = false;
                 continue;
@@ -221,7 +227,7 @@ async fn run(
     let mut results = json!({
         "workload": "local TLS fixture /formats/json, hidden id >= 1000",
         "mode": opts.mode, "tls": opts.tls, "backend": "quicksilver", "binius": false,
-        "reveal": opts.reveal, "persistentVole": opts.persistent_vole, "addedRttMs": opts.rtt_ms,
+        "protocolV2": opts.protocol_v2, "reveal": opts.reveal, "persistentVole": opts.persistent_vole, "addedRttMs": opts.rtt_ms,
         "maxSent": opts.max_sent, "maxRecv": opts.max_recv,
         "predicates": opts.predicates, "warmup": opts.warmup, "requestedRuns": opts.runs,
         "processLayout": if opts.notary_url.is_some() { "separate processes" } else { "in process" },
@@ -237,6 +243,7 @@ async fn run(
             zkf_prover::notarize(NotarizeParams {
                 notary_url: notary_url.clone(),
                 persistent_vole: Some(opts.persistent_vole),
+                protocol_v2: Some(opts.protocol_v2),
                 expected_notary_key: Some(verify_opts.trusted_notary_keys[0].clone()),
                 url: format!("https://{SERVER_DOMAIN}/formats/json"),
                 method: None,

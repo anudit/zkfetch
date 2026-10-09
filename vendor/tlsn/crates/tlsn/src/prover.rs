@@ -42,12 +42,15 @@ use tracing::{Span, debug, info_span, instrument};
 
 const BUF_CAP: usize = 16 * 1024 * 1024;
 
+pub use client::ProxyClientHello;
+
 /// A prover instance.
 pub struct Prover<T: state::ProverState = state::Initialized> {
     config: ProverConfig,
     span: Span,
     ctx: Option<Context>,
     mux_handle: Handle,
+    low_latency: bool,
     state: T,
 }
 
@@ -78,12 +81,14 @@ impl Prover<state::Initialized> {
             span,
             ctx: Some(ctx),
             mux_handle,
+            low_latency: false,
             state: state::Initialized::default(),
         }
     }
 
     /// Uses an exclusively leased persistent Ferret pool for a proxy session.
     pub fn with_vole_pool(mut self, pool: &mut crate::vole_pool::ProverVolePool) -> Self {
+        self.low_latency = pool.low_latency;
         self.state.pool = Some(pool.session_handle());
         self
     }
@@ -111,25 +116,43 @@ impl Prover<state::Initialized> {
             return Err(Error::config().with_msg("persistent VOLE is supported only in proxy mode"));
         }
 
-        if let Some(pool) = &self.state.pool {
-            ctx.io_mut()
-                .send(pool.binding)
-                .await
-                .map_err(|e| Error::io().with_source(e))?;
+        let opened = self
+            .state
+            .pool
+            .as_ref()
+            .and_then(|p| p.opened_host.as_ref());
+        if let Some(host) = opened {
+            match config.clone().into() {
+                TlsCommitConfig::Proxy(c)
+                    if c.server_name().as_str() == host
+                        && c.tls_version() == tlsn_core::connection::TlsVersion::V1_3 => {}
+                _ => {
+                    return Err(Error::config()
+                        .with_msg("configuration differs from authenticated opening"));
+                }
+            }
         }
+        if opened.is_none() {
+            if let Some(pool) = &self.state.pool {
+                ctx.io_mut()
+                    .send(pool.binding)
+                    .await
+                    .map_err(|e| Error::io().with_source(e))?;
+            }
 
-        // Sends protocol configuration to verifier for compatibility check.
-        ctx.io_mut()
-            .send(TlsCommitRequestMsg {
-                config: config.clone().into(),
-                version: crate::VERSION.clone(),
-            })
-            .await
-            .map_err(|e| {
-                Error::io()
-                    .with_msg("commitment protocol failed to send request")
-                    .with_source(e)
-            })?;
+            // Sends protocol configuration to verifier for compatibility check.
+            ctx.io_mut()
+                .send(TlsCommitRequestMsg {
+                    config: config.clone().into(),
+                    version: crate::VERSION.clone(),
+                })
+                .await
+                .map_err(|e| {
+                    Error::io()
+                        .with_msg("commitment protocol failed to send request")
+                        .with_source(e)
+                })?;
+        }
 
         // The authenticated pool opening opts both peers into pipelined setup.
         // Config and Ferret initialization travel in the same outbound flight.
@@ -161,6 +184,7 @@ impl Prover<state::Initialized> {
             span: self.span,
             ctx: None,
             mux_handle: self.mux_handle,
+            low_latency: self.low_latency,
             state: state::CommitAccepted {
                 deps,
                 _pd: PhantomData,
@@ -212,6 +236,7 @@ impl Prover<state::CommitAccepted<Mpc>> {
         let prover = Prover {
             ctx: self.ctx,
             mux_handle: self.mux_handle,
+            low_latency: self.low_latency,
             config: self.config,
             span: self.span,
             state: state::Connected {
@@ -253,8 +278,26 @@ impl Prover<state::CommitAccepted<Proxy>> {
         self,
         config: TlsClientConfig,
     ) -> Result<(TlsConnection, Prover<state::Connected<Stream>>)> {
+        self.connect_inner(config, None)
+    }
+
+    /// Continues a TLS handshake whose ClientHello was sent in the opening.
+    pub fn connect_opened(
+        self,
+        config: TlsClientConfig,
+        hello: ProxyClientHello,
+    ) -> Result<(TlsConnection, Prover<state::Connected<Stream>>)> {
+        self.connect_inner(config, Some(hello))
+    }
+
+    fn connect_inner(
+        self,
+        config: TlsClientConfig,
+        hello: Option<ProxyClientHello>,
+    ) -> Result<(TlsConnection, Prover<state::Connected<Stream>>)> {
         let ProverDeps::Proxy(ProverProxyDeps {
             prover: proxy_prover,
+            pipeline_tls,
             id,
         }) = self.state.deps
         else {
@@ -269,8 +312,12 @@ impl Prover<state::CommitAccepted<Proxy>> {
         let server_name =
             TlsServerName::try_from(server_name.as_ref()).expect("name was validated");
 
-        let tls_client: Box<dyn TlsClient<Error = Error> + Send> =
-            Box::new(ProxyTlsClient::new(proxy_prover, &config, server_name)?);
+        let client = match hello {
+            Some(hello) => ProxyTlsClient::from_hello(proxy_prover, hello, true)?,
+            None => ProxyTlsClient::new(proxy_prover, &config, server_name)?,
+        };
+        let _ = pipeline_tls;
+        let tls_client: Box<dyn TlsClient<Error = Error> + Send> = Box::new(client);
 
         let control = ProverControl {
             decrypt: tls_client.decrypt(),
@@ -282,6 +329,7 @@ impl Prover<state::CommitAccepted<Proxy>> {
         let prover = Prover {
             ctx: self.ctx,
             mux_handle: self.mux_handle,
+            low_latency: self.low_latency,
             config: self.config,
             span: self.span,
             state: state::Connected {
@@ -364,6 +412,7 @@ where
             TlsOutput {
                 keys,
                 tls_transcript,
+                deferred_schedule,
             },
         ) = self
             .state
@@ -385,11 +434,13 @@ where
                 .with_source(err)
         })?;
 
-        vm.execute_all(&mut ctx).await.map_err(|err| {
-            Error::internal()
-                .with_msg("tag verification zk execution failed")
-                .with_source(err)
-        })?;
+        if deferred_schedule.is_none() {
+            vm.execute_all(&mut ctx).await.map_err(|err| {
+                Error::internal()
+                    .with_msg("tag verification zk execution failed")
+                    .with_source(err)
+            })?;
+        }
 
         debug!("verified tags from server");
 
@@ -404,8 +455,10 @@ where
             span: self.span,
             ctx: Some(ctx),
             mux_handle: self.mux_handle,
+            low_latency: self.low_latency,
             state: state::Committed {
                 vm,
+                deferred_schedule,
                 server_name: self.state.server_name,
                 keys,
                 tls_transcript,
@@ -546,6 +599,7 @@ impl Prover<state::Committed> {
             server_name,
             tls_transcript,
             transcript,
+            deferred_schedule,
             ..
         } = &mut self.state;
 
@@ -576,27 +630,37 @@ impl Prover<state::Committed> {
             transcript: partial_transcript,
         };
 
+        if self.low_latency {
+            vm.bind_statement(
+                &bincode::serialize(&msg).map_err(|e| Error::internal().with_source(e))?,
+            );
+        }
         ctx.io_mut().send(msg).await.map_err(|e| {
             Error::io()
                 .with_msg("failed to send prove configuration")
                 .with_source(e)
         })?;
-        ctx.io_mut()
-            .expect_next::<Response>()
-            .await
-            .map_err(|e| {
-                Error::io()
-                    .with_msg("failed to receive prove response from verifier")
-                    .with_source(e)
-            })?
-            .result
-            .map_err(|e| {
-                Error::user()
-                    .with_msg("proving rejected by verifier")
-                    .with_source(e)
-            })?;
+        if !self.low_latency {
+            ctx.io_mut()
+                .expect_next::<Response>()
+                .await
+                .map_err(|e| {
+                    Error::io()
+                        .with_msg("failed to receive prove response from verifier")
+                        .with_source(e)
+                })?
+                .result
+                .map_err(|e| {
+                    Error::user()
+                        .with_msg("proving rejected by verifier")
+                        .with_source(e)
+                })?;
+        }
 
         let output = prove::prove(ctx, vm, keys, transcript, tls_transcript, config).await?;
+        if let Some(schedule) = deferred_schedule.take() {
+            schedule.verify()?;
+        }
 
         Ok(output)
     }

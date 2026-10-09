@@ -11,6 +11,10 @@ pub struct NotarizeParams {
     /// Reuse in-memory Ferret bootstrap state in proxy mode (default true).
     #[serde(default)]
     pub persistent_vole: Option<bool>,
+    /// FLOW2 batching and ORIGO schedule (default true for pooled proxy TLS 1.3).
+    /// False retains the conservative v1 wire flow and full key schedule.
+    #[serde(default)]
+    pub protocol_v2: Option<bool>,
     /// Compressed SEC1 notary signing key, hex. Required for remote sessions.
     #[serde(default)]
     pub expected_notary_key: Option<String>,

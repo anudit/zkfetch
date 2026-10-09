@@ -122,6 +122,7 @@ impl ProverMpcDeps {
 
 /// Protocol dependencies for Proxy.
 pub(crate) struct ProverProxyDeps {
+    pub(crate) pipeline_tls: bool,
     pub(crate) prover: Box<AnyProxyProver>,
     pub(crate) id: ContextId,
 }
@@ -138,7 +139,7 @@ impl ProverProxyDeps {
         ctx: Context,
         pool: Option<&crate::vole_pool::ProverVolePool>,
     ) -> Self {
-        let vm = cfg_select! {
+        let mut vm = cfg_select! {
             tlsn_insecure => { mpz_ideal_vm::IdealVm::new() }
             _ => {{
                 let fresh;
@@ -148,13 +149,24 @@ impl ProverProxyDeps {
             }}
         };
 
+        if let Some(pool) = pool.filter(|p| p.low_latency) {
+            vm.bind_statement(&pool.binding);
+            vm.bind_statement(&bincode::serialize(config).expect("serializable proxy config"));
+        }
         let id = ctx.id().to_owned();
         let prover = match config.tls_version() {
             TlsVersion::V1_2 => AnyProxyProver::V12(ProxyProver::new(vm, ctx)),
-            TlsVersion::V1_3 => AnyProxyProver::V13(ProxyProver13::new(vm, ctx)),
+            TlsVersion::V1_3 => AnyProxyProver::V13(ProxyProver13::new(
+                vm,
+                ctx,
+                pool.is_some_and(|p| p.low_latency),
+                pool.and_then(|p| p.ready.clone()),
+                pool.and_then(|p| p.begin_proof.clone()),
+            )),
         };
 
         Self {
+            pipeline_tls: pool.is_some_and(|p| p.pipeline_tls),
             prover: Box::new(prover),
             id,
         }
@@ -164,7 +176,9 @@ impl ProverProxyDeps {
         self.prover.alloc()?;
 
         debug!("setting up proxy-tls");
-        self.prover.preprocess().await?;
+        if !self.pipeline_tls {
+            self.prover.preprocess().await?;
+        }
 
         Ok(())
     }
