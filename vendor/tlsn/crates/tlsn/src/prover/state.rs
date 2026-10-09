@@ -17,7 +17,10 @@ use crate::{
 };
 
 /// Entry state
-pub struct Initialized;
+#[derive(Default)]
+pub struct Initialized {
+    pub(crate) pool: Option<crate::vole_pool::ProverVolePool>,
+}
 
 opaque_debug::implement!(Initialized);
 

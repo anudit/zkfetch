@@ -8,6 +8,7 @@
 mod commit;
 mod present;
 mod rt;
+mod setup_pool;
 
 pub use present::present;
 
@@ -122,6 +123,7 @@ pub struct Prepared {
     handle: SessionHandle,
     driver_task: RemoteHandle<tlsn::Result<transport::ClientStream>>,
     prover: CommittedProver,
+    pool_lease: Option<setup_pool::ClientLease>,
 }
 
 enum CommittedProver {
@@ -135,6 +137,7 @@ struct SessionKey {
     notary_url: String,
     expected_notary_key: Option<String>,
     proxy: bool,
+    persistent_vole: bool,
     /// Proxy mode commits to the server name; MPC mode does not.
     proxy_host: Option<String>,
     max_sent: usize,
@@ -152,6 +155,7 @@ impl SessionKey {
             notary_url: params.notary_url.clone(),
             expected_notary_key: params.expected_notary_key.clone(),
             proxy,
+            persistent_vole: params.persistent_vole.unwrap_or(true),
             proxy_host: if proxy {
                 Some(Target::parse(&params.url)?.host)
             } else {
@@ -216,21 +220,43 @@ async fn prepare_with(params: &NotarizeParams, tls_version: TlsVersion) -> Resul
         bail!("remote sessions require expectedNotaryKey before MPC setup");
     }
     let mut notary = transport::connect(&params.notary_url).await?;
+    let opening = async {
+        if key.proxy && key.persistent_vole {
+            let cache_key = format!(
+                "{}|{:?}|{:?}",
+                key.notary_url, key.expected_notary_key, tls_version
+            );
+            if let Some(lease) = setup_pool::open(
+                &mut notary,
+                cache_key,
+                params.expected_notary_key.as_deref(),
+            )
+            .await?
+            {
+                return Ok::<_, anyhow::Error>(Some(lease));
+            }
+            // A verified legacy opening: reconnect without the pool extension.
+            notary = transport::connect(&params.notary_url).await?;
+        }
+        zkf_core::notary_auth::authenticate(&mut notary, params.expected_notary_key.as_deref())
+            .await?;
+        Ok(None)
+    };
     #[cfg(not(target_arch = "wasm32"))]
-    tokio::time::timeout(
-        std::time::Duration::from_secs(15),
-        zkf_core::notary_auth::authenticate(&mut notary, params.expected_notary_key.as_deref()),
-    )
-    .await
-    .context("notary authentication opening deadline exceeded")??;
+    let mut pool_lease = tokio::time::timeout(std::time::Duration::from_secs(15), opening)
+        .await
+        .context("notary authentication opening deadline exceeded")??;
     #[cfg(target_arch = "wasm32")]
-    zkf_core::notary_auth::authenticate(&mut notary, params.expected_notary_key.as_deref()).await?;
+    let mut pool_lease = opening.await?;
     let connect_ms = started.elapsed().as_secs_f64() * 1e3;
     let (driver, mut handle) = Session::new(notary).split();
     let mut driver_task = rt::spawn(driver);
 
     let setup_started = Instant::now();
-    let new_prover = handle.new_prover(ProverConfig::builder().build()?)?;
+    let mut new_prover = handle.new_prover(ProverConfig::builder().build()?)?;
+    if let Some(lease) = pool_lease.as_mut() {
+        new_prover = new_prover.with_vole_pool(&mut lease.pool);
+    }
     let prover = watch_notary(&mut driver_task, async {
         Ok(match &key.proxy_host {
             Some(host) => CommittedProver::Proxy(
@@ -242,7 +268,7 @@ async fn prepare_with(params: &NotarizeParams, tls_version: TlsVersion) -> Resul
                             .build()?,
                     )
                     .await
-                    .context("notary rejected the proxy session configuration")?,
+                    .context("proxy session setup on the notary connection failed")?,
             ),
             None => CommittedProver::Mpc(
                 new_prover
@@ -268,6 +294,7 @@ async fn prepare_with(params: &NotarizeParams, tls_version: TlsVersion) -> Resul
         handle,
         driver_task,
         prover,
+        pool_lease,
     })
 }
 
@@ -329,6 +356,7 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
         handle,
         mut driver_task,
         prover,
+        pool_lease,
     } = prepared;
     if key != SessionKey::new(&params)? {
         bail!(
@@ -368,6 +396,7 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
         notary_connect_ms: connect_ms,
         setup_ms,
         prewarmed,
+        vole_resumed: pool_lease.as_ref().is_some_and(|l| l.resumed),
         ..Default::default()
     };
 
@@ -611,6 +640,9 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
             hex::decode(expected)? == key.data,
             "attestation key differs from the interactive notary pin"
         );
+    }
+    if let Some(lease) = pool_lease {
+        lease.finish();
     }
     Ok(NotarizeOutput {
         attestation: b64::encode(bincode::serialize(&attestation)?),

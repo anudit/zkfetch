@@ -107,18 +107,25 @@ pin_project! {
     pub struct Io {
         #[pin]
         inner: Inner,
+        stats: std::sync::Arc<IoCounters>,
     }
 }
 
 impl Io {
     #[doc(hidden)]
     pub fn from_io<Io: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static>(io: Io) -> Self {
+        let stats = std::sync::Arc::new(IoCounters::default());
+        let io = CountedIo {
+            inner: io,
+            stats: stats.clone(),
+        };
         let framed = Box::new(LengthDelimitedCodec::builder().new_framed(io.compat()));
 
         Self {
             inner: Inner::Transport {
                 framed: Framed::new(framed, Bincode),
             },
+            stats,
         }
     }
 
@@ -127,6 +134,11 @@ impl Io {
         io: Io,
         max_frame_length: usize,
     ) -> Self {
+        let stats = std::sync::Arc::new(IoCounters::default());
+        let io = CountedIo {
+            inner: io,
+            stats: stats.clone(),
+        };
         let framed = Box::new(
             LengthDelimitedCodec::builder()
                 .max_frame_length(max_frame_length)
@@ -137,6 +149,7 @@ impl Io {
             inner: Inner::Transport {
                 framed: Framed::new(framed, Bincode),
             },
+            stats,
         }
     }
 
@@ -173,6 +186,7 @@ impl Io {
     pub(crate) fn from_channel(duplex: MemoryDuplex) -> Self {
         Self {
             inner: Inner::Memory { channel: duplex },
+            stats: Default::default(),
         }
     }
 
@@ -285,5 +299,100 @@ mod tests {
 
         assert_eq!(a.frame_limit().unwrap(), old_limit);
         assert_eq!(b.frame_limit().unwrap(), old_limit);
+    }
+}
+
+/// Counters for serialized protocol traffic, including length framing.
+#[derive(Debug, Default)]
+struct IoCounters {
+    sent: std::sync::atomic::AtomicU64,
+    received: std::sync::atomic::AtomicU64,
+    changes: std::sync::atomic::AtomicU64,
+    direction: std::sync::atomic::AtomicU8,
+}
+impl IoCounters {
+    fn record(&self, sent: bool, n: usize) {
+        use std::sync::atomic::Ordering::Relaxed;
+        if n == 0 {
+            return;
+        }
+        if sent { &self.sent } else { &self.received }.fetch_add(n as u64, Relaxed);
+        let dir = if sent { 1 } else { 2 };
+        let previous = self.direction.swap(dir, Relaxed);
+        if previous != 0 && previous != dir {
+            self.changes.fetch_add(1, Relaxed);
+        }
+    }
+    fn snapshot(&self) -> [u64; 3] {
+        use std::sync::atomic::Ordering::Relaxed;
+        [
+            self.sent.load(Relaxed),
+            self.received.load(Relaxed),
+            self.changes.load(Relaxed),
+        ]
+    }
+}
+struct CountedIo<S> {
+    inner: S,
+    stats: std::sync::Arc<IoCounters>,
+}
+impl<S: AsyncRead + Unpin> AsyncRead for CountedIo<S> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let result = Pin::new(&mut self.inner).poll_read(cx, buf);
+        if let Poll::Ready(Ok(n)) = result {
+            self.stats.record(false, n);
+        }
+        result
+    }
+}
+impl<S: AsyncWrite + Unpin> AsyncWrite for CountedIo<S> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let result = Pin::new(&mut self.inner).poll_write(cx, buf);
+        if let Poll::Ready(Ok(n)) = result {
+            self.stats.record(true, n);
+        }
+        result
+    }
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.inner).poll_flush(cx)
+    }
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.inner).poll_close(cx)
+    }
+}
+/// Measures an OT setup sub-step. Nested spans include their children's bytes.
+/// Direction changes describe this logical stream, not physical network RTTs.
+pub struct SetupStep {
+    stats: std::sync::Arc<IoCounters>,
+    before: [u64; 3],
+    started: web_time::Instant,
+    step: &'static str,
+}
+impl SetupStep {
+    /// Starts measuring a protocol sub-step without borrowing the I/O.
+    pub fn new(io: &Io, step: &'static str) -> Self {
+        Self {
+            stats: io.stats.clone(),
+            before: io.stats.snapshot(),
+            started: web_time::Instant::now(),
+            step,
+        }
+    }
+}
+impl Drop for SetupStep {
+    fn drop(&mut self) {
+        let after = self.stats.snapshot();
+        tracing::info!(target: "zkfetch::setup", step = self.step,
+            elapsed_ms = self.started.elapsed().as_secs_f64() * 1000.0,
+            sent_bytes = after[0] - self.before[0], received_bytes = after[1] - self.before[1],
+            direction_changes = after[2] - self.before[2], "setup sub-step");
     }
 }

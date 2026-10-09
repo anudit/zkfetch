@@ -48,6 +48,15 @@ chrome.webRequest.onBeforeSendHeaders.addListener((details): undefined => {
   void saveAuth({ token, source: "bearer", userId }).catch(console.error);
 }, { urls: TAB_URLS }, ["requestHeaders", "extraHeaders"]);
 
+const ICON_SIZES = [16, 32, 48, 128] as const;
+
+/** Swap the toolbar icon to contrast the OS theme; the icon has no background. */
+async function applyThemeIcon(theme: "dark" | "light"): Promise<void> {
+  const variant = theme === "dark" ? "light" : "dark";
+  const path = Object.fromEntries(ICON_SIZES.map(size => [size, `icons/icon-${variant}${size}.png`]));
+  await chrome.action.setIcon({ path });
+}
+
 async function handle(message: BackgroundRequest): Promise<BackgroundReply> {
   let tabs = await chrome.tabs.query({ url: TAB_URLS });
   if (message.type === "open-duolingo") {
@@ -73,6 +82,14 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, reply:
   // external page receives tokens or controls tabs through this handler.
   const panelPath = chrome.runtime.getManifest().side_panel?.default_path;
   if (!panelPath || sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(panelPath)) return false;
+  if (message?.type === "theme") {
+    // The toolbar icon has no background, so the panel reports the OS theme
+    // and the icon swaps to a contrasting mark. Fire-and-forget: no reply.
+    if (message.theme === "dark" || message.theme === "light") {
+      void applyThemeIcon(message.theme).catch(console.error);
+    }
+    return false;
+  }
   if (!["status", "auth", "open-duolingo"].includes(message?.type)) return false;
   handle(message).then(reply, () => reply({ ok: false, error: "Could not read the Duolingo session. Reopen the panel and try again." }));
   return true;

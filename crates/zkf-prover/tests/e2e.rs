@@ -25,6 +25,7 @@ fn params(
 ) -> NotarizeParams {
     NotarizeParams {
         notary_url,
+        persistent_vole: None,
         expected_notary_key: None,
         url: format!("https://{SERVER_DOMAIN}/formats/json"),
         method: None,
@@ -88,6 +89,7 @@ async fn notarize_present_verify() {
 
     let out = zkf_prover::notarize(NotarizeParams {
         notary_url,
+        persistent_vole: None,
         expected_notary_key: None,
         url: format!("https://{SERVER_DOMAIN}/formats/json"),
         method: None,
@@ -1104,4 +1106,56 @@ async fn reveal_with_binius_keeps_later_predicates() {
         assert!(v.recv.contains("John Doe"));
         assert!(!v.recv.contains("1234567890"));
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn persistent_vole_resumes_and_burns_cancelled_or_failed_sessions() {
+    let fixture = spawn_fixture_version(true).await;
+    let (notary_url, notary_key) = spawn_proxy_notary(&fixture).await;
+    let mut p = params(notary_url, String::new(), vec![gte("id", 1000)]);
+    p.connect_addr = None;
+    p.mode = Some("proxy".into());
+    p.tls_version = Some("1.3".into());
+    p.expected_notary_key = Some(notary_key.clone());
+    let opts = VerifyOptions {
+        trusted_notary_keys: vec![notary_key],
+        extra_root_certs: vec![b64::encode(CA_CERT_DER)],
+        ..Default::default()
+    };
+    let spec = RevealSpec {
+        response: ResponseReveal {
+            json_paths: vec!["information.name".into()],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    for i in 0..4 {
+        let out = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            zkf_prover::notarize(p.clone()),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(out.timings.vole_resumed, i != 0);
+        let presentation = zkf_prover::present(&out.attestation, &out.secrets, &spec).unwrap();
+        zkf_verifier::verify(&presentation, &opts).unwrap();
+        eprintln!(
+            "pool run {i}: setup={}ms resumed={}",
+            out.timings.setup_ms, out.timings.vole_resumed
+        );
+    }
+    // Dropping a prepared warm session consumes its ticket without publishing
+    // potentially partially consumed correlations back into the cache.
+    drop(zkf_prover::prepare(&p).await.unwrap());
+    let out = zkf_prover::notarize(p.clone()).await.unwrap();
+    assert!(!out.timings.vole_resumed);
+    let mut bad = p.clone();
+    bad.predicates = vec![gte("id", 9_999_999_999)];
+    assert!(zkf_prover::notarize(bad).await.is_err());
+    let out = zkf_prover::notarize(p.clone()).await.unwrap();
+    assert!(!out.timings.vole_resumed);
+    p.persistent_vole = Some(false);
+    let out = zkf_prover::notarize(p).await.unwrap();
+    assert!(!out.timings.vole_resumed);
 }

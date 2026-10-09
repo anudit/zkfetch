@@ -4,6 +4,9 @@
 //! --reveal (commit only what the presentation discloses) for controlled
 //! comparisons. Warmups are recorded but excluded from summaries.
 
+#[path = "profile_quicksilver/relay.rs"]
+mod relay;
+
 use std::{path::PathBuf, sync::Arc, time::Instant};
 
 use anyhow::{Context, Result, ensure};
@@ -22,7 +25,9 @@ struct Options {
     max_recv: Option<usize>,
     predicates: bool,
     reveal: bool,
+    persistent_vole: bool,
     delay_ms: u64,
+    rtt_ms: u64,
     out: PathBuf,
     notary_url: Option<String>,
     fixture_addr: Option<String>,
@@ -40,7 +45,9 @@ impl Options {
             max_recv: None,
             predicates: true,
             reveal: false,
+            persistent_vole: true,
             delay_ms: 0,
+            rtt_ms: 0,
             out: "qs-baseline.json".into(),
             notary_url: None,
             fixture_addr: None,
@@ -48,6 +55,10 @@ impl Options {
         };
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
+            if arg == "--fresh-ot" {
+                opts.persistent_vole = false;
+                continue;
+            }
             if arg == "--no-predicates" {
                 opts.predicates = false;
                 continue;
@@ -64,6 +75,7 @@ impl Options {
                 "--warmup" => opts.warmup = value.parse()?,
                 "--max-sent" => opts.max_sent = Some(value.parse()?),
                 "--max-recv" => opts.max_recv = Some(value.parse()?),
+                "--rtt-ms" => opts.rtt_ms = value.parse()?,
                 "--delay-ms" => opts.delay_ms = value.parse()?,
                 "--out" => opts.out = value.into(),
                 "--notary-url" => opts.notary_url = Some(value),
@@ -106,6 +118,11 @@ fn predicate(minimum: u64) -> PredicateSpec {
 }
 
 fn main() -> Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_thread_names(true)
+        .with_writer(std::io::stderr)
+        .try_init();
     let opts = Options::parse()?;
     if let (Some(url), Some(fixture), Some(key)) =
         (&opts.notary_url, &opts.fixture_addr, &opts.notary_key)
@@ -179,6 +196,12 @@ async fn run(
     notary_url: String,
     notary_key: String,
 ) -> Result<()> {
+    let (notary_url, relay_metrics) = if opts.rtt_ms > 0 {
+        let (url, counters) = relay::start(&notary_url, opts.rtt_ms).await?;
+        (url, Some(counters))
+    } else {
+        (notary_url, None)
+    };
     let ca = b64::encode(CA_CERT_DER);
     let predicates = if opts.predicates {
         vec![predicate(1000)]
@@ -198,7 +221,7 @@ async fn run(
     let mut results = json!({
         "workload": "local TLS fixture /formats/json, hidden id >= 1000",
         "mode": opts.mode, "tls": opts.tls, "backend": "quicksilver", "binius": false,
-        "reveal": opts.reveal,
+        "reveal": opts.reveal, "persistentVole": opts.persistent_vole, "addedRttMs": opts.rtt_ms,
         "maxSent": opts.max_sent, "maxRecv": opts.max_recv,
         "predicates": opts.predicates, "warmup": opts.warmup, "requestedRuns": opts.runs,
         "processLayout": if opts.notary_url.is_some() { "separate processes" } else { "in process" },
@@ -207,12 +230,14 @@ async fn run(
     let epoch = Instant::now();
     tokio::time::sleep(std::time::Duration::from_millis(opts.delay_ms)).await;
     for index in 0..opts.warmup + opts.runs {
+        let traffic_before = relay_metrics.as_ref().map(|m| m.snapshot());
         let started = Instant::now();
         let out = tokio::time::timeout(
             std::time::Duration::from_secs(60),
             zkf_prover::notarize(NotarizeParams {
                 notary_url: notary_url.clone(),
-                expected_notary_key: None,
+                persistent_vole: Some(opts.persistent_vole),
+                expected_notary_key: Some(verify_opts.trusted_notary_keys[0].clone()),
                 url: format!("https://{SERVER_DOMAIN}/formats/json"),
                 method: None,
                 headers: vec![],
@@ -261,9 +286,14 @@ async fn run(
                 "stronger claim accepted"
             );
         }
+        let traffic = relay_metrics.as_ref().zip(traffic_before).map(|(m, b)| {
+            let a = m.snapshot();
+            [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+        });
         let row = json!({
             "index": index, "warmup": index < opts.warmup,
             "startMs": started.duration_since(epoch).as_secs_f64() * 1000.0,
+            "trafficUpDownChanges": traffic,
             "timings": out.timings, "presentMs": present_ms, "verifyMs": verify_ms,
             "fullMs": started.elapsed().as_secs_f64() * 1000.0,
             "bodyBytes": out.response.body.len(),

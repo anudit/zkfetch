@@ -3,7 +3,7 @@ use mpz_common::{Context, ContextId};
 use mpz_core::Block;
 use mpz_garble_core::Delta;
 use mpz_ot::{
-    chou_orlandi as co, ferret, kos,
+    chou_orlandi as co, kos,
     rcot::shared::{SharedRCOTReceiver, SharedRCOTSender},
 };
 use std::sync::Arc;
@@ -35,7 +35,7 @@ cfg_select! {
         pub(crate) type ProverMpc =
             Garbler<DerandCOTSender<SharedRCOTSender<kos::Sender<co::Receiver>, Block>>>;
         pub(crate) type ProverZk =
-            Prover<SharedRCOTReceiver<ferret::Receiver<kos::Receiver<co::Sender>>, bool, Block>>;
+            Prover<SharedRCOTReceiver<crate::vole_pool::PooledReceiver, bool, Block>>;
     }
 }
 
@@ -57,22 +57,14 @@ impl ProverMpcDeps {
         let mut rng = rand::rng();
         let delta = Delta::new(Block::random(&mut rng));
 
-        let base_ot_send = co::Sender::default();
         let base_ot_recv = co::Receiver::default();
         let rcot_send = kos::Sender::new(
             kos::SenderConfig::default(),
             delta.into_inner(),
             base_ot_recv,
         );
-        let rcot_recv = kos::Receiver::new(kos::ReceiverConfig::default(), base_ot_send);
-        let rcot_recv = ferret::Receiver::new(
-            ferret::FerretConfig::builder()
-                .lpn_type(ferret::LpnType::Regular)
-                .build()
-                .expect("ferret config is valid"),
-            Block::random(&mut rng),
-            rcot_recv,
-        );
+        let pool = crate::vole_pool::ProverVolePool::new([0; 32]);
+        let rcot_recv = pool.receiver();
 
         let rcot_send = SharedRCOTSender::new(rcot_send);
         let rcot_recv = SharedRCOTReceiver::new(rcot_recv);
@@ -141,23 +133,17 @@ impl std::fmt::Debug for ProverProxyDeps {
 }
 
 impl ProverProxyDeps {
-    pub(crate) fn new(config: &ProxyTlsConfig, ctx: Context) -> Self {
+    pub(crate) fn new(
+        config: &ProxyTlsConfig,
+        ctx: Context,
+        pool: Option<&crate::vole_pool::ProverVolePool>,
+    ) -> Self {
         let vm = cfg_select! {
             tlsn_insecure => { mpz_ideal_vm::IdealVm::new() }
             _ => {{
-                let mut rng = rand::rng();
-
-                let base_ot_send = co::Sender::default();
-                let rcot_recv = kos::Receiver::new(kos::ReceiverConfig::default(), base_ot_send);
-                let rcot_recv = ferret::Receiver::new(
-                    ferret::FerretConfig::builder()
-                        .lpn_type(ferret::LpnType::Regular)
-                        .build()
-                        .expect("ferret config is valid"),
-                    Block::random(&mut rng),
-                    rcot_recv,
-                );
-                let rcot_recv = SharedRCOTReceiver::new(rcot_recv);
+                let fresh;
+                let pool = match pool { Some(pool) => pool, None => { fresh = crate::vole_pool::ProverVolePool::new([0; 32]); &fresh } };
+                let rcot_recv = SharedRCOTReceiver::new(pool.receiver());
                 ProverZk::new(Default::default(), rcot_recv)
             }}
         };

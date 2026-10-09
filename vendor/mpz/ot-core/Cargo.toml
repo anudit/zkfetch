@@ -1,0 +1,59 @@
+[package]
+name = "mpz-ot-core"
+version = "0.1.0-alpha.6"
+edition = "2024"
+
+
+[lib]
+name = "mpz_ot_core"
+
+[features]
+default = []
+rayon = ["dep:rayon", "mpz-core/rayon", "itybity/rayon", "blake3/rayon"]
+test-utils = []
+
+[dependencies]
+tracing = "0.1"
+zeroize = "1"
+mpz-core = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
+mpz-common = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6", features = ["future"] }
+clmul = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
+matrix-transpose = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
+
+aes = { version = "0.9.0-rc.1" }
+ctr = { version = "0.9" }
+blake3 = { version = "1.8.2", features = ["serde"] }
+cipher = { version = "0.5.0-rc.1" }
+rand = { version = "0.9" }
+rand_core = { version = "0.9" }
+rand_chacha = { version = "0.9" }
+rayon = { version = "1", optional = true }
+curve25519-dalek = { version = "4.1", features = ["serde", "rand_core"] }
+serde = { version = "1.0", features = ["derive"] }
+thiserror = { version = "1" }
+derive_builder = { version = "0.11" }
+itybity = { version = "0.3" }
+opaque-debug = { version = "0.3" }
+cfg-if = { version = "1" }
+bytemuck = { version = "1.13", features = ["derive"] }
+enum-try-as-inner = { version = "0.1.0" }
+futures = { version = "0.3" }
+tokio = { version = "1.23", default-features = false, features = ["sync"] }
+zerocopy = { version = "0.8" }
+
+[dev-dependencies]
+rstest = { version = "0.12" }
+criterion = { version = "0.5", default-features = false }
+pretty_assertions = { version = "1" }
+
+[[bench]]
+name = "ot"
+harness = false
+
+# Keep the vendored primitive's regression tests runnable independently.
+[workspace]
+
+[patch."https://github.com/privacy-ethereum/mpz"]
+mpz-core = { path = "../core" }
+mpz-common = { path = "../common" }
+clmul = { path = "../clmul" }

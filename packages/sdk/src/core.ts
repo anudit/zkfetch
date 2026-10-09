@@ -37,6 +37,8 @@ export interface ZkConfig {
   tlsVersion?: TlsVersionPreference;
   /** Notary WebSocket URL, e.g. `wss://notary.example`. */
   notaryUrl: string;
+  /** Reuse single-use in-memory Ferret state in proxy mode (default true). */
+  persistentVole?: boolean;
   /** Signing key pin, compressed SEC1 hex; required for remote sessions. */
   expectedNotaryKey?: string;
   /** Bound into the attestation (`zkf.owner`). */
@@ -230,6 +232,7 @@ function notarizeParams(
   const backend = checkedBackend(zkConfig.backend);
   return {
     notaryUrl: zkConfig.notaryUrl,
+    persistentVole: zkConfig.persistentVole,
     expectedNotaryKey: zkConfig.expectedNotaryKey,
     url,
     method: request.method,

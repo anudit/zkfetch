@@ -8,6 +8,7 @@ let cookie: { value: string } | null = null;
 let tabs: { id: number; windowId: number }[] = [];
 let created = 0;
 let focused = 0;
+let iconPath: unknown = undefined;
 let panelPath = "sidepanel.html";
 const extensionUrl = () => `chrome-extension://test/${panelPath}`;
 
@@ -34,6 +35,7 @@ globalThis.chrome = {
     getManifest: () => ({ side_panel: { default_path: panelPath } }),
     onMessage: { addListener: (fn: any) => { listeners.message = fn; } },
   },
+  action: { setIcon: async (options: { path: unknown }) => { iconPath = options.path; } },
 } as unknown as typeof chrome;
 await import("../src/background");
 
@@ -47,6 +49,7 @@ beforeEach(() => {
   cookie = null;
   tabs = [];
   created = focused = 0;
+  iconPath = undefined;
   panelPath = "sidepanel.html";
 });
 
@@ -109,6 +112,16 @@ test("an expired observed token is cleared when reading status", async () => {
 test("unrelated cookie changes cannot replace the Duolingo token", () => {
   listeners.cookie!({ removed: false, cookie: { name: "jwt_token", domain: "otherduolingo.com", value: "unrelated-token" } });
   expect(stored.auth).toBeUndefined();
+});
+
+test("theme reports swap the toolbar icon without a reply", async () => {
+  const dark = listeners.message!({ type: "theme", theme: "dark" }, { id: "test", url: extensionUrl() }, () => { throw new Error("theme must not reply"); });
+  expect(dark).toBe(false);
+  await Bun.sleep(0);
+  expect(iconPath).toEqual({ 16: "icons/icon-light16.png", 32: "icons/icon-light32.png", 48: "icons/icon-light48.png", 128: "icons/icon-light128.png" });
+  listeners.message!({ type: "theme", theme: "light" }, { id: "test", url: extensionUrl() }, () => {});
+  await Bun.sleep(0);
+  expect(iconPath).toEqual({ 16: "icons/icon-dark16.png", 32: "icons/icon-dark32.png", 48: "icons/icon-dark48.png", 128: "icons/icon-dark128.png" });
 });
 
 test("content scripts and external pages cannot request the token", () => {

@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 pub struct NotarizeParams {
     /// Notary WebSocket URL, e.g. `ws://127.0.0.1:7047`.
     pub notary_url: String,
+    /// Reuse in-memory Ferret bootstrap state in proxy mode (default true).
+    #[serde(default)]
+    pub persistent_vole: Option<bool>,
     /// Compressed SEC1 notary signing key, hex. Required for remote sessions.
     #[serde(default)]
     pub expected_notary_key: Option<String>,
@@ -94,6 +97,9 @@ pub struct NotarizeTimings {
     /// Connect and setup ran ahead of the request (`prepare`).
     #[serde(default)]
     pub prewarmed: bool,
+    /// Setup reused a single-use Ferret pool lease.
+    #[serde(default)]
+    pub vole_resumed: bool,
 }
 
 /// Result of notarization. `secrets` is sensitive: it opens every commitment.

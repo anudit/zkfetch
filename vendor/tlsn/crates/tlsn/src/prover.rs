@@ -78,8 +78,14 @@ impl Prover<state::Initialized> {
             span,
             ctx: Some(ctx),
             mux_handle,
-            state: state::Initialized,
+            state: state::Initialized::default(),
         }
+    }
+
+    /// Uses an exclusively leased persistent Ferret pool for a proxy session.
+    pub fn with_vole_pool(mut self, pool: &mut crate::vole_pool::ProverVolePool) -> Self {
+        self.state.pool = Some(pool.session_handle());
+        self
     }
 
     /// Starts the TLS commitment protocol.
@@ -100,6 +106,18 @@ impl Prover<state::Initialized> {
             .take()
             .ok_or_else(|| Error::internal().with_msg("commitment protocol context was dropped"))?;
 
+        if self.state.pool.is_some() && !matches!(config.clone().into(), TlsCommitConfig::Proxy(_))
+        {
+            return Err(Error::config().with_msg("persistent VOLE is supported only in proxy mode"));
+        }
+
+        if let Some(pool) = &self.state.pool {
+            ctx.io_mut()
+                .send(pool.binding)
+                .await
+                .map_err(|e| Error::io().with_source(e))?;
+        }
+
         // Sends protocol configuration to verifier for compatibility check.
         ctx.io_mut()
             .send(TlsCommitRequestMsg {
@@ -113,23 +131,27 @@ impl Prover<state::Initialized> {
                     .with_source(e)
             })?;
 
-        ctx.io_mut()
-            .expect_next::<Response>()
-            .await
-            .map_err(|e| {
-                Error::io()
-                    .with_msg("commitment protocol failed to receive response")
-                    .with_source(e)
-            })?
-            .result
-            .map_err(|e| {
-                Error::user()
-                    .with_msg("commitment protocol rejected by verifier")
-                    .with_source(e)
-            })?;
+        // The authenticated pool opening opts both peers into pipelined setup.
+        // Config and Ferret initialization travel in the same outbound flight.
+        if self.state.pool.is_none() {
+            ctx.io_mut()
+                .expect_next::<Response>()
+                .await
+                .map_err(|e| {
+                    Error::io()
+                        .with_msg("commitment protocol failed to receive response")
+                        .with_source(e)
+                })?
+                .result
+                .map_err(|e| {
+                    Error::user()
+                        .with_msg("commitment protocol rejected by verifier")
+                        .with_source(e)
+                })?;
+        }
 
         let commit_config: TlsCommitConfig = config.into();
-        let mut deps = ProverDeps::new(commit_config, ctx);
+        let mut deps = ProverDeps::new(commit_config, ctx, self.state.pool.as_ref());
         deps.setup().await?;
 
         debug!("setup complete");

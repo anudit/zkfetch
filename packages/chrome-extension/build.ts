@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import deployment from "../../infra/aws/deployment.json";
 
@@ -40,6 +40,9 @@ await Bun.write(join(dist, "manifest.json"), JSON.stringify(manifest, null, 2) +
 for (const file of ["sidepanel.html", "sidepanel.css"]) {
   cpSync(join(root, file), join(dist, file));
 }
+// Rebuild from scratch so renamed or removed icons do not linger.
+rmSync(join(dist, "icons"), { recursive: true, force: true });
+cpSync(join(root, "icons"), join(dist, "icons"), { recursive: true });
 cpSync(wasm, join(dist, "zkf_bg.wasm"));
 // Multi-threaded prover, loaded by the cross-origin isolated panel's worker.
 const threads = join(root, "../wasm/pkg-threads");

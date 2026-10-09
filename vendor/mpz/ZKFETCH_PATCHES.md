@@ -1,7 +1,7 @@
 # zkfetch patches to vendored mpz
 
 Base: `v0.1.0-alpha.6` (6ebfe61). `mpz-common`, `mpz-core`, `mpz-zk-core`, and
-`clmul` are vendored.
+`clmul`, `mpz-ot`, and `mpz-ot-core` are vendored.
 
 ## P1: single-threaded executor runner
 
@@ -46,3 +46,27 @@ both roles against the original code across segment boundaries.
 
 Measurements and reproducible profiling commands are in
 [`docs/quicksilver-hotspots-2026-10-08.md`](../../docs/quicksilver-hotspots-2026-10-08.md).
+
+
+## P5: persistent Ferret setup and setup profiling
+
+`mpz-ot` is vendored to instrument base OT, KOS extension, Ferret bootstrap
+and each tree/check round. `mpz-common::io::SetupStep` records elapsed time,
+serialized bytes (including length framing), and logical-stream direction
+changes. Parent spans include child traffic; do not sum both. These counters
+are not physical network RTT counts and framed read-ahead can attribute a few
+bytes to the preceding sub-step.
+
+`mpz-ot-core` now retires allocations served directly from buffered output;
+otherwise a warm pool accumulated already consumed allocations. The parameter
+selector still chooses the smallest reviewed parameter set that can satisfy
+actual allocated circuit gates and check masks. No LPN security parameters
+were reduced. `ferret_batch` logs requested/missing/retained counts and n/k/t.
+
+Consumed bootstrap/output tails are wiped before truncation. Retained Ferret,
+SPCOT and KOS buffers wipe on drop; KOS delta uses `Zeroizing`. AES PRG expanded
+keys enable AES's zeroize feature and its buffered output wipes on drop. OT
+transfer IDs fail on overflow. The protocol's cryptographic messages are
+unchanged; TLSN negotiates pool leases outside these primitives.
+
+Regression: `cargo test --manifest-path vendor/mpz/ot-core/Cargo.toml ferret::tests`.

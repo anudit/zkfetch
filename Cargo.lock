@@ -53,6 +53,7 @@ dependencies = [
  "cipher 0.5.2",
  "cpubits",
  "cpufeatures 0.3.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -2251,6 +2252,8 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",
+ "tracing",
+ "web-time 1.1.0",
 ]
 
 [[package]]
@@ -2276,6 +2279,7 @@ dependencies = [
  "rayon",
  "serde",
  "thiserror 1.0.69",
+ "zeroize",
 ]
 
 [[package]]
@@ -2438,7 +2442,6 @@ dependencies = [
 [[package]]
 name = "mpz-ot"
 version = "0.1.0-alpha.6"
-source = "git+https://github.com/privacy-ethereum/mpz?rev=v0.1.0-alpha.6#6ebfe619490c3155a589fc6a3be83b0976de19dc"
 dependencies = [
  "async-trait",
  "cfg-if",
@@ -2457,12 +2460,12 @@ dependencies = [
  "serio",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
 name = "mpz-ot-core"
 version = "0.1.0-alpha.6"
-source = "git+https://github.com/privacy-ethereum/mpz?rev=v0.1.0-alpha.6#6ebfe619490c3155a589fc6a3be83b0976de19dc"
 dependencies = [
  "aes 0.9.3",
  "blake3",
@@ -2487,7 +2490,9 @@ dependencies = [
  "serde",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
  "zerocopy",
+ "zeroize",
 ]
 
 [[package]]
@@ -3675,6 +3680,7 @@ version = "0.1.0-alpha.15"
 dependencies = [
  "aes 0.8.4",
  "aes-gcm 0.9.2",
+ "async-trait",
  "ctr 0.9.2",
  "futures",
  "futures-plex",
@@ -4739,8 +4745,12 @@ dependencies = [
  "rand 0.8.8",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
+ "tokio-util",
+ "tracing",
  "url",
+ "web-time 1.1.0",
  "ws_stream_tungstenite",
  "ws_stream_wasm",
 ]
@@ -4828,6 +4838,7 @@ dependencies = [
  "hex",
  "http-body-util",
  "hyper",
+ "rand 0.8.8",
  "serde",
  "serde_json",
  "tlsn",

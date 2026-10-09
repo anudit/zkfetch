@@ -20,6 +20,7 @@ hash-keccak256 = ["mpz-hash/keccak256"]
 hash-blake3 = ["mpz-hash/blake3"]
 
 [dependencies]
+async-trait = "0.1"
 zeroize = { workspace = true }
 tlsn-attestation = { workspace = true }
 tlsn-cipher = { workspace = true }

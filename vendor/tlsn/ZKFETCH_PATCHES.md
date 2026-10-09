@@ -171,3 +171,22 @@ circuits enforce strict UTF-8 and paired surrogate escapes. Captured/key-log
 secrets use zeroizing buffers; dropping a cancelled proxy client immediately
 removes its shared-secret registry entry. These changes have regression evidence,
 but do not replace an independent malicious-security review of these protocols.
+
+
+## Persistent proxy setup — 9 October 2026
+
+`vole_pool` exposes move-only prover/notary Ferret holders. Each fresh ZK VM
+gets a fresh SharedRCOT facade over the exclusively leased inner Ferret state,
+so retaining the pool does not add an idle participant to its adaptive barrier.
+An atomic lease guard rejects concurrent use. The correlation delta and Ferret
+PRG/SPCOT/transfer state remain paired; output consumed by a session is never
+returned to the pool. There is no serialization or snapshot restore path.
+
+The first-party authenticated opening signs device, ticket, monotonic lease
+index and a fresh nonce. Its digest is sent in the TLSN setup transcript and
+checked before accepting a proxy configuration. Pooled setup pipelines the
+configuration and Ferret initialization without waiting for a separate
+acceptance reply. Only negotiated pool sessions use this flow; legacy sessions
+retain their original wire messages. Rejections close the session and burn
+its lease. The host application retains pools only after successful proof and
+attestation exchange, with bounded per-capability caches and fresh-OT fallback.

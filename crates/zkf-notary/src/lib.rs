@@ -29,6 +29,21 @@ use tlsn::{
 use zkf_core::{EXT_CONTEXT, EXT_HANDSHAKE, EXT_MODE, EXT_OWNER, EXT_SERVER, transport};
 use zkf_predicates::quicksilver::{AttestedPredicates, EXT_QS};
 
+static VOLE_POOLS: std::sync::LazyLock<
+    zkf_core::setup_pool::PoolCache<tlsn::vole_pool::VerifierVolePool>,
+> = std::sync::LazyLock::new(|| {
+    zkf_core::setup_pool::PoolCache::new(16, std::time::Duration::from_secs(600))
+});
+
+fn pool_scope(config: &NotaryConfig, capability: &str) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    hash.update(b"zkfetch/pool-scope/v1\0");
+    hash.update(config.signing_key);
+    hash.update(capability.as_bytes());
+    hash.finalize().into()
+}
+
 /// Opens the notary's own connection to the server in proxy mode, where the
 /// notary relays the prover's TLS traffic.
 pub trait ServerConnector {
@@ -426,7 +441,19 @@ pub async fn serve(
                     .map_err(|_| anyhow::anyhow!("WebSocket handshake not completed in time"))??;
                 drop(setup_permit);
                 drop(pending_permit);
-                notarize(ws, &config, &*connector).await
+                let target = head
+                    .lines()
+                    .next()
+                    .and_then(|l| l.split_whitespace().nth(1))
+                    .unwrap_or("/");
+                let url = url::Url::parse(&format!("https://notary.invalid{target}"))?;
+                let capability = url
+                    .query_pairs()
+                    .find(|(k, _)| k == "capability")
+                    .map(|(_, v)| v.into_owned())
+                    .unwrap_or_default();
+                let scope = pool_scope(&config, &capability);
+                notarize_scoped(ws, &config, &*connector, scope).await
             })
             .await
             .unwrap_or_else(|_| Err(anyhow::anyhow!("session timed out after {timeout:?}")));
@@ -448,26 +475,53 @@ pub async fn serve(
 ///
 /// The session driver is polled alongside the protocol rather than spawned,
 /// so this runs on a single-threaded runtime (the Cloudflare Worker notary).
-pub async fn notarize<S, C>(mut socket: S, config: &NotaryConfig, connector: &C) -> Result<()>
+pub async fn notarize<S, C>(socket: S, config: &NotaryConfig, connector: &C) -> Result<()>
 where
     S: futures::AsyncRead + futures::AsyncWrite + Unpin + 'static,
     C: ServerConnector,
 {
+    notarize_scoped(socket, config, connector, pool_scope(config, "")).await
+}
+
+/// Runs a session scoped to an already authenticated admission capability.
+/// Hosts with external admission (e.g. Workers) must supply a distinct scope
+/// per tenant. Reuse is in-memory only and fails closed to fresh OT.
+pub async fn notarize_scoped<S, C>(
+    mut socket: S,
+    config: &NotaryConfig,
+    connector: &C,
+    scope: [u8; 32],
+) -> Result<()>
+where
+    S: futures::AsyncRead + futures::AsyncWrite + Unpin + 'static,
+    C: ServerConnector,
+{
+    let opening =
+        zkf_core::notary_auth::respond_pool(&mut socket, &config.signing_key, scope, &VOLE_POOLS);
     #[cfg(not(target_arch = "wasm32"))]
-    tokio::time::timeout(
-        OPENING_DEADLINE,
-        zkf_core::notary_auth::respond(&mut socket, &config.signing_key),
-    )
-    .await
-    .map_err(|_| anyhow::anyhow!("notary authentication opening deadline exceeded"))??;
+    let opening = tokio::time::timeout(OPENING_DEADLINE, opening)
+        .await
+        .map_err(|_| anyhow::anyhow!("notary authentication opening deadline exceeded"))??;
     #[cfg(target_arch = "wasm32")]
-    zkf_core::notary_auth::respond(&mut socket, &config.signing_key).await?;
+    let opening = opening.await?;
+    let mut pool_lease = opening.map(|(opening, cached)| {
+        let mut pool =
+            cached.unwrap_or_else(|| tlsn::vole_pool::VerifierVolePool::new(opening.binding));
+        pool.bind(opening.binding);
+        (opening, pool)
+    });
     let session = Session::new(socket);
     let (driver, mut handle) = session.split();
     // On failure the protocol future returns early and drops the driver.
     let (mut socket, (transcript_commitments, verified_predicates, tls_transcript, proxy_host)) =
-        futures::future::try_join(driver.err_into::<anyhow::Error>(), async move {
-            let out = verify_session(&mut handle, config, connector).await;
+        futures::future::try_join(driver.err_into::<anyhow::Error>(), async {
+            let out = verify_session(
+                &mut handle,
+                config,
+                connector,
+                pool_lease.as_mut().map(|(_, p)| p),
+            )
+            .await;
             // Reclaim the socket for the attestation exchange.
             handle.close();
             out
@@ -575,6 +629,9 @@ where
 
     let attestation = builder.build(&provider)?;
     transport::write_frame(&mut socket, &bincode::serialize(&attestation)?).await?;
+    if let Some((opening, pool)) = pool_lease {
+        VOLE_POOLS.put(scope, opening.request, pool);
+    }
     futures::AsyncWriteExt::close(&mut socket).await.ok();
 
     Ok(())
@@ -586,6 +643,7 @@ async fn verify_session<C: ServerConnector>(
     handle: &mut tlsn::SessionHandle,
     config: &NotaryConfig,
     connector: &C,
+    pool: Option<&mut tlsn::vole_pool::VerifierVolePool>,
 ) -> Result<(
     Vec<tlsn::transcript::TranscriptCommitment>,
     Vec<tlsn::transcript::TranscriptPredicate>,
@@ -601,7 +659,11 @@ async fn verify_session<C: ServerConnector>(
     let mut proxy_host = None;
     // The session configuration must arrive promptly; idle connections would
     // otherwise hold a slot for the whole session timeout (ZKF-09).
-    let commit = handle.new_verifier(verifier_config)?.commit();
+    let mut verifier = handle.new_verifier(verifier_config)?;
+    if let Some(pool) = pool {
+        verifier = verifier.with_vole_pool(pool);
+    }
+    let commit = verifier.commit();
     #[cfg(not(target_arch = "wasm32"))]
     let commit = async {
         tokio::time::timeout(OPENING_DEADLINE, commit)

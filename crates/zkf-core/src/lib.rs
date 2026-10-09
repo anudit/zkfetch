@@ -1,8 +1,9 @@
 //! Shared types, wire framing and transport used by the zkfetch prover,
 //! notary and verifier.
 
-pub mod parsing;
 pub mod notary_auth;
+pub mod parsing;
+pub mod setup_pool;
 pub mod transport;
 pub mod types;
 

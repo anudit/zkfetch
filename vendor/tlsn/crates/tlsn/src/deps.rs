@@ -20,10 +20,14 @@ pub(crate) enum ProverDeps {
 }
 
 impl ProverDeps {
-    pub(crate) fn new(config: TlsCommitConfig, ctx: Context) -> Self {
+    pub(crate) fn new(
+        config: TlsCommitConfig,
+        ctx: Context,
+        pool: Option<&crate::vole_pool::ProverVolePool>,
+    ) -> Self {
         match config {
             TlsCommitConfig::Mpc(config) => Self::Mpc(ProverMpcDeps::new(&config, ctx)),
-            TlsCommitConfig::Proxy(config) => Self::Proxy(ProverProxyDeps::new(&config, ctx)),
+            TlsCommitConfig::Proxy(config) => Self::Proxy(ProverProxyDeps::new(&config, ctx, pool)),
             _ => unreachable!("unknown TLS commit config variant"),
         }
     }
@@ -43,10 +47,16 @@ pub(crate) enum VerifierDeps {
 }
 
 impl VerifierDeps {
-    pub(crate) fn new(config: &TlsCommitConfig, ctx: Context) -> Self {
+    pub(crate) fn new(
+        config: &TlsCommitConfig,
+        ctx: Context,
+        pool: Option<&crate::vole_pool::VerifierVolePool>,
+    ) -> Self {
         match config {
             TlsCommitConfig::Mpc(config) => Self::Mpc(VerifierMpcDeps::new(config, ctx)),
-            TlsCommitConfig::Proxy(config) => Self::Proxy(VerifierProxyDeps::new(config, ctx)),
+            TlsCommitConfig::Proxy(config) => {
+                Self::Proxy(VerifierProxyDeps::new(config, ctx, pool))
+            }
             _ => unreachable!("unknown TLS commit config variant"),
         }
     }

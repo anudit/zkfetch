@@ -4,7 +4,7 @@ use mpz_common::{Context, ContextId};
 use mpz_core::Block;
 use mpz_garble_core::Delta;
 use mpz_ot::{
-    chou_orlandi as co, ferret, kos,
+    chou_orlandi as co, kos,
     rcot::shared::{SharedRCOTReceiver, SharedRCOTSender},
 };
 use std::sync::Arc;
@@ -35,7 +35,7 @@ cfg_select! {
         pub(crate) type VerifierMpc =
             Evaluator<DerandCOTReceiver<SharedRCOTReceiver<kos::Receiver<co::Sender>, bool, Block>>>;
         pub(crate) type VerifierZk =
-            Verifier<SharedRCOTSender<ferret::Sender<kos::Sender<co::Receiver>>, Block>>;
+            Verifier<SharedRCOTSender<crate::vole_pool::PooledSender, Block>>;
     }
 }
 
@@ -58,20 +58,8 @@ impl VerifierMpcDeps {
 
         let delta = Delta::random(&mut rng);
         let base_ot_send = co::Sender::default();
-        let base_ot_recv = co::Receiver::default();
-        let rcot_send = kos::Sender::new(
-            kos::SenderConfig::default(),
-            delta.into_inner(),
-            base_ot_recv,
-        );
-        let rcot_send = ferret::Sender::new(
-            ferret::FerretConfig::builder()
-                .lpn_type(ferret::LpnType::Regular)
-                .build()
-                .expect("ferret config is valid"),
-            Block::random(&mut rng),
-            rcot_send,
-        );
+        let pool = crate::vole_pool::VerifierVolePool::with_delta([0; 32], delta);
+        let rcot_send = pool.sender();
         let rcot_recv = kos::Receiver::new(kos::ReceiverConfig::default(), base_ot_send);
 
         let rcot_send = SharedRCOTSender::new(rcot_send);
@@ -140,29 +128,18 @@ impl std::fmt::Debug for VerifierProxyDeps {
 }
 
 impl VerifierProxyDeps {
-    pub(crate) fn new(config: &ProxyTlsConfig, ctx: Context) -> Self {
+    pub(crate) fn new(
+        config: &ProxyTlsConfig,
+        ctx: Context,
+        pool: Option<&crate::vole_pool::VerifierVolePool>,
+    ) -> Self {
         let vm = cfg_select! {
             tlsn_insecure => { mpz_ideal_vm::IdealVm::new() }
             _ => {{
-                let mut rng = rand::rng();
-                let delta = Delta::random(&mut rng);
-
-                let base_ot_recv = co::Receiver::default();
-                let rcot_send = kos::Sender::new(
-                    kos::SenderConfig::default(),
-                    delta.into_inner(),
-                    base_ot_recv,
-                );
-                let rcot_send = ferret::Sender::new(
-                    ferret::FerretConfig::builder()
-                        .lpn_type(ferret::LpnType::Regular)
-                        .build()
-                        .expect("ferret config is valid"),
-                    Block::random(&mut rng),
-                    rcot_send,
-                );
-                let rcot_send = SharedRCOTSender::new(rcot_send);
-                VerifierZk::new(Default::default(), delta, rcot_send)
+                let fresh;
+                let pool = match pool { Some(pool) => pool, None => { fresh = crate::vole_pool::VerifierVolePool::new([0; 32]); &fresh } };
+                let rcot_send = SharedRCOTSender::new(pool.sender());
+                VerifierZk::new(Default::default(), pool.delta(), rcot_send)
             }}
         };
 

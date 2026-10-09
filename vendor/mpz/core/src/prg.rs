@@ -19,9 +19,27 @@ struct PrgCore {
     counter: u64,
 }
 
+#[derive(Clone, Default)]
+struct SecretResults([u32; 4 * AesEncryptor::AES_BLOCK_COUNT]);
+impl AsRef<[u32]> for SecretResults {
+    fn as_ref(&self) -> &[u32] {
+        &self.0
+    }
+}
+impl AsMut<[u32]> for SecretResults {
+    fn as_mut(&mut self) -> &mut [u32] {
+        &mut self.0
+    }
+}
+impl Drop for SecretResults {
+    fn drop(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.0);
+    }
+}
+
 impl BlockRngCore for PrgCore {
     type Item = u32;
-    type Results = [u32; 4 * AesEncryptor::AES_BLOCK_COUNT];
+    type Results = SecretResults;
 
     // Compute 8 encrypted counter blocks at a time.
     #[inline(always)]
@@ -40,7 +58,7 @@ impl BlockRngCore for PrgCore {
             },
         );
         self.aes.encrypt_many_blocks(&mut states);
-        *results = bytemuck::cast(states);
+        results.0 = bytemuck::cast(states);
     }
 }
 

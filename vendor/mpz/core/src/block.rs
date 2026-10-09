@@ -559,3 +559,9 @@ mod tests {
         }
     }
 }
+
+impl zeroize::Zeroize for Block {
+    fn zeroize(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.0);
+    }
+}

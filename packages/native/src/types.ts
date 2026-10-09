@@ -16,6 +16,8 @@ export interface NotarizeParams {
    * connection (`relayUrl?target=host:port`). Proxy mode needs no relay. */
   relayUrl?: string;
   notaryUrl: string;
+  /** Reuse single-use in-memory Ferret state in proxy mode (default true). */
+  persistentVole?: boolean;
   /** Signing key pin, compressed SEC1 hex; required for remote sessions. */
   expectedNotaryKey?: string;
   url: string;
@@ -71,6 +73,8 @@ export interface NotarizeTimings {
   totalMs: number;
   /** Connect and setup ran ahead of the request (`prepare`); `totalMs` then excludes them. */
   prewarmed?: boolean;
+  /** Setup resumed reserved Ferret correlations instead of running base OT. */
+  voleResumed?: boolean;
 }
 
 export interface NotarizeOutput {

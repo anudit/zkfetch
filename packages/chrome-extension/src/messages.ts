@@ -4,7 +4,8 @@ import type { Auth } from "./auth";
 export type BackgroundRequest =
   | { type: "status" }
   | { type: "auth" }
-  | { type: "open-duolingo"; focus?: boolean };
+  | { type: "open-duolingo"; focus?: boolean }
+  | { type: "theme"; theme: "dark" | "light" };
 
 export interface Status {
   tabOpen: boolean;

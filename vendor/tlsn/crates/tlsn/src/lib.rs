@@ -53,6 +53,7 @@ mod session;
 pub(crate) mod tag;
 pub(crate) mod transcript_internal;
 pub mod verifier;
+pub mod vole_pool;
 
 pub use error::Error;
 pub use rangeset;

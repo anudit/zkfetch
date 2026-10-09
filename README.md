@@ -33,6 +33,7 @@ a notary that runs on a small ARM server (AWS Graviton, Mumbai).
 | **Single-threaded MPC** | A patched executor runs MPC without OS threads, for wasm hosts such as Workers. |
 | **Multi-threaded wasm** | A threaded browser build spreads OT work across Web Workers in cross-origin isolated contexts. |
 | **Prepared sessions** | `prepare()` runs the notary connection and preprocessing before the request, so a click only waits for TLS, proofs and attestation. |
+| **Persistent VOLE setup** | Proxy sessions retain unused Ferret correlations in memory across calls, skipping base OT, OT extension and the first Ferret tree round on the next session. The pool handshake includes the notary key challenge, and setup messages are pipelined. Measured with a local TLS 1.3 fixture at simulated 33 ms RTT (10 runs each): setup 513 → 138 ms (−73%), end-to-end notarization 963 → 585 ms (−39%), total traffic 2.21 → 1.32 MiB (−40%). Correlations use single-use, transcript-bound leases scoped to the device and capability token; consumed state is zeroized and missing pools fall back to fresh OT. Pools last for the process or wasm instance; hosted and browser timings are not yet measured. [Measurement report](docs/session-setup-2026-10-09.md). |
 | **Notary hardening** | The notary signs the session mode and, in proxy mode, the host it dialed (verifiers reject a different server name); dials only public addresses; caps relayed bytes, predicate work, sessions per client (429) and total sessions (503); and closes connections that do not start a session within 15 s. |
 | **Hosted notary** | The native notary on a `t4g.small` in `ap-south-1` behind Caddy (HTTPS), with scripts that create and delete it ([`infra/aws`](infra/aws)). |
 
@@ -135,7 +136,7 @@ console.log(result.serverName, result.json); // [{ path: "username", value: "…
 | --- | --- |
 | `zkFetch(url, init)` | A notarized `fetch`. Returns `Response & { zk: ZkSession }`. |
 | `res.zk.present(spec)` | Builds a presentation that discloses only what `spec` selects and proves `spec.prove`. |
-| `res.zk.timings` | Per-phase latency: connect, setup, TLS, proving, attestation. `prewarmed` marks connect and setup done ahead. |
+| `res.zk.timings` | Per-phase latency: connect, setup, TLS, proving, attestation. `prewarmed` marks connect and setup done ahead; `voleResumed` marks a warm Ferret pool. |
 | `prepare(url, zkConfig)` | Runs the notary connection and MPC preprocessing (most of the latency) before the request. Pass the result as `zkConfig.prepared`. Single use, expires after 80 s, falls back to a fresh session. wasm builds; a no-op on the native prover. |
 | `zkConfig.reveal` | The `present()` spec, if known at fetch time. Commits only to what it discloses, so proving is about half as expensive and hidden values are not committed at all. Later presentations can disclose that spec or less (whole headers, fields, target or body), never more. Binius sessions can still prove new predicates later. |
 | `res.zk.toJSON()` / `restoreResponse(data)` | Save a session and present it later. The JSON holds secrets; treat it like a credential. |
@@ -162,6 +163,30 @@ const prepared = prepare("https://api.example.com/me", zkConfig); // e.g. when a
 // ...later, on click:
 const res = await zkFetch("https://api.example.com/me", { headers, zkConfig: { ...zkConfig, prepared } });
 ```
+
+Proxy mode now reuses a single-use Ferret bootstrap pool automatically across
+successful calls in the same native process or wasm instance. The notary caches
+up to 16 pools, scoped to the admitted capability and device ticket; the client
+keeps up to four, scoped to endpoint, key pin and TLS version. Idle entries expire
+after ten minutes and are purged on cache access. A restart, eviction, cancelled
+session, failed proof or stale ticket uses fresh OT. Correlations stay in memory
+and are never serialized to disk, localStorage or a presentation.
+
+Set `zkConfig.persistentVole: false` for a fresh-OT baseline. Pool negotiation
+shares the key-possession challenge exchange, and setup pipelines configuration
+with Ferret initialization. An authenticated legacy notary triggers a fresh
+connection using the original setup flow. `prepare()` also uses the pool.
+
+For sub-step counters and a reproducible 33 ms RTT comparison:
+
+```sh
+RUST_LOG=zkfetch::setup=info cargo run --release -p zkf-prover --example profile_quicksilver -- --reveal --rtt-ms 33 --runs 10 --out /tmp/pool.json
+# Add --fresh-ot for the baseline; omit --rtt-ms for local compute.
+```
+
+The counters distinguish base OT, OT extension, Ferret bootstrap and tree
+rounds, and key authentication. See [the setup measurements](docs/session-setup-2026-10-09.md)
+for measured savings and remaining costs.
 
 Browsers cannot open TCP sockets. Proxy mode works everywhere because the
 notary dials the server. MPC mode in a browser needs `zkConfig.relayUrl`, a

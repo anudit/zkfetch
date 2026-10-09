@@ -62,8 +62,14 @@ impl Verifier<state::Initialized> {
             span,
             ctx: Some(ctx),
             mux_handle,
-            state: state::Initialized,
+            state: state::Initialized::default(),
         }
+    }
+
+    /// Uses an exclusively leased persistent Ferret pool for a proxy session.
+    pub fn with_vole_pool(mut self, pool: &mut crate::vole_pool::VerifierVolePool) -> Self {
+        self.state.pool = Some(pool.session_handle());
+        self
     }
 
     /// Starts the TLS commitment protocol.
@@ -77,6 +83,17 @@ impl Verifier<state::Initialized> {
             .take()
             .ok_or_else(|| Error::internal().with_msg("commitment protocol context was dropped"))?;
 
+        if let Some(pool) = &self.state.pool {
+            let binding: [u8; 32] = ctx
+                .io_mut()
+                .expect_next()
+                .await
+                .map_err(|e| Error::io().with_source(e))?;
+            if binding != pool.binding {
+                return Err(Error::config().with_msg("persistent pool lease binding mismatch"));
+            }
+        }
+
         // Receives protocol configuration from prover to perform compatibility check.
         let TlsCommitRequestMsg { config, version } =
             ctx.io_mut().expect_next().await.map_err(|e| {
@@ -84,6 +101,10 @@ impl Verifier<state::Initialized> {
                     .with_msg("commitment protocol failed to receive request")
                     .with_source(e)
             })?;
+
+        if self.state.pool.is_some() && !matches!(&config, TlsCommitConfig::Proxy(_)) {
+            return Err(Error::config().with_msg("persistent VOLE is supported only in proxy mode"));
+        }
 
         if version != *crate::VERSION {
             let msg = format!(
@@ -110,6 +131,7 @@ impl Verifier<state::Initialized> {
                 mux_handle: self.mux_handle,
                 state: state::CommitStart {
                     config,
+                    pool: self.state.pool,
                     _pd: PhantomData,
                 },
             }),
@@ -120,6 +142,7 @@ impl Verifier<state::Initialized> {
                 mux_handle: self.mux_handle,
                 state: state::CommitStart {
                     config,
+                    pool: self.state.pool,
                     _pd: PhantomData,
                 },
             }),
@@ -147,13 +170,15 @@ impl<P> Verifier<state::CommitStart<P>> {
             .take()
             .ok_or_else(|| Error::internal().with_msg("commitment protocol context was dropped"))?;
 
-        ctx.io_mut().send(Response::ok()).await.map_err(|e| {
-            Error::io()
-                .with_msg("commitment protocol failed to send acceptance")
-                .with_source(e)
-        })?;
+        if self.state.pool.is_none() {
+            ctx.io_mut().send(Response::ok()).await.map_err(|e| {
+                Error::io()
+                    .with_msg("commitment protocol failed to send acceptance")
+                    .with_source(e)
+            })?;
+        }
 
-        let mut deps = VerifierDeps::new(&self.state.config, ctx);
+        let mut deps = VerifierDeps::new(&self.state.config, ctx, self.state.pool.as_ref());
         deps.setup().await?;
 
         debug!("setup complete");

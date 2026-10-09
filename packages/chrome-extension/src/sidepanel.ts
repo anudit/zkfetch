@@ -28,6 +28,19 @@ const MAX_UNUSED_PREPARES = 2;
 
 const duration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${ms.toFixed(1)} ms`;
 
+// The toolbar icon has no background, so it follows the OS theme: a dark
+// mark on light themes, a white mark on dark themes.
+function checkTheme() {
+  const isDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  void chrome.runtime.sendMessage({ type: "theme", theme: isDarkMode ? "dark" : "light" } satisfies BackgroundRequest);
+}
+
+// Check on initial load.
+checkTheme();
+
+// Listen for system theme changes in real-time.
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", checkTheme);
+
 function indicator(id: string, text: string, state: "live" | "offline" | "checking") {
   const output = element(id);
   output.textContent = text;
@@ -131,6 +144,7 @@ function showProof(reply: Proof) {
   element("verify-time").textContent = "—";
   element<HTMLTextAreaElement>("proof").value = proof.presentation;
   const ahead = proof.timings.prewarmed ? " (ahead)" : "";
+  const pool = proof.timings.voleResumed ? "warm VOLE pool" : "fresh OT";
   const phases = [
     [`Notary connect${ahead}`, proof.timings.notaryConnectMs],
     [`Setup${ahead}`, proof.timings.setupMs],
@@ -141,7 +155,7 @@ function showProof(reply: Proof) {
     ["Presentation", proof.presentMs],
   ] as const;
   const threads = proof.threads ? `${proof.threads} threads` : "1 thread";
-  element("timings").textContent = `TLS ${proof.tlsVersion ?? "auto"} · QuickSilver · proxy · ${threads}\n\n${phases.map(([label, ms]) => `${label.padEnd(19)}${duration(ms)}`).join("\n")}`;
+  element("timings").textContent = `TLS ${proof.tlsVersion ?? "auto"} · QuickSilver · proxy · ${threads} · ${pool}\n\n${phases.map(([label, ms]) => `${label.padEnd(19)}${duration(ms)}`).join("\n")}`;
   indicator("verification", "Unverified", "checking");
 }
 

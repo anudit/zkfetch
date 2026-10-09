@@ -17,13 +17,17 @@ use crate::deps::{VerifierDeps, VerifierZk};
 pub trait VerifierState: sealed::Sealed {}
 
 /// Initialized state.
-pub struct Initialized;
+#[derive(Default)]
+pub struct Initialized {
+    pub(crate) pool: Option<crate::vole_pool::VerifierVolePool>,
+}
 
 opaque_debug::implement!(Initialized);
 
 /// State after receiving protocol configuration from the prover.
 pub struct CommitStart<C> {
     pub(crate) config: TlsCommitConfig,
+    pub(crate) pool: Option<crate::vole_pool::VerifierVolePool>,
     pub(crate) _pd: PhantomData<C>,
 }
 
