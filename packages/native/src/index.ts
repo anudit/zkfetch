@@ -15,6 +15,7 @@ const addon = createRequire(import.meta.url)(join(import.meta.dir, "..", "zkf.no
 
 export async function notarize(params: NotarizeParams): Promise<NotarizeOutput> {
   validatePredicates(params.predicates);
+  validatePredicates(params.reveal?.prove);
   return JSON.parse(await addon.notarize(JSON.stringify(params)));
 }
 

@@ -29,88 +29,22 @@ pub fn present(attestation_b64: &str, secrets_b64: &str, spec: &RevealSpec) -> R
     let transcript = HttpTranscript::parse(secrets.transcript())?;
     let mut builder = secrets.transcript_proof_builder();
 
-    // Request: structure, method, header names and managed headers are always revealed.
-    let request = transcript
-        .requests
-        .first()
-        .ok_or_else(|| anyhow!("no HTTP request"))?;
-    builder.reveal_sent(request.without_data())?;
-    if spec.request.target {
-        builder.reveal_sent(request.request.target.indices().clone())?;
+    let shape_proofs = AttestedPredicates::from_attestation(&attestation)?.is_some();
+    let units = disclosure_units(&transcript, spec, shape_proofs)?;
+    let sent = units.sent();
+    let recv = units.recv();
+    if !sent.is_empty() {
+        builder.reveal_sent(&sent).context(UNCOMMITTED)?;
     }
-    for header in &request.headers {
-        let name = header.name.as_str().to_ascii_lowercase();
-        if MANAGED_REQUEST_HEADERS.contains(&name.as_str())
-            || contains(&spec.request.headers, &name)
-        {
-            builder.reveal_sent(header.indices().clone())?;
-        } else {
-            builder.reveal_sent(header.without_value().indices().clone())?;
-        }
+    if !recv.is_empty() {
+        builder.reveal_recv(&recv).context(UNCOMMITTED)?;
     }
-    if spec.request.body
-        && let Some(body) = &request.body
-    {
-        builder.reveal_sent(body.indices().clone())?;
-    }
-
-    // Response: status line, structure and framing headers always revealed.
     let response = transcript
         .responses
         .first()
         .ok_or_else(|| anyhow!("no HTTP response"))?;
-    builder.reveal_recv(response.without_data())?;
-    for header in &response.headers {
-        let name = header.name.as_str().to_ascii_lowercase();
-        if FRAMING_HEADERS.contains(&name.as_str()) || contains(&spec.response.headers, &name) {
-            builder.reveal_recv(header.indices().clone())?;
-        } else {
-            builder.reveal_recv(header.without_value().indices().clone())?;
-        }
-    }
 
-    // With attested shape proofs, disclosing JSON fields also reveals the
-    // skeleton (keys and punctuation, not values) so the verifier can prove
-    // each value's path. Without it a disclosure proves bytes, not a path.
-    anyhow::ensure!(
-        !spec.response.byte_only || spec.prove.is_empty(),
-        "byteOnly cannot be combined with path predicates"
-    );
-    let shape_proofs = AttestedPredicates::from_attestation(&attestation)?.is_some();
-    if let Some(body) = &response.body {
-        if !spec.prove.is_empty()
-            || (shape_proofs && !spec.response.byte_only && !spec.response.json_paths.is_empty())
-        {
-            let BodyContent::Json(doc) = &body.content else {
-                bail!("predicates require a JSON response");
-            };
-            let mut structure = body.indices().clone();
-            use tlsn::rangeset::ops::Set;
-            for leaf in zkf_predicates::leaves(&doc.root) {
-                structure = structure.difference(leaf.view().indices()).collect();
-            }
-            if !structure.is_empty() {
-                builder.reveal_recv(structure)?;
-            }
-        }
-        if spec.response.body {
-            builder.reveal_recv(body.indices().clone())?;
-        } else if !spec.response.json_paths.is_empty() {
-            let BodyContent::Json(doc) = &body.content else {
-                bail!("jsonPaths requested but the response body is not JSON");
-            };
-            zkf_predicates::validate_keys(&doc.root)?;
-            for path in &spec.response.json_paths {
-                let ranges = json_key_value(&doc.root, path)
-                    .ok_or_else(|| anyhow!("json path `{path}` not found"))?;
-                builder.reveal_recv(ranges)?;
-            }
-        }
-    } else if spec.response.body || !spec.response.json_paths.is_empty() || !spec.prove.is_empty() {
-        bail!("response has no body");
-    }
-
-    let transcript_proof = builder.build()?;
+    let transcript_proof = builder.build().context(UNCOMMITTED)?;
     let provider = CryptoProvider::default();
     let predicate_data = if spec.prove.is_empty() {
         None
@@ -188,6 +122,165 @@ pub fn present(attestation_b64: &str, secrets_b64: &str, spec: &RevealSpec) -> R
         None => bytes,
     };
     Ok(b64::encode(bytes))
+}
+
+const UNCOMMITTED: &str = "the presentation discloses bytes that were not committed at fetch time; \
+     a session fetched with `reveal` can disclose only what that spec selected, \
+     or less by whole headers, fields, target or body";
+
+/// What a [`RevealSpec`] discloses, as independently openable units per
+/// direction. `present` reveals their union; a fetch with `reveal` commits
+/// each unit separately, so a later presentation may drop whole units.
+pub(crate) struct DisclosureUnits {
+    pub(crate) sent: Vec<RangeSet<usize>>,
+    pub(crate) recv: Vec<RangeSet<usize>>,
+}
+
+impl DisclosureUnits {
+    fn sent(&self) -> RangeSet<usize> {
+        union(&self.sent)
+    }
+
+    fn recv(&self) -> RangeSet<usize> {
+        union(&self.recv)
+    }
+
+    /// Makes the units pairwise disjoint (each keeps only the bytes no
+    /// earlier unit covers) and drops empty ones, so each byte is hashed once.
+    pub(crate) fn disjoint(self) -> Self {
+        Self {
+            sent: disjoint_units(self.sent),
+            recv: disjoint_units(self.recv),
+        }
+    }
+}
+
+fn union(units: &[RangeSet<usize>]) -> RangeSet<usize> {
+    let mut all = RangeSet::default();
+    for unit in units {
+        all.union_mut(unit);
+    }
+    all
+}
+
+fn disjoint_units(units: Vec<RangeSet<usize>>) -> Vec<RangeSet<usize>> {
+    use tlsn::rangeset::ops::Set;
+    let mut seen = RangeSet::default();
+    let mut out = Vec::new();
+    for unit in units {
+        let unit: RangeSet<usize> = unit.difference(&seen).collect();
+        if !unit.is_empty() {
+            seen.union_mut(&unit);
+            out.push(unit);
+        }
+    }
+    out
+}
+
+/// The JSON skeleton: body bytes that are not scalar leaves.
+pub(crate) fn skeleton(body: &tlsn_formats::http::Body, doc: &JsonValue) -> RangeSet<usize> {
+    use tlsn::rangeset::ops::Set;
+    let mut structure = body.indices().clone();
+    for leaf in zkf_predicates::leaves(doc) {
+        structure = structure.difference(leaf.view().indices()).collect();
+    }
+    structure
+}
+
+/// Maps `spec` onto transcript ranges. The first unit of each direction is
+/// what every presentation reveals (HTTP structure, method, header names,
+/// managed and framing headers); the JSON skeleton, when needed, comes next.
+pub(crate) fn disclosure_units(
+    transcript: &HttpTranscript,
+    spec: &RevealSpec,
+    shape_proofs: bool,
+) -> Result<DisclosureUnits> {
+    // Request: structure, method, header names and managed headers are always revealed.
+    let request = transcript
+        .requests
+        .first()
+        .ok_or_else(|| anyhow!("no HTTP request"))?;
+    let mut base: RangeSet<usize> = request.without_data().into();
+    let mut sent = Vec::new();
+    if spec.request.target {
+        sent.push(request.request.target.indices().clone());
+    }
+    for header in &request.headers {
+        let name = header.name.as_str().to_ascii_lowercase();
+        if MANAGED_REQUEST_HEADERS.contains(&name.as_str()) {
+            base.union_mut(header.indices());
+        } else {
+            base.union_mut(header.without_value().indices());
+            if contains(&spec.request.headers, &name) {
+                sent.push(header.indices().clone());
+            }
+        }
+    }
+    if spec.request.body
+        && let Some(body) = &request.body
+    {
+        sent.push(body.indices().clone());
+    }
+    sent.insert(0, base);
+
+    // Response: status line, structure and framing headers always revealed.
+    let response = transcript
+        .responses
+        .first()
+        .ok_or_else(|| anyhow!("no HTTP response"))?;
+    let mut base: RangeSet<usize> = response.without_data().into();
+    let mut recv = Vec::new();
+    for header in &response.headers {
+        let name = header.name.as_str().to_ascii_lowercase();
+        if FRAMING_HEADERS.contains(&name.as_str()) {
+            base.union_mut(header.indices());
+        } else {
+            base.union_mut(header.without_value().indices());
+            if contains(&spec.response.headers, &name) {
+                recv.push(header.indices().clone());
+            }
+        }
+    }
+
+    // With attested shape proofs, disclosing JSON fields also reveals the
+    // skeleton (keys and punctuation, not values) so the verifier can prove
+    // each value's path. Without it a disclosure proves bytes, not a path.
+    anyhow::ensure!(
+        !spec.response.byte_only || spec.prove.is_empty(),
+        "byteOnly cannot be combined with path predicates"
+    );
+    let mut structure = None;
+    if let Some(body) = &response.body {
+        if !spec.prove.is_empty()
+            || (shape_proofs && !spec.response.byte_only && !spec.response.json_paths.is_empty())
+        {
+            let BodyContent::Json(doc) = &body.content else {
+                bail!("predicates require a JSON response");
+            };
+            structure = Some(skeleton(body, &doc.root));
+        }
+        if spec.response.body {
+            recv.push(body.indices().clone());
+        } else if !spec.response.json_paths.is_empty() {
+            let BodyContent::Json(doc) = &body.content else {
+                bail!("jsonPaths requested but the response body is not JSON");
+            };
+            zkf_predicates::validate_keys(&doc.root)?;
+            for path in &spec.response.json_paths {
+                recv.push(
+                    json_key_value(&doc.root, path)
+                        .ok_or_else(|| anyhow!("json path `{path}` not found"))?,
+                );
+            }
+        }
+    } else if spec.response.body || !spec.response.json_paths.is_empty() || !spec.prove.is_empty() {
+        bail!("response has no body");
+    }
+    if let Some(structure) = structure.filter(|s| !s.is_empty()) {
+        recv.insert(0, structure);
+    }
+    recv.insert(0, base);
+    Ok(DisclosureUnits { sent, recv })
 }
 
 fn contains(list: &[String], name: &str) -> bool {

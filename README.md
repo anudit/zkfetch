@@ -26,6 +26,7 @@ a notary that runs on a small ARM server (AWS Graviton, Mumbai).
 | **QuickSilver predicates** | Numeric (`gte`, `gt`) and JSON-shape proofs over hidden plaintext, checked by the notary during the session and signed into the attestation. The default backend. |
 | **Binius64 predicates** | Opt-in. Per-leaf BLAKE3 commitments let the user prove new predicates later, offline, without the notary. |
 | **JSON selective disclosure** | Reveal by dotted path (`users.0.username`), including array elements. With the default QuickSilver backend the notary attests the shape of every JSON value, so `verify()` returns each disclosed value with a proven path (`result.json`). Disclosing a field therefore also reveals the response's keys and punctuation, not its other values. |
+| **Commit only what you disclose** | `zkConfig.reveal` declares the `present()` spec at fetch time, and the prover commits one BLAKE3 commitment per disclosed unit (header, JSON field, target, body, skeleton) instead of one per header and JSON node. Hidden values are not committed at all. Those commitments were 54% of the ZK work (1.62 M of 3.0 M AND gates per session). Measured (M2 Max, local fixture): proxy prove 135 → 59 ms (−56%), session 210 → 130 ms (−38%); MPC prove 154 → 50 ms (−67%); presentation 22.8 → 6.7 KB (−71%). Live Duolingo, proxy: prove 127 → 50 ms (−60%). Later presentations can disclose that spec or less, never more; Binius sessions still prove new predicates later. No notary or verifier change. |
 | **Session binding** | `zkf.owner` / `zkf.context` attestation extensions for wallet binding and verifier challenges. |
 | **`fetch`-shaped SDK** | `zkFetch(url, init)` returns a standard `Response`. Sessions serialize, so the reveal can be decided later. |
 | **Automatic version and backend** | `tlsVersion: "auto"` selects TLS 1.3; attempts are never automatically retried. Select TLS 1.2 explicitly for compatibility. One `backend` switch configures commitments and proofs. |
@@ -53,6 +54,7 @@ provers and notaries interoperate.
 | wasm SIMD128 | browsers | prover CPU −40% (with the two above) |
 | Multi-threaded wasm, 8 threads | isolated browser workers | prover CPU 3.3 s → 1.1 s |
 | `prepare()` ahead of the request | browsers | wait after click 6–9 s → 2.3–3 s (live, proxy) |
+| `zkConfig.reveal`: commit only the declared disclosure | all | proxy prove 135 → 59 ms, session 210 → 130 ms; MPC prove 154 → 50 ms (M2 Max, fixture, predicate only); presentation 22.8 → 6.7 KB |
 | Notary in Mumbai instead of Cloudflare (reached from India via Hong Kong/Singapore) | hosting | native Duolingo proof, proxy: 15–17 s → 2.1 s (live, from India) |
 
 Live latency is dominated by about 21 sequential prover-notary round trips.
@@ -135,6 +137,7 @@ console.log(result.serverName, result.json); // [{ path: "username", value: "…
 | `res.zk.present(spec)` | Builds a presentation that discloses only what `spec` selects and proves `spec.prove`. |
 | `res.zk.timings` | Per-phase latency: connect, setup, TLS, proving, attestation. `prewarmed` marks connect and setup done ahead. |
 | `prepare(url, zkConfig)` | Runs the notary connection and MPC preprocessing (most of the latency) before the request. Pass the result as `zkConfig.prepared`. Single use, expires after 80 s, falls back to a fresh session. wasm builds; a no-op on the native prover. |
+| `zkConfig.reveal` | The `present()` spec, if known at fetch time. Commits only to what it discloses, so proving is about half as expensive and hidden values are not committed at all. Later presentations can disclose that spec or less (whole headers, fields, target or body), never more. Binius sessions can still prove new predicates later. |
 | `res.zk.toJSON()` / `restoreResponse(data)` | Save a session and present it later. The JSON holds secrets; treat it like a credential. |
 | `verify(presentation, opts)` | Offline verification against pinned notary keys (required; `allowUntrustedNotary` only to inspect), the expected context and the required predicates. Returns the notary-signed `mode`; a proxy proof must name the server the notary dialed, and `rejectProxy` accepts only MPC-TLS. `recvAuthed`/`sentAuthed` give the authenticated byte ranges: decide from those, since a hidden byte and a literal `X` look the same in `recv`. |
 | `startNotary()` / `startFixture()` | A local notary and HTTPS fixture for development and tests. |

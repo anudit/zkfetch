@@ -38,6 +38,7 @@ fn params(
         context: None,
         predicates,
         binius: false,
+        reveal: None,
         tls_version: Some("1.2".into()),
         mode: None,
         relay_url: None,
@@ -102,6 +103,7 @@ async fn notarize_present_verify() {
         predicates: vec![gte("id", 1000)],
         // ...plus per-leaf commitments so Binius64 can prove more later.
         binius: true,
+        reveal: None,
         tls_version: Some("1.2".into()),
         mode: None,
         relay_url: None,
@@ -916,4 +918,190 @@ async fn notary_key_pin_is_checked_before_server_connection() {
     assert!(zkf_prover::prepare(&p).await.is_err());
     p.expected_notary_key = Some(key);
     assert!(zkf_prover::prepare(&p).await.is_ok());
+}
+
+/// Received-transcript ranges covered by the attestation's commitments.
+fn committed_recv(attestation_b64: &str) -> tlsn::rangeset::set::RangeSet<usize> {
+    use tlsn::{
+        rangeset::set::RangeSet,
+        transcript::{Direction, TranscriptCommitment},
+    };
+    let att: tlsn::attestation::Attestation =
+        bincode::deserialize(&b64::decode(attestation_b64).unwrap()).unwrap();
+    let mut all = RangeSet::default();
+    for c in zkf_predicates::commitments(&att).unwrap() {
+        if let TranscriptCommitment::Hash(h) = c
+            && h.direction == Direction::Received
+        {
+            all.union_mut(&h.idx);
+        }
+    }
+    all
+}
+
+fn recv_offset(secrets_b64: &str, needle: &str) -> std::ops::Range<usize> {
+    let secrets: tlsn::attestation::Secrets =
+        bincode::deserialize(&b64::decode(secrets_b64).unwrap()).unwrap();
+    let recv = secrets.transcript().received();
+    let at = recv
+        .windows(needle.len())
+        .position(|w| w == needle.as_bytes())
+        .unwrap();
+    at..at + needle.len()
+}
+
+async fn proxy_reveal_session(
+    predicates: Vec<zkf_core::PredicateSpec>,
+    reveal: RevealSpec,
+    binius: bool,
+) -> (zkf_core::NotarizeOutput, VerifyOptions) {
+    let fixture = spawn_fixture_version(true).await;
+    let (notary_url, notary_key) = spawn_proxy_notary(&fixture).await;
+    let mut p = params(notary_url, String::new(), predicates);
+    p.connect_addr = None;
+    p.mode = Some("proxy".into());
+    p.tls_version = Some("1.3".into());
+    p.headers = vec![("Authorization".into(), "Bearer reveal-secret".into())];
+    p.binius = binius;
+    p.reveal = Some(reveal);
+    let out = tokio::time::timeout(std::time::Duration::from_secs(45), zkf_prover::notarize(p))
+        .await
+        .expect("proxy session timeout")
+        .expect("proxy notarize with reveal");
+    let opts = VerifyOptions {
+        trusted_notary_keys: vec![notary_key],
+        extra_root_certs: vec![b64::encode(CA_CERT_DER)],
+        ..Default::default()
+    };
+    (out, opts)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn reveal_commits_only_disclosed_bytes() {
+    use tlsn::rangeset::{ops::Set, set::RangeSet};
+    let declared = RevealSpec {
+        response: ResponseReveal {
+            json_paths: vec!["information.name".into()],
+            ..Default::default()
+        },
+        prove: vec![gte("id", 1000)],
+        ..Default::default()
+    };
+    let (out, opts) = proxy_reveal_session(vec![gte("id", 1000)], declared.clone(), false).await;
+
+    // Hidden values and secret headers are not committed at all.
+    let committed = committed_recv(&out.attestation);
+    for hidden in ["1234567890", "123 Elm Street"] {
+        let idx = RangeSet::from(recv_offset(&out.secrets, hidden));
+        assert!(
+            idx.intersection(&committed).next().is_none(),
+            "`{hidden}` must not be committed"
+        );
+    }
+
+    // The declared disclosure verifies, with path-authenticated JSON and the predicate.
+    let p = zkf_prover::present(&out.attestation, &out.secrets, &declared).unwrap();
+    let v = zkf_verifier::verify(
+        &p,
+        &VerifyOptions {
+            expected_predicates: vec![gte("id", 1000)],
+            ..opts.clone()
+        },
+    )
+    .expect("verify declared disclosure");
+    assert_eq!(
+        v.json,
+        vec![zkf_core::JsonField {
+            path: "information.name".into(),
+            value: serde_json::json!("John Doe")
+        }]
+    );
+    assert_eq!(v.predicates.len(), 1);
+    assert_eq!(v.predicates[0].json_path, "id");
+    assert_eq!(v.predicates[0].predicate.minimum().unwrap(), 1000);
+    assert!(
+        v.sent.starts_with("GET /formats/json HTTP/1.1"),
+        "{}",
+        v.sent
+    );
+    assert!(!v.sent.contains("reveal-secret"));
+    assert!(!v.recv.contains("1234567890"));
+
+    // Disclosing less, by whole units, still works...
+    let less = RevealSpec {
+        prove: vec![gte("id", 1000)],
+        ..Default::default()
+    };
+    let p = zkf_prover::present(&out.attestation, &out.secrets, &less).unwrap();
+    let v = zkf_verifier::verify(
+        &p,
+        &VerifyOptions {
+            expected_predicates: vec![gte("id", 1000)],
+            ..opts.clone()
+        },
+    )
+    .expect("verify smaller disclosure");
+    assert!(!v.recv.contains("John Doe"), "{}", v.recv);
+
+    // ...but anything that was not declared fails closed.
+    for more in [
+        RevealSpec {
+            response: ResponseReveal {
+                body: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        RevealSpec {
+            response: ResponseReveal {
+                json_paths: vec!["information.address.street".into()],
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    ] {
+        let err = zkf_prover::present(&out.attestation, &out.secrets, &more).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("not committed at fetch time"),
+            "{err:#}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn reveal_with_binius_keeps_later_predicates() {
+    let declared = RevealSpec {
+        response: ResponseReveal {
+            json_paths: vec!["information.name".into()],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let (out, opts) = proxy_reveal_session(vec![], declared, true).await;
+
+    // A predicate chosen after the fetch, proven offline with Binius64.
+    for minimum in [1000, 1_234_567_890] {
+        let later = RevealSpec {
+            response: ResponseReveal {
+                json_paths: vec!["information.name".into()],
+                ..Default::default()
+            },
+            prove: vec![gte("id", minimum)],
+            backend: zkf_core::PredicateBackend::Binius,
+            ..Default::default()
+        };
+        let p = zkf_prover::present(&out.attestation, &out.secrets, &later)
+            .expect("Binius predicate after a reveal fetch");
+        let v = zkf_verifier::verify(
+            &p,
+            &VerifyOptions {
+                expected_predicates: vec![gte("id", minimum)],
+                ..opts.clone()
+            },
+        )
+        .expect("verify later Binius predicate");
+        assert_eq!(v.predicates, vec![gte("id", minimum)]);
+        assert!(v.recv.contains("John Doe"));
+        assert!(!v.recv.contains("1234567890"));
+    }
 }

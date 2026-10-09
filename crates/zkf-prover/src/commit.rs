@@ -165,3 +165,42 @@ pub(crate) fn disjoint(
     }
     Ok(builder.build()?)
 }
+
+/// Commitments for a fetch with a declared disclosure (`reveal`): one BLAKE3
+/// commitment per disclosure unit (see [`crate::present::disclosure_units`]),
+/// pairwise disjoint, so nothing that stays hidden is committed. With Binius,
+/// the JSON skeleton and every scalar leaf are also committed separately, as
+/// the offline predicate proof needs them for any later predicate.
+pub(crate) fn disclosure(
+    raw: &tlsn::transcript::Transcript,
+    transcript: &tlsn_formats::http::HttpTranscript,
+    spec: &zkf_core::RevealSpec,
+    shape_proofs: bool,
+    binius: bool,
+) -> anyhow::Result<tlsn::transcript::TranscriptCommitConfig> {
+    let mut units = crate::present::disclosure_units(transcript, spec, shape_proofs)?;
+    if binius
+        && let Some(body) = transcript.responses.first().and_then(|r| r.body.as_ref())
+        && let BodyContent::Json(doc) = &body.content
+    {
+        // After the base unit, so the skeleton stays one openable unit.
+        units
+            .recv
+            .insert(1, crate::present::skeleton(body, &doc.root));
+        for leaf in zkf_predicates::leaves(&doc.root) {
+            units.recv.push(leaf.view().indices().clone());
+        }
+    }
+    let units = units.disjoint();
+    let mut builder = tlsn::transcript::TranscriptCommitConfig::builder(raw);
+    let kind = TranscriptCommitmentKind::Hash {
+        alg: HashAlgId::BLAKE3,
+    };
+    for unit in &units.sent {
+        builder.commit_with_kind(unit, Direction::Sent, kind)?;
+    }
+    for unit in &units.recv {
+        builder.commit_with_kind(unit, Direction::Received, kind)?;
+    }
+    Ok(builder.build()?)
+}

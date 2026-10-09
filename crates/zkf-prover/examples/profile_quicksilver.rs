@@ -1,7 +1,8 @@
 //! Deterministic full-session benchmark, with separate named prover/notary runtimes.
 //! cargo run --release -p zkf-prover --example profile_quicksilver -- --out /tmp/qs.json
-//! Use --mode mpc, --tls 1.2, --max-sent N, --max-recv N, or --no-predicates
-//! for controlled comparisons. Warmups are recorded but excluded from summaries.
+//! Use --mode mpc, --tls 1.2, --max-sent N, --max-recv N, --no-predicates, or
+//! --reveal (commit only what the presentation discloses) for controlled
+//! comparisons. Warmups are recorded but excluded from summaries.
 
 use std::{path::PathBuf, sync::Arc, time::Instant};
 
@@ -20,6 +21,7 @@ struct Options {
     max_sent: Option<usize>,
     max_recv: Option<usize>,
     predicates: bool,
+    reveal: bool,
     delay_ms: u64,
     out: PathBuf,
     notary_url: Option<String>,
@@ -37,6 +39,7 @@ impl Options {
             max_sent: None,
             max_recv: None,
             predicates: true,
+            reveal: false,
             delay_ms: 0,
             out: "qs-baseline.json".into(),
             notary_url: None,
@@ -47,6 +50,10 @@ impl Options {
         while let Some(arg) = args.next() {
             if arg == "--no-predicates" {
                 opts.predicates = false;
+                continue;
+            }
+            if arg == "--reveal" {
+                opts.reveal = true;
                 continue;
             }
             let value = args.next().context("option requires a value")?;
@@ -191,6 +198,7 @@ async fn run(
     let mut results = json!({
         "workload": "local TLS fixture /formats/json, hidden id >= 1000",
         "mode": opts.mode, "tls": opts.tls, "backend": "quicksilver", "binius": false,
+        "reveal": opts.reveal,
         "maxSent": opts.max_sent, "maxRecv": opts.max_recv,
         "predicates": opts.predicates, "warmup": opts.warmup, "requestedRuns": opts.runs,
         "processLayout": if opts.notary_url.is_some() { "separate processes" } else { "in process" },
@@ -217,6 +225,7 @@ async fn run(
                 context: None,
                 predicates: predicates.clone(),
                 binius: false,
+                reveal: opts.reveal.then(|| spec.clone()),
                 tls_version: Some(opts.tls.clone()),
                 mode: Some(opts.mode.clone()),
                 relay_url: None,

@@ -8,6 +8,7 @@ const send = (message: ProverReply) => self.postMessage(message);
 // Proxy mode binds a prepared session to the notary and host only, so it can
 // be set up before the user ID and token are known.
 const ZK_CONFIG = { notaryUrl: NOTARY.url, expectedNotaryKey: NOTARY.publicKey, mode: "proxy" } as const;
+const DISCLOSURE = { response: { jsonPaths: DISCLOSURES } };
 
 let loading: Promise<void> | undefined;
 let prepared: ZkPrepared | undefined;
@@ -68,13 +69,14 @@ async function prove(message: Extract<ProverRequest, { type: "prove" }>) {
   clearTimeout(expiry);
   const response = await zkFetch(`${API}/users/${userId}?fields=username,streakData%7BlongestStreak%7D`, {
     headers: { Authorization: `Bearer ${token}` },
-    zkConfig: { ...ZK_CONFIG, prepared: session },
+    // Commit only to what the presentation below discloses.
+    zkConfig: { ...ZK_CONFIG, prepared: session, reveal: DISCLOSURE },
   });
   if (!response.ok) throw new Error(`Duolingo returned HTTP ${response.status}. Sign in again and retry.`);
   const claims = readClaims(await response.text());
   send({ type: "progress", text: "Building the proof…" });
   const presentStarted = performance.now();
-  const presentation = response.zk.present({ response: { jsonPaths: DISCLOSURES } });
+  const presentation = response.zk.present(DISCLOSURE);
   send({
     type: "proof",
     proof: {

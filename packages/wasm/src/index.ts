@@ -86,6 +86,7 @@ function ready() {
 
 export async function notarize(params: NotarizeParams): Promise<NotarizeOutput> {
   validatePredicates(params.predicates);
+  validatePredicates(params.reveal?.prove);
   await init();
   return JSON.parse(await wasm.notarize(JSON.stringify(params)));
 }
@@ -104,6 +105,7 @@ export async function prepare(params: NotarizeParams): Promise<Prepared> {
   return {
     async notarize(request) {
       validatePredicates(request.predicates);
+      validatePredicates(request.reveal?.prove);
       if (!session) throw new Error("zkfetch: prepared session already used or disposed");
       const owned = session;
       session = undefined;

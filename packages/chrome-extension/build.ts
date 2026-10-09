@@ -9,7 +9,15 @@ if (!existsSync(wasm)) {
   throw new Error("Build the WASM SDK first: bun run --cwd packages/wasm build (from the repository root).");
 }
 mkdirSync(dist, { recursive: true });
+// The hosted notary admits only capability holders. The token is a private
+// credential: it comes from the environment or the git-ignored .zkf/ file.
+const tokenFile = join(root, "../../.zkf/notary-capability.token");
+const capability = (process.env.ZKF_NOTARY_CAPABILITY
+  ?? (existsSync(tokenFile) ? await Bun.file(tokenFile).text() : "")).trim();
+if (capability && !/^[0-9a-f]{64}$/.test(capability)) throw new Error("The notary capability must be 64 lowercase hex characters.");
+if (!capability) console.warn("No notary capability (ZKF_NOTARY_CAPABILITY or .zkf/notary-capability.token); the hosted notary will refuse sessions.");
 const result = await Bun.build({
+  define: { __ZKF_NOTARY_CAPABILITY__: JSON.stringify(capability) },
   entrypoints: ["background", "sidepanel", "prover"].map(name => join(root, `src/${name}.ts`)),
   outdir: dist,
   target: "browser",

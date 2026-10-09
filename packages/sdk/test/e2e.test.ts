@@ -163,6 +163,33 @@ test("TLS 1.3-only fixture -> restored session -> disclosure and QuickSilver pre
   expect(invalid.stderr.toString()).toContain("--tls-version must be");
 }, 60_000);
 
+test("zkConfig.reveal commits only the declared disclosure", async () => {
+  const predicate = { jsonPath: "id", predicate: { gte: "1000" } } as const;
+  const reveal = { response: { jsonPaths: ["information.name"] }, prove: [predicate] };
+  const res = await zkFetch(`https://${fixture13.serverName}/formats/json`, {
+    headers: { Authorization: "Bearer reveal-private" },
+    zkConfig: {
+      notaryUrl: notary.url,
+      tlsVersion: "1.3",
+      connectAddr: fixture13.addr,
+      extraRootCerts: [fixture13.caCert],
+      predicates: [predicate],
+      reveal,
+    },
+  });
+  expect(res.status).toBe(200);
+  const restored = restoreResponse(JSON.parse(JSON.stringify(res.zk)));
+  const opts = { trustedNotaryKeys: [notary.publicKey], extraRootCerts: [fixture13.caCert] };
+  const out = verify(restored.zk.present(reveal), { ...opts, expectedPredicates: [predicate] });
+  expect(out.json).toEqual([{ path: "information.name", value: "John Doe" }]);
+  expect(out.predicates).toEqual([predicate]);
+  expect(out.recv).not.toContain("1234567890");
+  expect(out.sent).not.toContain("reveal-private");
+  // Less than declared works; more fails closed.
+  expect(verify(restored.zk.present({ prove: [predicate] }), opts).recv).not.toContain("John Doe");
+  expect(() => restored.zk.present({ response: { body: true } })).toThrow("not committed at fetch time");
+}, 60_000);
+
 // Real hosts through the local notary, without auto fallback. Opt-in: ZKF_LIVE=1.
 for (const tlsVersion of ["1.2", "1.3"] as const) {
 test(`TLS ${tlsVersion}: Binius backend is selected once and survives restoration`, async () => {

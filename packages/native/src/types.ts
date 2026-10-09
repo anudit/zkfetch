@@ -39,6 +39,10 @@ export interface NotarizeParams {
   /** Opt in to per-leaf SHA-256 commitments so predicates can be proven later,
    * offline, with Binius64. */
   binius?: boolean;
+  /** Commit only to what this spec discloses (about half the proving work).
+   * Presentations can then disclose this spec, or less by whole headers,
+   * fields, target or body, never more. Default: commit everything. */
+  reveal?: RevealSpec;
 }
 
 export interface KeyView {

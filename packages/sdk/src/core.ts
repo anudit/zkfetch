@@ -55,6 +55,12 @@ export interface ZkConfig {
   predicates?: PredicateSpec[];
   /** Defaults to QuickSilver. Automatically configures commitments and presentation proofs. */
   backend?: PredicateBackend;
+  /** What `present()` will disclose, if known at fetch time. Commits only to
+   * that (about half the proving work, smaller presentations); hidden values
+   * are not committed at all. Later presentations can disclose this spec or
+   * less (whole headers, fields, target or body), never more. With the
+   * Binius backend, new predicates can still be proven later. */
+  reveal?: RevealSpec;
   /** Defaults to "mpc". "proxy" needs far less traffic but trusts the
    * network path between the notary and the server. */
   mode?: NotarizeMode;
@@ -237,6 +243,7 @@ function notarizeParams(
     context: zkConfig.context,
     predicates: backend === "quicksilver" ? zkConfig.predicates : undefined,
     binius: backend === "binius",
+    reveal: zkConfig.reveal,
     tlsVersion: zkConfig.tlsVersion,
     mode: zkConfig.mode,
     relayUrl: zkConfig.relayUrl,

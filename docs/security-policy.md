@@ -38,6 +38,15 @@ whose exact body length matches the signed transcript. EOF-delimited and chunked
 responses are rejected by this strict policy. A normal inspection can authenticate
 a response prefix; it must not treat that prefix as a complete response.
 
+A fetch with `zkConfig.reveal` commits only to what that spec discloses, one
+BLAKE3 commitment per unit (the always-revealed HTTP structure, the JSON skeleton,
+each selected header, JSON field, target or body). Bytes outside those units are
+not committed, so the attestation carries no blinded digest of them, and no later
+presentation can disclose them; `present` fails closed instead. Soundness is
+unchanged: the same signed hash commitments and in-session plaintext
+authentication apply. The prover's application decides `reveal`; derive it from
+the verifier's policy, not from untrusted input, or it may over-disclose.
+
 JSON path authentication exposes object keys, punctuation, structure and scalar
 lengths. `response.byteOnly: true` skips skeleton disclosure and returns byte
 proofs; it cannot be combined with numeric path predicates. Binius sessions

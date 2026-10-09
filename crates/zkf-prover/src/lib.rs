@@ -441,20 +441,6 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
         zkf_core::parsing::check_http_json_nesting(prover.transcript().received())?;
         let transcript = HttpTranscript::parse(prover.transcript())
             .context("could not parse HTTP transcript")?;
-        // Commit to the whole transcript at HTTP-part / JSON-node granularity.
-        let mut commit = TranscriptCommitConfig::builder(prover.transcript());
-        // DEBUG(mem): experiment with the coarsest possible commitments.
-        if std::env::var("ZKF_DEBUG_COARSE_COMMIT").is_ok() {
-            let sent = prover.transcript().sent().len();
-            let recv = prover.transcript().received().len();
-            commit.commit_sent(&(0..sent))?;
-            commit.commit_recv(&(0..recv))?;
-        } else {
-            commit::HttpCommitter {
-                binius: params.binius,
-            }
-            .commit_transcript(&mut commit, &transcript)?;
-        }
         // QuickSilver predicates (default backend): shape proofs for every JSON
         // leaf plus the requested numeric predicates. Without predicates the
         // shape proofs are still attached when possible: they let a verifier
@@ -494,11 +480,34 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
                 &params.predicates,
             )?)
         };
-        (
-            response_view(&transcript)?,
-            commit::disjoint(prover.transcript(), commit.build()?)?,
-            qs_claims,
-        )
+        let transcript_commit = match &params.reveal {
+            // Only what the declared disclosure needs, one commitment per unit.
+            Some(spec) => commit::disclosure(
+                prover.transcript(),
+                &transcript,
+                spec,
+                qs_claims.is_some(),
+                params.binius,
+            )?,
+            None => {
+                // Commit to the whole transcript at HTTP-part / JSON-node granularity.
+                let mut commit = TranscriptCommitConfig::builder(prover.transcript());
+                // DEBUG(mem): experiment with the coarsest possible commitments.
+                if std::env::var("ZKF_DEBUG_COARSE_COMMIT").is_ok() {
+                    let sent = prover.transcript().sent().len();
+                    let recv = prover.transcript().received().len();
+                    commit.commit_sent(&(0..sent))?;
+                    commit.commit_recv(&(0..recv))?;
+                } else {
+                    commit::HttpCommitter {
+                        binius: params.binius,
+                    }
+                    .commit_transcript(&mut commit, &transcript)?;
+                }
+                commit::disjoint(prover.transcript(), commit.build()?)?
+            }
+        };
+        (response_view(&transcript)?, transcript_commit, qs_claims)
     };
 
     let mut request_config = RequestConfig::builder();

@@ -46,6 +46,12 @@ pub struct NotarizeParams {
     /// offline with Binius64 (opt-in; increases notarization cost).
     #[serde(default)]
     pub binius: bool,
+    /// Commit only to what this spec discloses, one commitment per header,
+    /// JSON field, target or body: about half the proving work. Presentations
+    /// can then disclose that spec, or less by whole units, never more.
+    /// Without it every header and JSON node is committed separately.
+    #[serde(default)]
+    pub reveal: Option<RevealSpec>,
     /// TLS version: "1.3", "1.2" or "auto" (default, TLS 1.3). Never retries.
     #[serde(default)]
     pub tls_version: Option<String>,

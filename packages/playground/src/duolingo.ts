@@ -13,7 +13,10 @@
 //   ZKF_NOTARY_URL      optional; a local notary is started if unset
 //   ZKF_TLS_VERSION     auto (default), 1.2 or 1.3
 //   ZKF_STREAK_MINIMUM  optional; prove longestStreak >= N without revealing it
-import { startNotary, verify, zkFetch, type NotarizeTimings, type PredicateSpec, type TlsVersionPreference, type VerifyOutput } from "@omnid/zkfetch";
+//   ZKF_MODE            mpc (default) or proxy
+//   ZKF_REVEAL          1 (default): commit only what the presentation discloses
+//                       (zkConfig.reveal); 0: commit every header and JSON node
+import { startNotary, verify, zkFetch, type NotarizeMode, type NotarizeTimings, type PredicateSpec, type TlsVersionPreference, type VerifyOutput } from "@omnid/zkfetch";
 import { writeFileSync } from "node:fs";
 
 const API = "https://www.duolingo.com/2017-06-30";
@@ -22,6 +25,9 @@ const jwt = process.env.DUOLINGO_JWT?.trim() || undefined;
 const tlsVersion = (process.env.ZKF_TLS_VERSION ?? "auto") as TlsVersionPreference;
 if (!["1.2", "1.3", "auto"].includes(tlsVersion)) throw new Error("ZKF_TLS_VERSION must be 1.2, 1.3 or auto");
 const tlsVersions: TlsVersionPreference[] = process.env.PLAYGROUND_TLS_MATRIX === "1" ? ["1.3", "1.2"] : [tlsVersion];
+const mode = (process.env.ZKF_MODE?.trim() || "mpc") as NotarizeMode;
+if (!["mpc", "proxy"].includes(mode)) throw new Error("ZKF_MODE must be mpc or proxy");
+const declareReveal = process.env.ZKF_REVEAL !== "0";
 const minimum = process.env.ZKF_STREAK_MINIMUM?.trim() || undefined;
 if (minimum && !/^\d+$/.test(minimum)) throw new Error("ZKF_STREAK_MINIMUM must be an unsigned decimal integer");
 if (minimum && !jwt) throw new Error("ZKF_STREAK_MINIMUM requires DUOLINGO_JWT to access longest streak");
@@ -67,7 +73,8 @@ console.log(`mode     ${target.mode}`);
 console.log(`TLS preferences ${tlsVersions.join(", ")}`);
 if (minimum) console.log(`claim    longest streak >= ${minimum} days (value hidden)`);
 else console.log(`claim    selective disclosure only; set ZKF_STREAK_MINIMUM with DUOLINGO_JWT to compare predicate proofs`);
-console.log(`notary   ${notary.url}${notary.proc ? " (local)" : ""}`);
+console.log(`notary   ${notary.url.split("?")[0]}${notary.proc ? " (local)" : ""} · ${mode} mode`);
+console.log(`commit   ${declareReveal ? "declared disclosure only (zkConfig.reveal)" : "every header and JSON node (ZKF_REVEAL=0)"}`);
 console.log(`runs     ${runs} QuickSilver + ${runs} Binius (arithmetic averages)\n`);
 // Give native sampling tools time to attach before the measured workload.
 if (process.env.PLAYGROUND_PROFILE_DELAY_MS) await Bun.sleep(Number(process.env.PLAYGROUND_PROFILE_DELAY_MS));
@@ -165,6 +172,7 @@ async function run(backend: Backend, tlsVersion: TlsVersionPreference): Promise<
   const baselineMs = performance.now() - t;
   if (!plain.ok) throw new Error(`plain fetch failed: HTTP ${plain.status}`);
 
+  const disclosure = { response: { jsonPaths: target.reveal }, prove: predicates };
   const e2eStart = performance.now();
   const res = await zkFetch(target.url, {
     headers: target.headers,
@@ -174,12 +182,14 @@ async function run(backend: Backend, tlsVersion: TlsVersionPreference): Promise<
       predicates,
       backend,
       tlsVersion,
+      mode,
+      reveal: declareReveal ? disclosure : undefined,
     },
   });
   if (!res.ok) throw new Error(`zkFetch: HTTP ${res.status} ${await res.text()}`);
 
   t = performance.now();
-  const presentation = res.zk.present({ response: { jsonPaths: target.reveal }, prove: predicates });
+  const presentation = res.zk.present(disclosure);
   const presentMs = performance.now() - t;
 
   t = performance.now();
@@ -232,7 +242,7 @@ try {
   }
   if (process.env.PLAYGROUND_RESULTS) {
     writeFileSync(process.env.PLAYGROUND_RESULTS, JSON.stringify({
-      measuredAt: new Date().toISOString(), notaryUrl: notary.url,
+      measuredAt: new Date().toISOString(), notaryUrl: notary.url.split("?")[0],
       notaryPublicKey: notary.publicKey, predicates, measurements,
     }, null, 2) + "\n");
     console.log(`\nmeasurements saved to ${process.env.PLAYGROUND_RESULTS}`);
