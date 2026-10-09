@@ -23,6 +23,34 @@ use crate::{
     },
 };
 
+pub(crate) fn check_hash_budget<'a>(
+    hashes: impl Iterator<Item = &'a (Direction, RangeSet<usize>, tlsn_core::hash::HashAlgId)>,
+    sent_len: usize,
+    recv_len: usize,
+) -> Result<()> {
+    let mut count = 0usize;
+    let mut bytes = 0usize;
+    for (direction, idx, _) in hashes {
+        count += 1;
+        bytes = bytes
+            .checked_add(idx.len())
+            .ok_or_else(|| Error::internal().with_msg("commitment budget overflow"))?;
+        let len = match direction {
+            Direction::Sent => sent_len,
+            Direction::Received => recv_len,
+        };
+        if idx.iter().any(|r| r.end > len)
+            || count > 2048
+            || bytes > (1 << 20)
+            || bytes > 2 * (sent_len + recv_len)
+        {
+            return Err(Error::internal()
+                .with_msg("verification failed: hash commitments exceed the work budget"));
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn verify<T: Vm<Binary> + Send + Sync>(
     ctx: &mut Context,
@@ -84,6 +112,17 @@ pub(crate) async fn verify<T: Vm<Binary> + Send + Sync>(
                     .with_msg("verification failed: certificate binding version mismatch"));
             }
         }
+        if let (
+            tlsn_core::connection::CertBinding::V1_3(observed),
+            tlsn_core::connection::CertBinding::V1_3(claimed),
+        ) = (tls_transcript.certificate_binding(), &cert_data.binding)
+        {
+            if observed.handshake_messages != claimed.handshake_messages {
+                return Err(Error::internal().with_msg(
+                    "verification failed: certificate transcript does not match verified handshake",
+                ));
+            }
+        }
         cert_data
             .verify(
                 cert_verifier,
@@ -104,6 +143,11 @@ pub(crate) async fn verify<T: Vm<Binary> + Send + Sync>(
 
     let (mut commit_sent, mut commit_recv) = (RangeSet::default(), RangeSet::default());
     if let Some(commit_config) = request.transcript_commit() {
+        check_hash_budget(
+            commit_config.iter_hash(),
+            ciphertext_sent.len(),
+            ciphertext_recv.len(),
+        )?;
         commit_config
             .iter_hash()
             .for_each(|(direction, idx, _)| match direction {
@@ -134,7 +178,9 @@ pub(crate) async fn verify<T: Vm<Binary> + Send + Sync>(
     let budget = tlsn_core::transcript::predicate::MAX_PREDICATE_BYTES
         .min(2 * (ciphertext_sent.len() + ciphertext_recv.len()));
     if operand_bytes > budget {
-        return Err(Error::internal().with_msg("verification failed: predicates exceed the work budget"));
+        return Err(
+            Error::internal().with_msg("verification failed: predicates exceed the work budget")
+        );
     }
     let mut seen = std::collections::HashSet::new();
     if !request.predicates().iter().all(|p| seen.insert(p)) {

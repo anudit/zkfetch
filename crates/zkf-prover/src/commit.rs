@@ -129,3 +129,39 @@ impl HttpCommit for HttpCommitter {
         commit_body(builder, direction, MessageKind::Response, body, self.binius)
     }
 }
+
+/// Preserve every original disclosure boundary while hashing each byte once
+/// per algorithm. Nested container commitments otherwise hash the same JSON
+/// bytes repeatedly and consume the verifier's aggregate work budget.
+pub(crate) fn disjoint(
+    transcript: &tlsn::transcript::Transcript,
+    config: tlsn::transcript::TranscriptCommitConfig,
+) -> anyhow::Result<tlsn::transcript::TranscriptCommitConfig> {
+    use std::collections::{BTreeSet, HashMap};
+    use tlsn::rangeset::{ops::Set, set::RangeSet};
+    let mut groups: HashMap<(Direction, HashAlgId), (BTreeSet<usize>, RangeSet<usize>)> =
+        HashMap::new();
+    for ((direction, idx), alg) in config.iter_hash() {
+        let (boundaries, covered) = groups.entry((*direction, *alg)).or_default();
+        for range in idx.iter() {
+            boundaries.insert(range.start);
+            boundaries.insert(range.end);
+        }
+        covered.union_mut(idx);
+    }
+    let mut builder = tlsn::transcript::TranscriptCommitConfig::builder(transcript);
+    for ((direction, alg), (boundaries, covered)) in groups {
+        let boundaries: Vec<_> = boundaries.into_iter().collect();
+        for pair in boundaries.windows(2) {
+            let range = pair[0]..pair[1];
+            if RangeSet::from(range.clone()).is_subset(&covered) {
+                builder.commit_with_kind(
+                    &range,
+                    direction,
+                    TranscriptCommitmentKind::Hash { alg },
+                )?;
+            }
+        }
+    }
+    Ok(builder.build()?)
+}

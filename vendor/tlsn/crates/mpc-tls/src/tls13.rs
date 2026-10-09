@@ -9,10 +9,10 @@
 //!    exchange and the handshake stage of the key schedule. The handshake
 //!    traffic secrets are decoded to both parties (GtP §4.3): application
 //!    secrets derive from the handshake secret, not from these.
-//! 3. The encrypted server flight and the client Finished are processed
-//!    locally by P with the handshake keys. P sends V `H(ClientHello ..=
-//!    server Finished)`; both derive the application keys, which stay inside
-//!    the VM. The application IVs are decoded (they are not secret).
+//! 3. P sends V the encrypted server flight and certificate-binding transcript.
+//!    V decrypts the flight, reconstructs both key-schedule hashes, and checks
+//!    the server Finished before deriving application keys inside the VM.
+//!    The application IVs are decoded (they are not secret).
 //! 4. Application records go through the MPC record layer. Each TLS 1.3
 //!    nonce `iv XOR seq` is expressed as `iv[0..4] || explicit_nonce` so the
 //!    TLS 1.2 AES-GCM machinery and transcript proofs apply unchanged.
@@ -21,11 +21,8 @@
 //!    for non-application records). The suffixes are proven against the
 //!    ciphertext in zero knowledge during the proving phase.
 //!
-//! Soundness of the server's data does not depend on V checking the server
-//! flight: application data authenticates only under keys derived from the
-//! joint ECDH with the server's ephemeral key, which only the server knows the
-//! private half of. The certificate is bound to that key offline through the
-//! TLS 1.3 CertificateVerify (see `tlsn_core::connection::CertBindingV1_3`).
+//! The proving phase must bind the verified handshake to the certificate
+//! identity; application-record authentication remains inside MPC.
 
 use std::collections::VecDeque;
 
@@ -49,7 +46,7 @@ use mpz_ot::{
 };
 use mpz_share_conversion::{ShareConversionReceiver, ShareConversionSender};
 use serio::{SinkExt, stream::IoStreamExt};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use tls_client::{
     Backend, BackendError, BackendNotifier, BackendNotify, DecryptMode as ClientDecryptMode,
     EncryptMode as ClientEncryptMode,
@@ -60,8 +57,9 @@ use tls_core::{
     key::{Certificate, PublicKey},
     msgs::{
         base::Payload,
+        codec::Reader,
         enums::{CipherSuite, ContentType, NamedGroup, ProtocolVersion, SignatureScheme},
-        handshake::{DigitallySignedStruct, Random},
+        handshake::{DigitallySignedStruct, HandshakeMessagePayload, HandshakePayload, Random},
         message::{OpaqueMessage, PlainMessage},
     },
     suites::SupportedCipherSuite,
@@ -290,6 +288,7 @@ struct HandshakeEpoch {
     server_finished_key: Option<[u8; 32]>,
     outgoing: VecDeque<OpaqueMessage>,
     incoming: VecDeque<PlainMessage>,
+    records: Vec<OpaqueMessage>,
 }
 
 /// TLS 1.3 MPC-TLS leader.
@@ -850,13 +849,29 @@ impl Backend for Tls13Leader {
         if self.app_stage_done {
             return Err(MpcTlsError::hs("application keys already derived").into());
         }
+        let evidence = Tls13HandshakeEvidence {
+            hash: handshake_hash,
+            binding: self
+                .binding
+                .as_ref()
+                .ok_or_else(|| MpcTlsError::hs("missing certificate binding"))?
+                .1
+                .clone(),
+            records: self
+                .hs
+                .records
+                .iter()
+                .cloned()
+                .map(OpaqueMessage::encode)
+                .collect(),
+        };
         let vm = self.vm.as_ref().expect("VM available").clone();
         let ctx = self
             .ctx
             .as_mut()
             .ok_or_else(|| MpcTlsError::state("connection is finished"))?;
         ctx.io_mut()
-            .send(Message::Tls13HandshakeHash(handshake_hash))
+            .send(Message::Tls13HandshakeHash(evidence))
             .await
             .map_err(MpcTlsError::from)?;
         run_application_stage(
@@ -890,6 +905,19 @@ impl Backend for Tls13Leader {
     #[instrument(level = "debug", skip_all, err)]
     async fn push_incoming(&mut self, msg: OpaqueMessage) -> Result<(), BackendError> {
         if !self.decrypt_app {
+            if self.hs.records.len() >= 4096
+                || self
+                    .hs
+                    .records
+                    .iter()
+                    .map(|r| r.payload.0.len())
+                    .sum::<usize>()
+                    + msg.payload.0.len()
+                    > (128 << 10)
+            {
+                return Err(MpcTlsError::hs("server handshake flight exceeds budget").into());
+            }
+            self.hs.records.push(msg.clone());
             let plain = self
                 .hs
                 .dec
@@ -1227,6 +1255,8 @@ impl Tls13Follower {
         let mut time = None;
         let mut server_key = None;
         let mut app_keys = false;
+        let mut hello_hash_claim = None;
+        let mut handshake_binding = None;
         loop {
             let msg: Message = self.ctx.io_mut().expect_next().await?;
             match msg {
@@ -1259,12 +1289,22 @@ impl Tls13Follower {
                         hello_hash,
                     )
                     .await?;
+                    hello_hash_claim = Some(hello_hash);
                     server_key = Some(key);
                 }
-                Message::Tls13HandshakeHash(hash) => {
+                Message::Tls13HandshakeHash(evidence) => {
                     if server_key.is_none() || app_keys {
                         return Err(MpcTlsError::hs("unexpected handshake hash"));
                     }
+                    let keys = self.ks.handshake_keys().map_err(MpcTlsError::hs)?;
+                    verify_handshake_evidence(
+                        &evidence,
+                        hello_hash_claim.expect("hello accepted"),
+                        server_key.as_ref().expect("hello accepted"),
+                        &keys,
+                    )?;
+                    let hash = evidence.hash;
+                    handshake_binding = Some(evidence.binding);
                     run_application_stage(
                         &mut self.ctx,
                         self.vm.clone(),
@@ -1351,7 +1391,8 @@ impl Tls13Follower {
             .time(time)
             .version(TlsVersion::V1_3)
             .certificate_binding(CertBinding::V1_3(CertBindingV1_3 {
-                handshake_messages: Vec::new(),
+                handshake_messages: handshake_binding
+                    .ok_or_else(|| MpcTlsError::hs("missing verified handshake"))?,
                 server_ephemeral_key: server_key
                     .try_into()
                     .map_err(|_| MpcTlsError::hs("unsupported server key"))?,
@@ -1426,4 +1467,186 @@ mod tests {
         assert!(split_inner(&oversized).is_err());
         assert!(parse_suffix(&[23], 16386).is_err());
     }
+}
+
+/// Public handshake evidence; contains no application plaintext or application keys.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Tls13HandshakeEvidence {
+    hash: [u8; 32],
+    binding: Vec<u8>,
+    records: Vec<Vec<u8>>,
+}
+
+fn verify_handshake_evidence(
+    evidence: &Tls13HandshakeEvidence,
+    hello_hash: [u8; 32],
+    server_key: &PublicKey,
+    keys: &tls13_schedule::HandshakeKeys,
+) -> Result<(), MpcTlsError> {
+    if evidence.binding.len() > (128 << 10)
+        || evidence.records.len() > 4096
+        || evidence.records.iter().map(Vec::len).sum::<usize>() > (128 << 10)
+    {
+        return Err(MpcTlsError::hs("handshake evidence exceeds budget"));
+    }
+    let mut reader = Reader::init(&evidence.binding);
+    let client = HandshakeMessagePayload::read_version(&mut reader, ProtocolVersion::TLSv1_3)
+        .ok_or_else(|| MpcTlsError::hs("invalid ClientHello evidence"))?;
+    if !matches!(client.payload, HandshakePayload::ClientHello(_)) {
+        return Err(MpcTlsError::hs("missing ClientHello evidence"));
+    }
+    let server = HandshakeMessagePayload::read_version(&mut reader, ProtocolVersion::TLSv1_3)
+        .ok_or_else(|| MpcTlsError::hs("invalid ServerHello evidence"))?;
+    let HandshakePayload::ServerHello(server) = server.payload else {
+        return Err(MpcTlsError::hs("missing ServerHello evidence"));
+    };
+    let share = server
+        .get_key_share()
+        .ok_or_else(|| MpcTlsError::hs("ServerHello missing key share"))?;
+    if share.group != server_key.group || share.payload.0 != server_key.key {
+        return Err(MpcTlsError::hs("ServerHello key share mismatch"));
+    }
+    let hello_end = reader.used();
+    if <[u8; 32]>::from(Sha256::digest(&evidence.binding[..hello_end])) != hello_hash {
+        return Err(MpcTlsError::hs("ClientHello/ServerHello hash mismatch"));
+    }
+    let mut flight = Vec::new();
+    let mut cipher = LocalAead::new(keys.server_write_key, keys.server_iv);
+    for record in &evidence.records {
+        let mut input = Reader::init(record);
+        let opaque = OpaqueMessage::read(&mut input)
+            .map_err(|_| MpcTlsError::hs("malformed handshake record"))?;
+        if input.any_left() {
+            return Err(MpcTlsError::hs("trailing handshake record bytes"));
+        }
+        let plain = cipher.open(opaque)?;
+        if plain.typ != ContentType::Handshake {
+            return Err(MpcTlsError::hs("non-handshake server flight"));
+        }
+        flight.extend_from_slice(&plain.payload.0);
+    }
+    let mut wire = Reader::init(&flight);
+    let mut prefix = evidence.binding[..hello_end].to_vec();
+    let mut saw_verify = false;
+    let mut saw_finished = false;
+    while wire.any_left() {
+        let start = wire.used();
+        let msg = HandshakeMessagePayload::read_version(&mut wire, ProtocolVersion::TLSv1_3)
+            .ok_or_else(|| MpcTlsError::hs("malformed encrypted server handshake"))?;
+        match msg.payload {
+            HandshakePayload::CertificateVerify(_) => {
+                if saw_verify || prefix != evidence.binding {
+                    return Err(MpcTlsError::hs("CertificateVerify transcript substitution"));
+                }
+                saw_verify = true;
+            }
+            HandshakePayload::Finished(ref finished) => {
+                if !saw_verify || saw_finished || wire.any_left() {
+                    return Err(MpcTlsError::hs("unexpected server Finished"));
+                }
+                let hash = Sha256::digest(&prefix);
+                let mut mac = Hmac::<Sha256>::new_from_slice(&keys.server_finished_key)
+                    .map_err(|_| MpcTlsError::hs("invalid Finished key"))?;
+                mac.update(&hash);
+                mac.verify_slice(&finished.0)
+                    .map_err(|_| MpcTlsError::hs("server Finished mismatch"))?;
+                saw_finished = true;
+            }
+            _ if saw_verify => {
+                return Err(MpcTlsError::hs(
+                    "unexpected message after CertificateVerify",
+                ));
+            }
+            _ => {}
+        }
+        prefix.extend_from_slice(&flight[start..wire.used()]);
+    }
+    if !saw_finished || <[u8; 32]>::from(Sha256::digest(&prefix)) != evidence.hash {
+        return Err(MpcTlsError::hs("application transcript hash mismatch"));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "security-test-support")]
+pub(crate) fn handshake_mutations() -> Vec<bool> {
+    fn message(typ: u8, body: &[u8]) -> Vec<u8> {
+        let mut out = vec![typ];
+        out.extend_from_slice(&(body.len() as u32).to_be_bytes()[1..]);
+        out.extend_from_slice(body);
+        out
+    }
+    let secret = p256::SecretKey::from_slice(&[1u8; 32]).unwrap();
+    let key = PublicKey::new(
+        NamedGroup::secp256r1,
+        &p256::EncodedPoint::from(secret.public_key()).to_bytes(),
+    );
+    let mut client = vec![3, 3];
+    client.extend_from_slice(&[1; 32]);
+    client.extend_from_slice(&[0, 0, 2, 0x13, 1, 1, 0, 0, 7, 0, 43, 0, 3, 2, 3, 4]);
+    let mut server = vec![3, 3];
+    server.extend_from_slice(&[2; 32]);
+    server.extend_from_slice(&[
+        0, 0x13, 1, 0, 0, 79, 0, 43, 0, 2, 3, 4, 0, 51, 0, 69, 0, 23, 0, 65,
+    ]);
+    server.extend_from_slice(&key.key);
+    let mut hello = message(1, &client);
+    hello.extend(message(2, &server));
+    let hello_hash: [u8; 32] = Sha256::digest(&hello).into();
+    let mut binding = hello.clone();
+    binding.extend(message(8, &[0, 0]));
+    binding.extend(message(11, &[0, 0, 0, 0]));
+    let mut flight = binding[hello.len()..].to_vec();
+    let verify = message(15, &[4, 3, 0, 1, 0]);
+    flight.extend_from_slice(&verify);
+    let mut prefix = binding.clone();
+    prefix.extend_from_slice(&verify);
+    let keys = tls13_schedule::HandshakeKeys {
+        client_write_key: [1; 16],
+        client_iv: [2; 12],
+        server_write_key: [3; 16],
+        server_iv: [4; 12],
+        client_finished_key: [5; 32],
+        server_finished_key: [6; 32],
+    };
+    let finished = hmac_sha256(&keys.server_finished_key, &Sha256::digest(&prefix));
+    let finished = message(20, &finished);
+    flight.extend_from_slice(&finished);
+    prefix.extend_from_slice(&finished);
+    let hash = Sha256::digest(&prefix).into();
+    let record = LocalAead::new(keys.server_write_key, keys.server_iv)
+        .seal(ContentType::Handshake, &flight)
+        .unwrap()
+        .encode();
+    let evidence = Tls13HandshakeEvidence {
+        hash,
+        binding,
+        records: vec![record],
+    };
+    let check = |e: &Tls13HandshakeEvidence, h: [u8; 32], k: &PublicKey| {
+        verify_handshake_evidence(e, h, k, &keys).is_ok()
+    };
+    verify_handshake_evidence(&evidence, hello_hash, &key, &keys).expect("valid synthetic handshake");
+    let mut results = vec![true];
+    let mut changed = hello_hash;
+    changed[0] ^= 1;
+    results.push(!check(&evidence, changed, &key));
+    let mut changed = evidence.clone();
+    changed.hash[0] ^= 1;
+    results.push(!check(&changed, hello_hash, &key));
+    let mut changed = evidence.clone();
+    changed.binding[0] ^= 1;
+    results.push(!check(&changed, hello_hash, &key));
+    let mut changed = evidence.clone();
+    changed.records[0][10] ^= 1;
+    results.push(!check(&changed, hello_hash, &key));
+    let mut changed = evidence.clone();
+    changed.records[0].pop();
+    results.push(!check(&changed, hello_hash, &key));
+    let mut changed = key.clone();
+    changed.key[10] ^= 1;
+    results.push(!check(&evidence, hello_hash, &changed));
+    let mut changed = evidence;
+    changed.records.clear();
+    results.push(!check(&changed, hello_hash, &key));
+    results
 }

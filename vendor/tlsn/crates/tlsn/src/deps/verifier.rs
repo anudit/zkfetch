@@ -129,6 +129,7 @@ impl VerifierMpcDeps {
 /// Protocol dependencies for Proxy.
 pub(crate) struct VerifierProxyDeps {
     pub(crate) verifier: Box<AnyProxyVerifier>,
+    pub(crate) server_name: String,
     pub(crate) id: ContextId,
 }
 
@@ -176,6 +177,7 @@ impl VerifierProxyDeps {
 
         Self {
             verifier: Box::new(verifier),
+            server_name: config.server_name().as_str().to_string(),
             id,
         }
     }

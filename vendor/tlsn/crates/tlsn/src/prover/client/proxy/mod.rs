@@ -25,6 +25,7 @@ use tls_core::dns::ServerName;
 use tlsn_core::config::tls::TlsClientConfig;
 use tracing::{debug, trace};
 use webpki::anchor_from_trusted_cert;
+use zeroize::Zeroizing;
 
 mod keylog;
 use keylog::MasterSecretLog;
@@ -51,7 +52,7 @@ const SHARED_SECRET_TTL: std::time::Duration = std::time::Duration::from_secs(30
 /// A captured secret, zeroed when dropped.
 struct SharedSecretEntry {
     created: web_time::Instant,
-    secret: Vec<u8>,
+    secret: Zeroizing<Vec<u8>>,
 }
 
 impl Drop for SharedSecretEntry {
@@ -88,7 +89,7 @@ impl ActiveKeyExchange for CapturingActiveKx {
             key,
             SharedSecretEntry {
                 created: web_time::Instant::now(),
-                secret: secret.secret_bytes().to_vec(),
+                secret: Zeroizing::new(secret.secret_bytes().to_vec()),
             },
         );
         Ok(secret)
@@ -105,8 +106,12 @@ impl ActiveKeyExchange for CapturingActiveKx {
 
 fn traffic_key(secret: &[u8]) -> ([u8; 16], [u8; 12]) {
     (
-        hkdf_expand_label(secret, b"key", 16).try_into().expect("16 bytes"),
-        hkdf_expand_label(secret, b"iv", 12).try_into().expect("12 bytes"),
+        hkdf_expand_label(secret, b"key", 16)
+            .try_into()
+            .expect("16 bytes"),
+        hkdf_expand_label(secret, b"iv", 12)
+            .try_into()
+            .expect("12 bytes"),
     )
 }
 
@@ -140,6 +145,16 @@ enum State {
 
 type FinalizeFuture =
     Box<dyn Future<Output = Result<(Context, ProverZk, TlsOutput), TlsnError>> + Send>;
+
+impl Drop for ProxyTlsClient {
+    fn drop(&mut self) {
+        // Cancellation must remove the captured ECDHE secret immediately,
+        // even when no later handshake arrives to trigger TTL cleanup.
+        if let Ok(share) = client_key_share(&self.traffic.tls_sent) {
+            if let Ok(mut secrets) = SHARED_SECRETS.lock() { secrets.remove(&share); }
+        }
+    }
+}
 
 impl ProxyTlsClient {
     pub(crate) fn new(
@@ -223,12 +238,15 @@ impl ProxyTlsClient {
             .expect("shared secret lock")
             .remove(&share)
             .map(|entry| entry.secret.clone())
-            .ok_or_else(|| TlsnError::internal().with_msg("ECDHE shared secret is not available"))?;
+            .ok_or_else(|| {
+                TlsnError::internal().with_msg("ECDHE shared secret is not available")
+            })?;
         let (client_app, server_app) = self.ms_log.take_app_secrets();
         let (client_hs, server_hs) = self.ms_log.take_hs_secrets();
-        let secret32 = |s: Vec<u8>| -> Result<[u8; 32], TlsnError> {
-            s.try_into()
-                .map_err(|_| TlsnError::internal().with_msg("TLS 1.3 traffic secrets are not available"))
+        let secret32 = |s: Zeroizing<Vec<u8>>| -> Result<[u8; 32], TlsnError> {
+            s.as_slice().try_into().map_err(|_| {
+                TlsnError::internal().with_msg("TLS 1.3 traffic secrets are not available")
+            })
         };
         let (client_hs, server_hs) = (secret32(client_hs)?, secret32(server_hs)?);
         if client_app.len() != 32 || server_app.len() != 32 {
@@ -236,6 +254,7 @@ impl ProxyTlsClient {
         }
         Ok(Tls13ClientSecrets {
             shared_secret: shared_secret
+                .as_slice()
                 .try_into()
                 .map_err(|_| TlsnError::internal().with_msg("unexpected ECDHE secret length"))?,
             client_hs,

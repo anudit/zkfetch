@@ -7,7 +7,7 @@ import type { ProverReply, ProverRequest } from "./messages";
 const send = (message: ProverReply) => self.postMessage(message);
 // Proxy mode binds a prepared session to the notary and host only, so it can
 // be set up before the user ID and token are known.
-const ZK_CONFIG = { notaryUrl: NOTARY.url, mode: "proxy" } as const;
+const ZK_CONFIG = { notaryUrl: NOTARY.url, expectedNotaryKey: NOTARY.publicKey, mode: "proxy" } as const;
 
 let loading: Promise<void> | undefined;
 let prepared: ZkPrepared | undefined;

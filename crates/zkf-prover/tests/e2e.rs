@@ -25,6 +25,7 @@ fn params(
 ) -> NotarizeParams {
     NotarizeParams {
         notary_url,
+        expected_notary_key: None,
         url: format!("https://{SERVER_DOMAIN}/formats/json"),
         method: None,
         headers: vec![],
@@ -86,6 +87,7 @@ async fn notarize_present_verify() {
 
     let out = zkf_prover::notarize(NotarizeParams {
         notary_url,
+        expected_notary_key: None,
         url: format!("https://{SERVER_DOMAIN}/formats/json"),
         method: None,
         headers: vec![("Authorization".into(), "Bearer super-secret-token".into())],
@@ -136,7 +138,10 @@ async fn notarize_present_verify() {
     // Shape proofs are attached by default, so disclosed values come with
     // authenticated paths (ZKF-07).
     let paths: Vec<&str> = verified.json.iter().map(|f| f.path.as_str()).collect();
-    assert!(paths.contains(&"id") && paths.contains(&"meta.version"), "{paths:?}");
+    assert!(
+        paths.contains(&"id") && paths.contains(&"meta.version"),
+        "{paths:?}"
+    );
     // MPC sessions pass a proxy-rejecting policy.
     zkf_verifier::verify(
         &presentation,
@@ -175,6 +180,31 @@ async fn notarize_present_verify() {
     assert!(verified.recv.contains("\"version\":1.2"));
     // Only the selected key/value is disclosed from the body.
     assert!(!verified.recv.contains("John Doe"));
+
+    // Byte-only disclosure must not leak parent keys or claim an authenticated path.
+    let byte_only = RevealSpec {
+        response: ResponseReveal {
+            byte_only: true,
+            json_paths: vec!["id".into()],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let bytes = zkf_prover::present(&out.attestation, &out.secrets, &byte_only).unwrap();
+    let view = zkf_verifier::verify(&bytes, &opts).unwrap();
+    assert!(view.recv.contains("1234567890"));
+    assert!(!view.recv.contains("information"));
+    assert!(!view.json_paths_authenticated);
+    assert!(
+        zkf_verifier::verify(
+            &bytes,
+            &VerifyOptions {
+                require_json_paths: true,
+                ..opts.clone()
+            }
+        )
+        .is_err()
+    );
 
     // A field nested inside an array element can be revealed on its own.
     let nested = RevealSpec {
@@ -389,7 +419,7 @@ async fn quicksilver_false_predicate_rejected() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn auto_falls_back_for_get_but_never_retries_post() {
+async fn auto_never_retries_get_or_post() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let connections = Arc::new(AtomicUsize::new(0));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -405,15 +435,16 @@ async fn auto_falls_back_for_get_but_never_retries_post() {
     let (notary_url, _) = spawn_notary().await;
     let mut get = params(notary_url.clone(), fixture.clone(), vec![]);
     get.tls_version = None; // The default auto preference.
-    let out = tokio::time::timeout(
-        std::time::Duration::from_secs(45),
-        zkf_prover::notarize(get),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    assert_eq!(out.tls_version, "1.2");
-    assert_eq!(connections.load(Ordering::SeqCst), 2, "GET retries TLS 1.2");
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_secs(45),
+            zkf_prover::notarize(get)
+        )
+        .await
+        .unwrap()
+        .is_err()
+    );
+    assert_eq!(connections.load(Ordering::SeqCst), 1, "GET must not retry");
 
     let mut post = params(notary_url, fixture, vec![]);
     post.method = Some("POST".into());
@@ -429,7 +460,7 @@ async fn auto_falls_back_for_get_but_never_retries_post() {
     );
     assert_eq!(
         connections.load(Ordering::SeqCst),
-        3,
+        2,
         "POST makes only one attempt"
     );
 }
@@ -874,4 +905,15 @@ async fn proxy_response_over_max_recv_fails() {
         format!("{err:#}").contains("over the 64-byte limit for proxy mode"),
         "unexpected error: {err:#}"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn notary_key_pin_is_checked_before_server_connection() {
+    let fixture = spawn_fixture().await;
+    let (url, key) = spawn_notary().await;
+    let mut p = params(url, fixture, vec![]);
+    p.expected_notary_key = Some("02".repeat(33));
+    assert!(zkf_prover::prepare(&p).await.is_err());
+    p.expected_notary_key = Some(key);
+    assert!(zkf_prover::prepare(&p).await.is_ok());
 }

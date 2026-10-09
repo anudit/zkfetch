@@ -6,6 +6,28 @@ use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::MAX_FRAME_LEN;
 
+/// Plain transport is limited to literal loopback addresses and localhost.
+/// DNS names that happen to resolve locally do not qualify.
+pub fn validate_endpoint(value: &str) -> Result<url::Url> {
+    let endpoint = url::Url::parse(value)?;
+    let local = match endpoint.host() {
+        Some(url::Host::Domain("localhost")) => true,
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        _ => false,
+    };
+    if endpoint.scheme() != "wss" && !(endpoint.scheme() == "ws" && local) {
+        bail!("remote notary and relay URLs must use wss://");
+    }
+    if !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+        || endpoint.fragment().is_some()
+    {
+        bail!("notary URL must not contain userinfo or a fragment");
+    }
+    Ok(endpoint)
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub use socket::*;
 
@@ -106,7 +128,7 @@ mod browser {
         task::{Context, Poll},
     };
 
-    use anyhow::{Result, anyhow, bail};
+    use anyhow::{Result, anyhow};
     use async_io_stream::IoStream;
     use futures::{AsyncRead, AsyncWrite};
     use ws_stream_wasm::{WsMeta, WsStreamIo};
@@ -122,12 +144,10 @@ mod browser {
 
     /// Connects to a notary (or relay) at `ws://` or `wss://` `url`.
     pub async fn connect(url: &str) -> Result<ClientStream> {
-        if !(url.starts_with("ws://") || url.starts_with("wss://")) {
-            bail!("notary URL must use ws:// or wss://");
-        }
+        super::validate_endpoint(url)?;
         let (meta, ws) = WsMeta::connect(url, None)
             .await
-            .map_err(|e| anyhow!("failed to connect to {url}: {e}"))?;
+            .map_err(|_| anyhow!("failed to connect to notary"))?;
         Ok(super::Guarded::new(BrowserStream {
             _meta: meta,
             io: ws.into_io(),
@@ -165,9 +185,9 @@ mod browser {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod socket {
-    use anyhow::{Context, Result, bail};
+    use anyhow::{Context, Result};
     use async_tungstenite::tokio::{
-        TokioAdapter, accept_async, client_async_tls_with_connector_and_config,
+        TokioAdapter, accept_async_with_config, client_async_tls_with_connector_and_config,
     };
     use tokio::net::TcpStream;
     use ws_stream_tungstenite::WsStream;
@@ -180,10 +200,7 @@ mod socket {
 
     /// Connects to a notary at `ws://` or `wss://` `url`.
     pub async fn connect(url: &str) -> Result<ClientStream> {
-        let endpoint = url::Url::parse(url).context("invalid notary URL")?;
-        if !matches!(endpoint.scheme(), "ws" | "wss") {
-            bail!("notary URL must use ws:// or wss://");
-        }
+        let endpoint = super::validate_endpoint(url)?;
         let host = endpoint.host_str().context("notary URL has no host")?;
         let port = endpoint
             .port_or_known_default()
@@ -191,18 +208,34 @@ mod socket {
         let tcp = TcpStream::connect((host, port)).await?;
         // MPC makes many small, dependent exchanges. Avoid Nagle/delayed-ACK stalls.
         tcp.set_nodelay(true)?;
-        let (ws, _) = client_async_tls_with_connector_and_config(url, tcp, None, None)
-            .await
-            .with_context(|| format!("failed to connect to notary at {url}"))?;
+        let (ws, _) = client_async_tls_with_connector_and_config(
+            url,
+            tcp,
+            None,
+            Some(
+                async_tungstenite::tungstenite::protocol::WebSocketConfig::default()
+                    .max_frame_size(Some(1 << 20))
+                    .max_message_size(Some(1 << 20)),
+            ),
+        )
+        .await
+        .context("failed to connect to notary")?;
         Ok(super::Guarded::new(WsStream::new(ws)))
     }
 
     /// Accepts a WebSocket upgrade on an incoming TCP connection.
     pub async fn accept(tcp: TcpStream) -> Result<ServerStream> {
         tcp.set_nodelay(true)?;
-        let ws = accept_async(tcp)
-            .await
-            .context("websocket handshake failed")?;
+        let ws = accept_async_with_config(
+            tcp,
+            Some(
+                async_tungstenite::tungstenite::protocol::WebSocketConfig::default()
+                    .max_frame_size(Some(1 << 20))
+                    .max_message_size(Some(1 << 20)),
+            ),
+        )
+        .await
+        .context("websocket handshake failed")?;
         Ok(super::Guarded::new(WsStream::new(ws)))
     }
 }
@@ -233,4 +266,33 @@ pub async fn read_frame<R: AsyncRead + Unpin>(io: &mut R) -> Result<Vec<u8>> {
         .await
         .map_err(|e| anyhow::anyhow!("failed to read frame body: {e}"))?;
     Ok(buf)
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    #[test]
+    fn remote_plaintext_transport_is_rejected() {
+        for url in [
+            "ws://example.com",
+            "ws://localhost.example",
+            "ws://127.0.0.1.example",
+            "https://example.com",
+        ] {
+            assert!(validate_endpoint(url).is_err(), "{url}");
+        }
+        for url in [
+            "wss://example.com",
+            "ws://127.0.0.1",
+            "ws://[::1]",
+            "ws://localhost",
+        ] {
+            assert!(validate_endpoint(url).is_ok(), "{url}");
+        }
+    }
+    #[test]
+    fn oversized_frames_are_rejected_before_reading_the_body() {
+        let mut stream = futures::io::Cursor::new(((MAX_FRAME_LEN + 1) as u32).to_be_bytes());
+        assert!(futures::executor::block_on(read_frame(&mut stream)).is_err());
+    }
 }

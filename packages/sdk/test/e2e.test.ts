@@ -85,6 +85,14 @@ test("zkFetch -> present -> verify, with tamper and policy rejection", async () 
   // the notary-signed predicate verifies there too; the value is simply visible.
   expect(verify(presentation, { ...opts, expectedPredicates: [predicate] }).predicates).toEqual([predicate]);
   expect(out.json).toEqual([{ path: "id", value: 1234567890 }]);
+  expect(out.jsonPathsAuthenticated).toBe(true);
+  expect(() => verify(presentation, { ...opts, expectedServerName: "attacker.invalid" })).toThrow();
+  expect(() => verify(presentation, { ...opts, expectedTarget: "/wrong" })).toThrow();
+  expect(() => verify(presentation, { ...opts, expectedStatus: 404 })).toThrow();
+  verify(presentation, { ...opts, expectedServerName: fixture.serverName,
+    expectedTarget: "/formats/json", expectedMethod: "GET", expectedStatus: 200,
+    maxAgeSecs: 60, requireJsonPaths: true, requireCompleteResponse: true });
+
   expect(() => verify(hidden, { ...opts, expectedPredicates: [{ jsonPath: "id", predicate: { gt: "1234567890" } }] })).toThrow();
   expect(() => restored.zk.present({ prove: [{ jsonPath: "id", predicate: { gt: "1234567890" } }] })).toThrow();
   expect(() => restored.zk.present({ prove: [{ jsonPath: "id", predicate: { gte: Number.MAX_SAFE_INTEGER + 1 } }] })).toThrow();
@@ -111,20 +119,10 @@ test("zkFetch -> present -> verify, with tamper and policy rejection", async () 
   expect(stronger.exitCode).toBe(1);
 }, 60_000);
 
-test("default auto preference falls back to a TLS 1.2-only fixture", async () => {
-  const res = await zkFetch(`https://${fixture.serverName}/formats/json`, {
-    zkConfig: {
-      notaryUrl: notary.url,
-      connectAddr: fixture.addr,
-      extraRootCerts: [fixture.caCert],
-    },
-  });
-  expect(res.status).toBe(200);
-  expect(res.zk.tlsVersion).toBe("1.2");
-  const out = verify(res.zk.present({ response: { jsonPaths: ["id"] } }), {
-    trustedNotaryKeys: [notary.publicKey], extraRootCerts: [fixture.caCert],
-  });
-  expect(out.tlsVersion).toBe("V1_2");
+test("auto does not retry a failed TLS 1.3 session against a TLS 1.2 fixture", async () => {
+  await expect(zkFetch(`https://${fixture.serverName}/formats/json`, {
+    zkConfig: { notaryUrl: notary.url, connectAddr: fixture.addr, extraRootCerts: [fixture.caCert] },
+  })).rejects.toThrow();
 }, 60_000);
 
 test("TLS 1.3-only fixture -> restored session -> disclosure and QuickSilver predicate", async () => {

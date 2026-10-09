@@ -49,8 +49,8 @@ use tls_core::msgs::{
 use tls13_schedule::{HandshakeKeys, Mode, Role, Tls13KeySched};
 use tlsn_core::{
     connection::{
-        CertBinding, CertBindingV1_3, KeyType, ServerEphemKey, ServerSignature,
-        SignatureAlgorithm, TlsVersion,
+        CertBinding, CertBindingV1_3, KeyType, ServerEphemKey, ServerSignature, SignatureAlgorithm,
+        TlsVersion,
     },
     transcript::{ContentType, Record, TlsTranscript},
     webpki::CertificateDer,
@@ -145,8 +145,11 @@ impl Schedule {
         handshake_hash: [u8; 32],
         shared_secret: Option<[u8; 32]>,
     ) -> Result<(HandshakeKeys, [u8; 12], [u8; 12]), TlsnError> {
-        if let Some(secret) = shared_secret {
-            vm.assign(self.pms, secret).map_err(vm_err)?;
+        if let Some(mut secret) = shared_secret {
+            use zeroize::Zeroize;
+            let result = vm.assign(self.pms, secret).map_err(vm_err);
+            secret.zeroize();
+            result?;
         }
         vm.commit(self.pms).map_err(vm_err)?;
         self.ks
@@ -238,7 +241,12 @@ fn aad(len: usize) -> [u8; 5] {
 
 /// Opens one TLS 1.3 record and returns the inner plaintext (content type
 /// byte and padding included).
-fn open(key: [u8; 16], iv: [u8; 12], seq: u64, record: &OpaqueMessage) -> Result<Vec<u8>, TlsnError> {
+fn open(
+    key: [u8; 16],
+    iv: [u8; 12],
+    seq: u64,
+    record: &OpaqueMessage,
+) -> Result<Vec<u8>, TlsnError> {
     let payload = &record.payload.0;
     if record.typ != TlsContentType::ApplicationData
         || !(TAG_LEN + 1..=MAX_CONTENT + 256).contains(&payload.len())
@@ -271,7 +279,9 @@ fn split_inner(inner: &[u8]) -> Result<(TlsContentType, usize, Vec<u8>), TlsnErr
     match typ {
         TlsContentType::ApplicationData => Ok((typ, end, inner[end..].to_vec())),
         TlsContentType::Alert | TlsContentType::Handshake => Ok((typ, end, inner.to_vec())),
-        typ => Err(peer(format!("unexpected TLS 1.3 inner content type {typ:?}"))),
+        typ => Err(peer(format!(
+            "unexpected TLS 1.3 inner content type {typ:?}"
+        ))),
     }
 }
 
@@ -305,7 +315,9 @@ fn hmac(key: &[u8], data: &[u8]) -> Vec<u8> {
     mac.finalize().into_bytes().to_vec()
 }
 
-fn signature_alg(scheme: tls_core::msgs::enums::SignatureScheme) -> Result<SignatureAlgorithm, TlsnError> {
+fn signature_alg(
+    scheme: tls_core::msgs::enums::SignatureScheme,
+) -> Result<SignatureAlgorithm, TlsnError> {
     use tls_core::msgs::enums::SignatureScheme as S;
     Ok(match scheme {
         S::ECDSA_NISTP256_SHA256 => SignatureAlgorithm::ECDSA_NISTP256_SHA256,
@@ -314,7 +326,11 @@ fn signature_alg(scheme: tls_core::msgs::enums::SignatureScheme) -> Result<Signa
         S::RSA_PSS_SHA256 => SignatureAlgorithm::RSA_PSS_2048_8192_SHA256_LEGACY_KEY,
         S::RSA_PSS_SHA384 => SignatureAlgorithm::RSA_PSS_2048_8192_SHA384_LEGACY_KEY,
         S::RSA_PSS_SHA512 => SignatureAlgorithm::RSA_PSS_2048_8192_SHA512_LEGACY_KEY,
-        scheme => return Err(peer(format!("unsupported TLS 1.3 signature scheme {scheme:?}"))),
+        scheme => {
+            return Err(peer(format!(
+                "unsupported TLS 1.3 signature scheme {scheme:?}"
+            )));
+        }
     })
 }
 
@@ -363,6 +379,31 @@ impl Traffic {
                 }
             }
         }
+    }
+
+    fn validate_sni(&self, expected: &str) -> Result<(), TlsnError> {
+        use tls_core::msgs::handshake::ConvertServerNameList;
+        let (hello, _) = Self::plaintext_message(&self.sent, 0)?;
+        let (message, used) = handshake_message(&hello)?;
+        let HandshakePayload::ClientHello(client) = message.payload else {
+            return Err(peer("first sent message is not ClientHello"));
+        };
+        if used != hello.len() || client.has_duplicate_extension() {
+            return Err(peer("invalid ClientHello"));
+        }
+        let names = client
+            .get_sni_extension()
+            .ok_or_else(|| peer("ClientHello has no SNI"))?;
+        if names.has_duplicate_names_for_type() || names.len() != 1 {
+            return Err(peer("ClientHello must have one SNI name"));
+        }
+        let name = names
+            .get_single_hostname()
+            .ok_or_else(|| peer("invalid SNI hostname"))?;
+        if !name.as_ref().eq_ignore_ascii_case(expected) {
+            return Err(peer("ClientHello SNI does not match the dialed server"));
+        }
+        Ok(())
     }
 
     fn hello(&self) -> Result<Hello, TlsnError> {
@@ -468,7 +509,8 @@ impl Traffic {
 
     /// Decrypts and checks the handshake epoch in both directions.
     fn handshake(&self, hello: &Hello, keys: &HandshakeKeys) -> Result<Handshake, TlsnError> {
-        let is_finished = |m: &HandshakeMessagePayload| matches!(m.payload, HandshakePayload::Finished(_));
+        let is_finished =
+            |m: &HandshakeMessagePayload| matches!(m.payload, HandshakePayload::Finished(_));
 
         // Server flight: EncryptedExtensions, [CertificateRequest],
         // Certificate, CertificateVerify, Finished.
@@ -570,7 +612,11 @@ impl Traffic {
     }
 
     /// Application-epoch records with TLS 1.2-style explicit nonces.
-    fn app_records(records: &[OpaqueMessage], start: usize, iv: [u8; 12]) -> Result<Vec<Record>, TlsnError> {
+    fn app_records(
+        records: &[OpaqueMessage],
+        start: usize,
+        iv: [u8; 12],
+    ) -> Result<Vec<Record>, TlsnError> {
         records[start.min(records.len())..]
             .iter()
             .enumerate()
@@ -707,6 +753,19 @@ pub(crate) struct Tls13ClientSecrets {
     pub(crate) server_app: ([u8; 16], [u8; 12]),
 }
 
+impl Drop for Tls13ClientSecrets {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.shared_secret.zeroize();
+        self.client_hs.zeroize();
+        self.server_hs.zeroize();
+        self.client_app.0.zeroize();
+        self.client_app.1.zeroize();
+        self.server_app.0.zeroize();
+        self.server_app.1.zeroize();
+    }
+}
+
 impl<V: Vm<Binary> + Execute + Send> ProxyProver13<V> {
     pub(crate) fn new(vm: V, ctx: Context) -> Self {
         Self {
@@ -751,8 +810,10 @@ impl<V: Vm<Binary> + Execute + Send> ProxyProver13<V> {
             }
             Ok::<_, TlsnError>((records, suffixes))
         };
-        let (mut sent, sent_suffixes) = records(&traffic.sent, handshake.sent_app, secrets.client_app)?;
-        let (mut recv, recv_suffixes) = records(&traffic.recv, handshake.recv_app, secrets.server_app)?;
+        let (mut sent, sent_suffixes) =
+            records(&traffic.sent, handshake.sent_app, secrets.client_app)?;
+        let (mut recv, recv_suffixes) =
+            records(&traffic.recv, handshake.recv_app, secrets.server_app)?;
 
         self.ctx
             .io_mut()
@@ -838,14 +899,22 @@ impl<V: Vm<Binary> + Execute + Send> ProxyVerifier13<V> {
 
         let mut schedule = self.schedule.take().expect("schedule allocated");
         let (hs_keys, civ, siv) = schedule
-            .run(&mut self.vm, &mut self.ctx, hello.hash, claim.handshake_hash, None)
+            .run(
+                &mut self.vm,
+                &mut self.ctx,
+                hello.hash,
+                claim.handshake_hash,
+                None,
+            )
             .await?;
 
         // The application keys were derived from the claimed hash; it must be
         // the hash of the handshake the verifier relayed and now decrypts.
         let handshake = traffic.handshake(&hello, &hs_keys)?;
         if handshake.application_hash != claim.handshake_hash {
-            return Err(peer("claimed TLS 1.3 handshake hash does not match the relayed handshake"));
+            return Err(peer(
+                "claimed TLS 1.3 handshake hash does not match the relayed handshake",
+            ));
         }
 
         let mut sent = Traffic::app_records(&traffic.sent, handshake.sent_app, civ)?;
@@ -864,4 +933,12 @@ impl<V: Vm<Binary> + Execute + Send> ProxyVerifier13<V> {
             },
         ))
     }
+}
+
+pub(crate) fn validate_sni(sent: &[u8], expected: &str) -> Result<(), TlsnError> {
+    Traffic {
+        sent: parse_records(sent)?,
+        recv: Vec::new(),
+    }
+    .validate_sni(expected)
 }

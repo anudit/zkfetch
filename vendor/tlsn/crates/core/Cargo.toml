@@ -23,6 +23,7 @@ fixtures = [
 ]
 
 [dependencies]
+serde_json = { workspace = true }
 tlsn-data-fixtures = { workspace = true, optional = true }
 tlsn-tls-core = { workspace = true, features = ["serde"] }
 

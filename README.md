@@ -28,7 +28,7 @@ a notary that runs on a small ARM server (AWS Graviton, Mumbai).
 | **JSON selective disclosure** | Reveal by dotted path (`users.0.username`), including array elements. With the default QuickSilver backend the notary attests the shape of every JSON value, so `verify()` returns each disclosed value with a proven path (`result.json`). Disclosing a field therefore also reveals the response's keys and punctuation, not its other values. |
 | **Session binding** | `zkf.owner` / `zkf.context` attestation extensions for wallet binding and verifier challenges. |
 | **`fetch`-shaped SDK** | `zkFetch(url, init)` returns a standard `Response`. Sessions serialize, so the reveal can be decided later. |
-| **Automatic version and backend** | `tlsVersion: "auto"` prefers TLS 1.3 and falls back to 1.2 only for idempotent requests. One `backend` switch configures commitments and proofs. |
+| **Automatic version and backend** | `tlsVersion: "auto"` selects TLS 1.3; attempts are never automatically retried. Select TLS 1.2 explicitly for compatibility. One `backend` switch configures commitments and proofs. |
 | **Single-threaded MPC** | A patched executor runs MPC without OS threads, for wasm hosts such as Workers. |
 | **Multi-threaded wasm** | A threaded browser build spreads OT work across Web Workers in cross-origin isolated contexts. |
 | **Prepared sessions** | `prepare()` runs the notary connection and preprocessing before the request, so a click only waits for TLS, proofs and attestation. |
@@ -104,6 +104,7 @@ const res = await zkFetch("https://api.example.com/me", {
   headers: { Authorization: `Bearer ${token}` }, // never revealed
   zkConfig: {
     notaryUrl: "wss://15-207-105-149.sslip.io/notarize", // infra/aws/deployment.json
+    expectedNotaryKey: NOTARY_PUBLIC_KEY, // pin from your trusted deployment
     mode: "mpc",           // or "proxy": much less traffic, trusts the notary-to-server path
     tlsVersion: "auto",    // "1.3" | "1.2" | "auto"
     backend: "quicksilver",// or "binius" for offline predicates later
@@ -153,7 +154,7 @@ conditional exports:
 To hide setup latency, prepare while the user is still deciding, then fetch:
 
 ```ts
-const zkConfig = { notaryUrl: NOTARY_URL, mode: "proxy" } as const;
+const zkConfig = { notaryUrl: NOTARY_URL, expectedNotaryKey: NOTARY_PUBLIC_KEY, mode: "proxy" } as const;
 const prepared = prepare("https://api.example.com/me", zkConfig); // e.g. when a dialog opens
 // ...later, on click:
 const res = await zkFetch("https://api.example.com/me", { headers, zkConfig: { ...zkConfig, prepared } });
@@ -188,3 +189,6 @@ bun packages/sdk/scripts/build-npm.ts       # the @omnid/zkfetch package
 
 The [Chrome extension](packages/chrome-extension) proves a Duolingo username
 and longest streak in proxy mode, with threads and a prepared session.
+
+Application authorization, replay challenges, JSON disclosure privacy and notary
+key rotation are documented in [the security policy](docs/security-policy.md).

@@ -57,6 +57,13 @@ impl Presentation {
         PresentationBuilder::new(provider, attestation)
     }
 
+    /// Returns the unverified identity handshake for additional signed policy checks.
+    pub fn handshake_data(&self) -> Option<&tlsn_core::connection::HandshakeData> {
+        self.identity
+            .as_ref()
+            .map(ServerIdentityProof::handshake_data)
+    }
+
     /// Returns the verifying key.
     pub fn verifying_key(&self) -> &VerifyingKey {
         self.attestation.verifying_key()

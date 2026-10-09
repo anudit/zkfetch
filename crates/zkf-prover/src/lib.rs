@@ -82,14 +82,14 @@ async fn connect_server(
     })?;
     let mut url = url::Url::parse(relay).context("invalid relayUrl")?;
     url.query_pairs_mut().append_pair("target", dial);
-    Ok(rt::AssertSend(
+    Ok(rt::AssertSend::new(
         zkf_core::transport::connect(url.as_str()).await?,
     ))
 }
 
 /// Performs a notarized HTTPS request.
 ///
-/// `params.tls_version`: "1.3", "1.2" or "auto" (default). "auto" tries TLS
+/// `params.tls_version`: "1.3", "1.2" or "auto" (default). "auto" selects TLS
 /// 1.3 first and retries over TLS 1.2 only for idempotent methods, so a
 /// non-idempotent request is never sent twice.
 pub async fn notarize(params: NotarizeParams) -> Result<NotarizeOutput> {
@@ -133,6 +133,7 @@ enum CommittedProver {
 #[derive(Debug, Clone, PartialEq)]
 struct SessionKey {
     notary_url: String,
+    expected_notary_key: Option<String>,
     proxy: bool,
     /// Proxy mode commits to the server name; MPC mode does not.
     proxy_host: Option<String>,
@@ -149,6 +150,7 @@ impl SessionKey {
         };
         Ok(Self {
             notary_url: params.notary_url.clone(),
+            expected_notary_key: params.expected_notary_key.clone(),
             proxy,
             proxy_host: if proxy {
                 Some(Target::parse(&params.url)?.host)
@@ -209,7 +211,20 @@ async fn prepare_with(params: &NotarizeParams, tls_version: TlsVersion) -> Resul
 
     // Session with the notary.
     let started = Instant::now();
-    let notary = transport::connect(&params.notary_url).await?;
+    let endpoint = transport::validate_endpoint(&params.notary_url)?;
+    if endpoint.scheme() == "wss" && params.expected_notary_key.is_none() {
+        bail!("remote sessions require expectedNotaryKey before MPC setup");
+    }
+    let mut notary = transport::connect(&params.notary_url).await?;
+    #[cfg(not(target_arch = "wasm32"))]
+    tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        zkf_core::notary_auth::authenticate(&mut notary, params.expected_notary_key.as_deref()),
+    )
+    .await
+    .context("notary authentication opening deadline exceeded")??;
+    #[cfg(target_arch = "wasm32")]
+    zkf_core::notary_auth::authenticate(&mut notary, params.expected_notary_key.as_deref()).await?;
     let connect_ms = started.elapsed().as_secs_f64() * 1e3;
     let (driver, mut handle) = Session::new(notary).split();
     let mut driver_task = rt::spawn(driver);
@@ -261,11 +276,6 @@ async fn notarize_auto(
     prepared: Option<Prepared>,
 ) -> Result<NotarizeOutput> {
     SessionKey::new(&params)?;
-    let method = params
-        .method
-        .clone()
-        .unwrap_or_else(|| "GET".into())
-        .to_uppercase();
     let requested = params.tls_version.as_deref().unwrap_or("auto");
     let first = match (requested, prepared.as_ref().map(|p| p.tls_version)) {
         ("1.2", None | Some(TlsVersion::V1_2)) | ("auto", Some(TlsVersion::V1_2)) => {
@@ -284,25 +294,9 @@ async fn notarize_auto(
             Err(err) => Err(err),
         },
     };
-    if requested != "auto" || first != TlsVersion::V1_3 {
-        return result;
-    }
-    match result {
-        Ok(out) => Ok(out),
-        Err(err) if matches!(method.as_str(), "GET" | "HEAD" | "OPTIONS") => {
-            debug!("TLS 1.3 notarization failed ({err:#}); retrying with TLS 1.2");
-            let prepared = prepare_with(&params, TlsVersion::V1_2)
-                .await
-                .with_context(|| format!("TLS 1.3 attempt failed first: {err:#}"))?;
-            finish(prepared, params)
-                .await
-                .with_context(|| format!("TLS 1.3 attempt failed first: {err:#}"))
-        }
-        Err(err) => Err(err.context(
-            "TLS 1.3 notarization failed; set tlsVersion to \"1.2\" to use TLS 1.2 \
-             (not retried automatically for non-idempotent methods)",
-        )),
-    }
+    // Never retry an attempted session: failures may occur after HTTP transmission.
+    // Callers may explicitly choose TLS 1.2 for compatibility before a new request.
+    result
 }
 
 /// Runs the request-dependent phases on a prepared session.
@@ -443,6 +437,8 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
 
     // Parsed spans are !Send, so keep them out of scope across awaits.
     let (response_view, transcript_commit, qs_claims) = {
+        zkf_core::parsing::check_http_json_nesting(prover.transcript().sent())?;
+        zkf_core::parsing::check_http_json_nesting(prover.transcript().received())?;
         let transcript = HttpTranscript::parse(prover.transcript())
             .context("could not parse HTTP transcript")?;
         // Commit to the whole transcript at HTTP-part / JSON-node granularity.
@@ -472,11 +468,17 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
                 _ => None,
             });
         let qs_claims = if params.predicates.is_empty() {
-            json_body.filter(|_| !params.binius).and_then(|doc| {
-                zkf_predicates::quicksilver::plan(&doc.root, prover.transcript().received(), &[])
-                    .inspect_err(|err| debug!("no JSON shape proofs: {err:#}"))
-                    .ok()
-            })
+            json_body
+                .filter(|_| !params.binius)
+                .map(|doc| {
+                    zkf_predicates::quicksilver::plan(
+                        &doc.root,
+                        prover.transcript().received(),
+                        &[],
+                    )
+                })
+                .transpose()
+                .context("JSON shape authentication is unsupported for this response")?
         } else {
             let body = transcript
                 .responses
@@ -492,7 +494,11 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
                 &params.predicates,
             )?)
         };
-        (response_view(&transcript)?, commit.build()?, qs_claims)
+        (
+            response_view(&transcript)?,
+            commit::disjoint(prover.transcript(), commit.build()?)?,
+            qs_claims,
+        )
     };
 
     let mut request_config = RequestConfig::builder();
@@ -518,6 +524,7 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
     let request_config = request_config.build()?;
 
     let mut prove = ProveConfig::builder(prover.transcript());
+    prove.server_identity();
     if let Some(config) = request_config.transcript_commit() {
         prove.transcript_commit(config.clone());
     }
@@ -566,8 +573,16 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
     handle.close();
     let mut socket = driver_task.await?;
     transport::write_frame(&mut socket, &bincode::serialize(&att_request)?).await?;
-    let attestation: Attestation = bincode::deserialize(&transport::read_frame(&mut socket).await?)
-        .context("invalid attestation from notary")?;
+    let bytes = transport::read_frame(&mut socket).await?;
+    let attestation: Attestation = {
+        use bincode::Options;
+        bincode::DefaultOptions::new()
+            .with_fixint_encoding()
+            .with_limit(zkf_core::MAX_FRAME_LEN as u64)
+            .reject_trailing_bytes()
+            .deserialize(&bytes)
+            .context("invalid attestation from notary")?
+    };
 
     att_request
         .validate(&attestation, &CryptoProvider::default())
@@ -582,6 +597,12 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
         };
 
     let key = attestation.body.verifying_key();
+    if let Some(expected) = &params.expected_notary_key {
+        anyhow::ensure!(
+            hex::decode(expected)? == key.data,
+            "attestation key differs from the interactive notary pin"
+        );
+    }
     Ok(NotarizeOutput {
         attestation: b64::encode(bincode::serialize(&attestation)?),
         secrets: b64::encode(bincode::serialize(&secrets)?),

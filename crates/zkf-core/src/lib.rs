@@ -1,6 +1,8 @@
 //! Shared types, wire framing and transport used by the zkfetch prover,
 //! notary and verifier.
 
+pub mod parsing;
+pub mod notary_auth;
 pub mod transport;
 pub mod types;
 
@@ -16,6 +18,9 @@ pub const EXT_MODE: &[u8] = b"zkf.mode";
 /// Verifiers require it to equal the proven server name, so a proxy session
 /// to one host cannot be presented as another host's data.
 pub const EXT_SERVER: &[u8] = b"zkf.server";
+
+/// Notary-owned SHA-256 of the verified TLS 1.3 certificate-binding transcript.
+pub const EXT_HANDSHAKE: &[u8] = b"zkf.handshake";
 
 /// Default preprocessing limits (bytes). MPC cost scales with these.
 pub const DEFAULT_MAX_SENT: usize = 1 << 12;

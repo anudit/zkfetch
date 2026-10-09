@@ -55,7 +55,7 @@ impl ProxyProver {
 
     pub(crate) async fn finalize(
         mut self,
-        ms: Vec<u8>,
+        ms: zeroize::Zeroizing<Vec<u8>>,
         time: u64,
         traffic: TlsBytes,
     ) -> Result<(Context, ProverZk, TlsOutput), TlsnError> {
@@ -75,6 +75,7 @@ impl ProxyProver {
 
         let mut refs = self.refs.expect("key refs should be available");
         let ms: [u8; 48] = ms
+            .as_slice()
             .try_into()
             .map_err(|_| TlsnError::internal().with_msg("ms has wrong length"))?;
 

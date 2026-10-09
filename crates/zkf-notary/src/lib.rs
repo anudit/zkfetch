@@ -7,7 +7,12 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
+#[cfg(not(target_arch = "wasm32"))]
+mod admission;
+pub mod metrics;
+
 use anyhow::{Context, Result, bail};
+use bincode::Options;
 use futures::TryFutureExt;
 use tlsn::{
     Session,
@@ -21,7 +26,7 @@ use tlsn::{
     verifier::{VerifierCommitStart, VerifierOutput},
     webpki::{CertificateDer, RootCertStore},
 };
-use zkf_core::{EXT_CONTEXT, EXT_MODE, EXT_OWNER, EXT_SERVER, transport};
+use zkf_core::{EXT_CONTEXT, EXT_HANDSHAKE, EXT_MODE, EXT_OWNER, EXT_SERVER, transport};
 use zkf_predicates::quicksilver::{AttestedPredicates, EXT_QS};
 
 /// Opens the notary's own connection to the server in proxy mode, where the
@@ -45,6 +50,15 @@ impl ServerConnector for TcpConnector {
 
     async fn connect(&self, host: &str, port: u16) -> Result<Self::Stream> {
         use tokio_util::compat::TokioAsyncReadCompatExt;
+        if let Ok(allowlist) = std::env::var("ZKF_DESTINATION_ALLOWLIST") {
+            anyhow::ensure!(
+                allowlist
+                    .split(',')
+                    .any(|name| name.trim().eq_ignore_ascii_case(host)),
+                "destination is not allowlisted"
+            );
+        }
+
         // Explicit overrides (tests, fixtures) are trusted configuration.
         if let Some((_, addr)) = self.resolve.iter().find(|(name, _)| name == host) {
             let tcp = tokio::net::TcpStream::connect(addr)
@@ -101,14 +115,12 @@ pub fn is_public(ip: std::net::IpAddr) -> bool {
                 return v4(mapped);
             }
             let s = ip.segments();
-            !(ip.is_unspecified()
-                || ip.is_loopback()
-                || ip.is_multicast()
-                || (s[0] & 0xfe00) == 0xfc00 // unique local
-                || (s[0] & 0xffc0) == 0xfe80 // link local
-                || (s[0] == 0x64 && s[1] == 0xff9b) // NAT64 can reach IPv4 internals
-                || (s[0] == 0x2001 && s[1] == 0x0db8) // documentation
-                || s[0..6] == [0, 0, 0, 0, 0, 0]) // IPv4-compatible
+            // Fail closed outside currently allocated global unicast space.
+            (s[0] & 0xe000) == 0x2000
+                && !(s[0] == 0x2001 && s[1] < 0x0200) // special-use / Teredo / benchmarking / ORCHID
+                && !(s[0] == 0x2001 && s[1] == 0x0db8) // documentation
+                && s[0] != 0x2002 // 6to4 embeds unvalidated IPv4
+                && !(s[0] == 0x3fff && (s[1] & 0xf000) == 0) // documentation
         }
     }
 }
@@ -166,7 +178,7 @@ async fn answer_probe(tcp: tokio::net::TcpStream) -> Option<(tokio::net::TcpStre
             let n = tcp.peek(&mut buf).await.ok()?;
             let head = &buf[..n];
             if head.windows(4).any(|w| w == b"\r\n\r\n") || n == buf.len() {
-                return Some(String::from_utf8_lossy(head).to_ascii_lowercase());
+                return Some(String::from_utf8_lossy(head).into_owned());
             }
             if n == 0 {
                 return None;
@@ -177,7 +189,7 @@ async fn answer_probe(tcp: tokio::net::TcpStream) -> Option<(tokio::net::TcpStre
     .await
     .ok()
     .flatten()?;
-    if head.contains("upgrade: websocket") {
+    if head.to_ascii_lowercase().contains("upgrade: websocket") {
         return Some((tcp, head));
     }
     let mut tcp = tcp;
@@ -192,6 +204,7 @@ async fn answer_probe(tcp: tokio::net::TcpStream) -> Option<(tokio::net::TcpStre
 #[cfg(not(target_arch = "wasm32"))]
 async fn refuse(mut tcp: tokio::net::TcpStream, status: &str) {
     use tokio::io::AsyncWriteExt;
+    metrics::REJECTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let reason = status.split_once(' ').map_or(status, |(_, r)| r);
     let response = format!(
         "HTTP/1.1 {status}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nRetry-After: 5\r\nConnection: close\r\n\r\n{reason}",
@@ -210,7 +223,11 @@ fn client_ip(head: &str, peer: std::net::IpAddr, trust_forwarded: bool) -> std::
         return peer;
     }
     head.lines()
-        .find_map(|line| line.strip_prefix("x-forwarded-for:"))
+        .find_map(|line| {
+            line.split_once(':')
+                .filter(|(name, _)| name.eq_ignore_ascii_case("x-forwarded-for"))
+                .map(|(_, value)| value)
+        })
         .and_then(|value| value.rsplit(',').next())
         .and_then(|ip| ip.trim().parse().ok())
         .unwrap_or(peer)
@@ -230,6 +247,7 @@ impl Drop for Tracked {
     fn drop(&mut self) {
         if let Ok(mut started) = self.started.lock() {
             started.remove(&self.id);
+            metrics::ACTIVE.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
 }
@@ -294,6 +312,12 @@ pub async fn serve(
 ) -> Result<()> {
     use tracing::{info, warn};
 
+    let admission = Arc::new(admission::Admission::from_env()?);
+    anyhow::ensure!(
+        !admission.is_empty() || listener.local_addr()?.ip().is_loopback(),
+        "public notary requires ZKF_CAPABILITIES; anonymous admission is loopback-only"
+    );
+    let setup_slots = Arc::new(tokio::sync::Semaphore::new(16));
     let timeout = session_timeout();
     let max_sessions: usize = std::env::var("ZKF_MAX_SESSIONS")
         .ok()
@@ -359,12 +383,24 @@ pub async fn serve(
         next_id += 1;
         let (slots, clients, started) = (slots.clone(), clients.clone(), started.clone());
         let (config, connector) = (config.clone(), connector.clone());
+        let admission = admission.clone();
+        let setup_slots = setup_slots.clone();
         tokio::spawn(async move {
             // Readiness probes (`GET /ping`) succeed without a session slot.
             let Some((tcp, head)) = answer_probe(tcp).await else {
                 return;
             };
-            drop(pending_permit);
+            let tenant_slot = if admission.is_empty() {
+                None
+            } else {
+                match admission.admit(&head) {
+                    Ok(slot) => Some(slot),
+                    Err(status) => return refuse(tcp, status).await,
+                }
+            };
+            let Ok(setup_permit) = setup_slots.try_acquire_owned() else {
+                return refuse(tcp, "503 Service Unavailable").await;
+            };
             let client = client_ip(&head, peer.ip(), trust_forwarded);
             let Some(client_slot) = ClientSlot::acquire(&clients, client, per_client) else {
                 warn!(%client, "client at its session limit");
@@ -378,21 +414,31 @@ pub async fn serve(
                 .lock()
                 .unwrap()
                 .insert(id, std::time::Instant::now());
+            metrics::ACCEPTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            metrics::ACTIVE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let _tracked = Tracked { started, id };
-            let _slots = (permit, client_slot);
+            let _slots = (permit, client_slot, tenant_slot);
             let res = tokio::time::timeout(timeout, async {
                 // A connection that does not finish its WebSocket handshake
                 // promptly must not hold a slot until the session timeout.
                 let ws = tokio::time::timeout(OPENING_DEADLINE, transport::accept(tcp))
                     .await
                     .map_err(|_| anyhow::anyhow!("WebSocket handshake not completed in time"))??;
+                drop(setup_permit);
+                drop(pending_permit);
                 notarize(ws, &config, &*connector).await
             })
             .await
             .unwrap_or_else(|_| Err(anyhow::anyhow!("session timed out after {timeout:?}")));
             match res {
-                Ok(()) => info!(%client, "session notarized"),
-                Err(err) => warn!(%client, "session failed: {err:#}"),
+                Ok(()) => {
+                    metrics::COMPLETED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    info!(%client, "session notarized");
+                }
+                Err(_) => {
+                    metrics::FAILED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    warn!(%client, "session failed");
+                }
             }
         });
     }
@@ -402,11 +448,20 @@ pub async fn serve(
 ///
 /// The session driver is polled alongside the protocol rather than spawned,
 /// so this runs on a single-threaded runtime (the Cloudflare Worker notary).
-pub async fn notarize<S, C>(socket: S, config: &NotaryConfig, connector: &C) -> Result<()>
+pub async fn notarize<S, C>(mut socket: S, config: &NotaryConfig, connector: &C) -> Result<()>
 where
     S: futures::AsyncRead + futures::AsyncWrite + Unpin + 'static,
     C: ServerConnector,
 {
+    #[cfg(not(target_arch = "wasm32"))]
+    tokio::time::timeout(
+        OPENING_DEADLINE,
+        zkf_core::notary_auth::respond(&mut socket, &config.signing_key),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("notary authentication opening deadline exceeded"))??;
+    #[cfg(target_arch = "wasm32")]
+    zkf_core::notary_auth::respond(&mut socket, &config.signing_key).await?;
     let session = Session::new(socket);
     let (driver, mut handle) = session.split();
     // On failure the protocol future returns early and drops the driver.
@@ -431,8 +486,12 @@ where
     let recv_len = app_len(tls_transcript.recv());
 
     let request_bytes = transport::read_frame(&mut socket).await?;
-    let request: AttestationRequest =
-        bincode::deserialize(&request_bytes).context("invalid attestation request")?;
+    let request: AttestationRequest = bincode::DefaultOptions::new()
+        .with_fixint_encoding()
+        .with_limit(zkf_core::MAX_FRAME_LEN as u64)
+        .reject_trailing_bytes()
+        .deserialize(&request_bytes)
+        .context("invalid attestation request")?;
 
     let signer = Box::new(Secp256k1Signer::new(&config.signing_key)?);
     let mut provider = CryptoProvider::default();
@@ -500,6 +559,13 @@ where
             b"mpc".to_vec()
         },
     });
+    if let tlsn::connection::CertBinding::V1_3(binding) = tls_transcript.certificate_binding() {
+        use sha2::Digest;
+        builder.extension(tlsn::attestation::Extension {
+            id: EXT_HANDSHAKE.to_vec(),
+            value: sha2::Sha256::digest(&binding.handshake_messages).to_vec(),
+        });
+    }
     if let Some(host) = proxy_host {
         builder.extension(tlsn::attestation::Extension {
             id: EXT_SERVER.to_vec(),
@@ -579,10 +645,20 @@ async fn verify_session<C: ServerConnector>(
         VerifierOutput {
             transcript_commitments,
             predicates: verified_predicates,
+            server_name: verified_server,
             ..
         },
         verifier,
     ) = verifier.verify().await?.accept().await?;
+
+    let verified_server = verified_server
+        .ok_or_else(|| anyhow::anyhow!("server identity must be verified during notarization"))?;
+    if let Some(host) = &proxy_host {
+        anyhow::ensure!(
+            host.eq_ignore_ascii_case(&verified_server.to_string()),
+            "verified identity differs from the proxy destination"
+        );
+    }
 
     phase(&format!(
         "verified ({} commitments, {} bytes hashed)",
@@ -612,6 +688,57 @@ mod tests {
     use super::is_public;
 
     #[test]
+    fn per_client_slots_are_reclaimed() {
+        let clients = Default::default();
+        let ip = "127.0.0.1".parse().unwrap();
+        let first = super::ClientSlot::acquire(&clients, ip, 1).unwrap();
+        assert!(super::ClientSlot::acquire(&clients, ip, 1).is_none());
+        drop(first);
+        assert!(super::ClientSlot::acquire(&clients, ip, 1).is_some());
+    }
+    #[tokio::test]
+    async fn refused_private_destination_receives_no_connection() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let connector = super::TcpConnector { resolve: vec![] };
+        use super::ServerConnector;
+        assert!(
+            connector
+                .connect("127.0.0.1", listener.local_addr().unwrap().port())
+                .await
+                .is_err()
+        );
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(50), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+    #[tokio::test]
+    async fn slow_head_does_not_block_another_probe() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mut slow = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let (socket, _) = listener.accept().await.unwrap();
+        let task = tokio::spawn(super::answer_probe(socket));
+        slow.write_all(b"GET / HTTP/1.1\r\n").await.unwrap();
+        let mut fast = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let (socket, _) = listener.accept().await.unwrap();
+        let probe = tokio::spawn(super::answer_probe(socket));
+        fast.write_all(b"GET /ping HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = [0u8; 128];
+        let n = tokio::time::timeout(std::time::Duration::from_secs(1), fast.read(&mut response))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(response[..n].starts_with(b"HTTP/1.1 200 OK"));
+        assert!(probe.await.unwrap().is_none());
+        task.abort();
+    }
+
+    #[test]
     fn proxy_dials_only_public_addresses() {
         for blocked in [
             "127.0.0.1",
@@ -636,6 +763,13 @@ mod tests {
             "64:ff9b::a00:1",
             "2001:db8::1",
             "::7f00:1",
+            "2002:7f00:1::1",
+            "2001:0:4136:e378::1",
+            "2001:2::1",
+            "2001:20::1",
+            "3fff::1",
+            "fec0::1",
+            "100::1",
         ] {
             assert!(
                 !is_public(blocked.parse().unwrap()),

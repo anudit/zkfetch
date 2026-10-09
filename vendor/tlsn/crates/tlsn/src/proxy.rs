@@ -22,6 +22,7 @@ pub(crate) use verifier::ProxyVerifier;
 mod tls13;
 pub(crate) use tls13::{
     ProxyProver13, ProxyVerifier13, Tls13ClientSecrets, client_key_share, hkdf_expand_label,
+    validate_sni,
 };
 
 /// Proxy prover for the negotiated TLS version (zkfetch patch P4).
@@ -189,6 +190,9 @@ pub(crate) struct InspectReader<'a, R> {
     buf: &'a mut Vec<u8>,
     limit: usize,
     first_read: Option<u64>,
+    scan: usize,
+    records: usize,
+    handshake_bytes: usize,
 }
 
 impl<'a, R> InspectReader<'a, R> {
@@ -198,6 +202,9 @@ impl<'a, R> InspectReader<'a, R> {
             buf,
             limit,
             first_read: None,
+            scan: 0,
+            records: 0,
+            handshake_bytes: 0,
         }
     }
 
@@ -216,7 +223,9 @@ impl<R: AsyncRead + Unpin> AsyncRead for InspectReader<'_, R> {
         // Never read past the budget, so the excess is not even buffered.
         let room = this.limit.saturating_sub(this.buf.len());
         if room == 0 && !buf.is_empty() {
-            return Poll::Ready(Err(io::Error::other("proxied traffic exceeds the session limit")));
+            return Poll::Ready(Err(io::Error::other(
+                "proxied traffic exceeds the session limit",
+            )));
         }
         let max = buf.len().min(room);
         let n = ready!(Pin::new(&mut this.inner).poll_read(cx, &mut buf[..max]))?;
@@ -228,6 +237,26 @@ impl<R: AsyncRead + Unpin> AsyncRead for InspectReader<'_, R> {
             this.first_read = Some(now);
         }
         this.buf.extend_from_slice(&buf[..n]);
+        while this.buf.len().saturating_sub(this.scan) >= 5 {
+            let header = &this.buf[this.scan..this.scan + 5];
+            let len = u16::from_be_bytes([header[3], header[4]]) as usize;
+            if len > 18432 || !matches!(header[0], 20..=23) {
+                return Poll::Ready(Err(io::Error::other("malformed TLS record")));
+            }
+            if this.buf.len() - this.scan < 5 + len {
+                break;
+            }
+            this.records += 1;
+            if header[0] == 22 {
+                this.handshake_bytes += len;
+            }
+            if this.records > 4096 || this.handshake_bytes > (128 << 10) {
+                return Poll::Ready(Err(io::Error::other(
+                    "TLS record or handshake budget exceeded",
+                )));
+            }
+            this.scan += 5 + len;
+        }
         Poll::Ready(Ok(n))
     }
 }
@@ -361,5 +390,37 @@ impl VerifyDataCheck {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    use futures::{AsyncReadExt, executor::block_on, io::Cursor};
+    fn record(payload: usize) -> Vec<u8> {
+        let mut out = vec![23, 3, 3];
+        out.extend_from_slice(&(payload as u16).to_be_bytes());
+        out.resize(payload + 5, 0);
+        out
+    }
+    #[test]
+    fn traffic_budgets_and_malformed_records_fail_closed() {
+        for limit in [PROXY_MAX_SENT_BYTES, PROXY_MAX_RECV_BYTES] {
+            let wire = record(1024).repeat(limit / 1024 + 2);
+            let mut captured = Vec::new();
+            let mut reader = InspectReader::new(Cursor::new(wire), &mut captured, limit);
+            assert!(block_on(reader.read_to_end(&mut Vec::new())).is_err());
+            assert!(captured.len() <= limit);
+        }
+        for wire in [
+            record(0).repeat(4097),
+            vec![23, 3, 3, 255, 255],
+            vec![255, 3, 3, 0, 0],
+        ] {
+            let mut captured = Vec::new();
+            let mut reader =
+                InspectReader::new(Cursor::new(wire), &mut captured, PROXY_MAX_RECV_BYTES);
+            assert!(block_on(reader.read_to_end(&mut Vec::new())).is_err());
+        }
     }
 }

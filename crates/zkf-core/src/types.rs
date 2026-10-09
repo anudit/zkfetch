@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 pub struct NotarizeParams {
     /// Notary WebSocket URL, e.g. `ws://127.0.0.1:7047`.
     pub notary_url: String,
+    /// Compressed SEC1 notary signing key, hex. Required for remote sessions.
+    #[serde(default)]
+    pub expected_notary_key: Option<String>,
     /// Target `https://` URL.
     pub url: String,
     #[serde(default)]
@@ -43,8 +46,7 @@ pub struct NotarizeParams {
     /// offline with Binius64 (opt-in; increases notarization cost).
     #[serde(default)]
     pub binius: bool,
-    /// TLS version: "1.3", "1.2" or "auto" (default). "auto" tries TLS 1.3 and
-    /// falls back to TLS 1.2 for idempotent requests (GET/HEAD/OPTIONS).
+    /// TLS version: "1.3", "1.2" or "auto" (default, TLS 1.3). Never retries.
     #[serde(default)]
     pub tls_version: Option<String>,
     /// Commitment protocol: "mpc" (default) or "proxy". In proxy mode the
@@ -129,6 +131,9 @@ pub struct ResponseReveal {
     /// Reveal `"key": value` for these dotted JSON paths (e.g. `meta.version`).
     #[serde(default)]
     pub json_paths: Vec<String>,
+    /// Reveal byte spans without the JSON skeleton or a path-authenticity claim.
+    #[serde(default)]
+    pub byte_only: bool,
 }
 
 /// What to disclose in a presentation.
@@ -295,6 +300,21 @@ pub struct VerifyOptions {
     /// Required claims; prevents acceptance of a proof with missing/weaker predicates.
     #[serde(default)]
     pub expected_predicates: Vec<PredicateSpec>,
+    #[serde(default)]
+    pub expected_server_name: Option<String>,
+    #[serde(default)]
+    pub expected_method: Option<String>,
+    #[serde(default)]
+    pub expected_target: Option<String>,
+    #[serde(default)]
+    pub expected_status: Option<u16>,
+    /// Maximum age relative to the verifier's own clock.
+    #[serde(default)]
+    pub max_age_secs: Option<u64>,
+    #[serde(default)]
+    pub require_complete_response: bool,
+    #[serde(default)]
+    pub require_json_paths: bool,
 }
 
 /// A disclosed JSON scalar at an authenticated dotted path.
@@ -326,6 +346,9 @@ pub struct VerifyOutput {
     /// attested every hidden leaf's shape and the skeleton is disclosed).
     /// Empty when the session or presentation does not allow it.
     pub json: Vec<JsonField>,
+    /// True only when authenticated skeleton reconstruction succeeded.
+    pub json_paths_authenticated: bool,
+
     pub owner: Option<String>,
     pub context: Option<String>,
     /// Claims checked against authenticated JSON paths and Binius64 ZK proofs.

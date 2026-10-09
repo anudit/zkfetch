@@ -154,10 +154,12 @@ pub fn validate_keys<S: tlsn_formats::spansy::Store>(root: &JsonValue<S>) -> Res
         JsonValue::Object(o) => {
             let mut seen = std::collections::HashSet::new();
             for kv in &o.elems {
+                let decoded = key(&kv.key.view().as_str())?;
                 ensure!(
-                    seen.insert(key(&kv.key.view().as_str())?),
-                    "duplicate JSON key"
+                    !decoded.is_empty() && !decoded.contains('.'),
+                    "JSON keys containing periods or empty keys are unsupported by dotted paths"
                 );
+                ensure!(seen.insert(decoded), "duplicate JSON key");
                 validate_keys(&kv.value)?;
             }
         }
@@ -418,6 +420,7 @@ pub(crate) fn with_redacted_json<T>(
     }
     // HTTP framing must itself be authenticated; verify this before trusting the parse.
     let len = recv.len();
+    zkf_core::parsing::check_http_json_nesting(&recv)?;
     let response = parse_response::<Vec<u8>>(recv).context("invalid predicate response framing")?;
     ensure!(
         response.indices().end() == Some(len),

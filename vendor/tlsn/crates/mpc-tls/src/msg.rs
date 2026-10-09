@@ -25,7 +25,7 @@ pub(crate) enum Message {
     /// TLS 1.3: server key share and `H(ClientHello || ServerHello)`.
     Tls13ServerHello(crate::tls13::Tls13ServerHello),
     /// TLS 1.3: `H(ClientHello ..= server Finished)`.
-    Tls13HandshakeHash([u8; 32]),
+    Tls13HandshakeHash(crate::tls13::Tls13HandshakeEvidence),
     /// TLS 1.3: disclosed application-epoch record suffixes.
     Tls13Suffixes(crate::tls13::Tls13Suffixes),
 }

@@ -1533,12 +1533,12 @@ dependencies = [
 
 [[package]]
 name = "futures-rustls"
-version = "0.25.1"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8d8a2499f0fecc0492eb3e47eab4e92da7875e1028ad2528f214ac3346ca04e"
+checksum = "a8f2f12607f92c69b12ed746fabf9ca4f5c482cba46679c1a75b874ed7c26adb"
 dependencies = [
  "futures-io",
- "rustls 0.22.4",
+ "rustls",
  "rustls-pki-types",
 ]
 
@@ -3150,19 +3150,6 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.22.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf4ef73721ac7bcd79b2b315da7779d8fc09718c6b3d2d1b2d94850eb8c18432"
-dependencies = [
- "ring",
- "rustls-pki-types",
- "rustls-webpki 0.102.8",
- "subtle",
- "zeroize",
-]
-
-[[package]]
-name = "rustls"
 version = "0.23.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
@@ -3170,7 +3157,7 @@ dependencies = [
  "once_cell",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.103.15",
+ "rustls-webpki",
  "subtle",
  "zeroize",
 ]
@@ -3192,17 +3179,6 @@ checksum = "2f4925028c7eb5d1fcdaf196971378ed9d2c1c4efc7dc5d011256f76c99c0a96"
 dependencies = [
  "web-time 1.1.0",
  "zeroize",
-]
-
-[[package]]
-name = "rustls-webpki"
-version = "0.102.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64ca1bc8749bd4cf37b5ce386cc146580777b4e8572c7b97baf22c83f444bee9"
-dependencies = [
- "ring",
- "rustls-pki-types",
- "untrusted",
 ]
 
 [[package]]
@@ -3721,9 +3697,9 @@ dependencies = [
  "pin-project-lite",
  "rand 0.9.5",
  "rangeset",
- "rustls 0.23.45",
+ "rustls",
  "rustls-pki-types",
- "rustls-webpki 0.103.15",
+ "rustls-webpki",
  "semver",
  "serde",
  "serio",
@@ -3743,6 +3719,7 @@ dependencies = [
  "tracing",
  "web-time 0.2.4",
  "webpki-roots 1.0.9",
+ "zeroize",
 ]
 
 [[package]]
@@ -3789,8 +3766,9 @@ dependencies = [
  "rangeset",
  "rs_merkle",
  "rustls-pki-types",
- "rustls-webpki 0.103.15",
+ "rustls-webpki",
  "serde",
+ "serde_json",
  "sha2 0.10.9",
  "spki 0.8.1",
  "thiserror 1.0.69",
@@ -3960,7 +3938,7 @@ dependencies = [
  "rand06-compat",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.103.15",
+ "rustls-webpki",
  "sct",
  "sha2 0.10.9",
  "thiserror 1.0.69",
@@ -3979,7 +3957,7 @@ dependencies = [
  "ring",
  "rustls-pemfile",
  "rustls-pki-types",
- "rustls-webpki 0.103.15",
+ "rustls-webpki",
  "sct",
  "serde",
  "sha2 0.10.9",
@@ -4036,7 +4014,7 @@ version = "0.26.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
 dependencies = [
- "rustls 0.23.45",
+ "rustls",
  "tokio",
 ]
 
@@ -4191,7 +4169,7 @@ dependencies = [
  "httparse",
  "log",
  "rand 0.9.5",
- "rustls 0.23.45",
+ "rustls",
  "rustls-pki-types",
  "sha1",
  "thiserror 2.0.21",
@@ -4756,6 +4734,9 @@ dependencies = [
  "async_io_stream",
  "base64 0.22.1",
  "futures",
+ "hex",
+ "k256",
+ "rand 0.8.8",
  "serde",
  "serde_json",
  "tokio",
@@ -4802,12 +4783,15 @@ dependencies = [
  "hyper-util",
  "k256",
  "rand 0.8.8",
+ "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tlsn",
  "tokio",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "url",
  "zkf-core",
  "zkf-predicates",
 ]
@@ -4844,6 +4828,7 @@ dependencies = [
  "hex",
  "http-body-util",
  "hyper",
+ "serde",
  "serde_json",
  "tlsn",
  "tlsn-formats",
@@ -4877,7 +4862,7 @@ dependencies = [
  "p256",
  "rand 0.9.5",
  "ring",
- "rustls 0.23.45",
+ "rustls",
  "sha2 0.10.9",
  "subtle",
  "tlsn-server-fixture-certs",
@@ -4893,6 +4878,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "hex",
+ "sha2 0.10.9",
  "tlsn",
  "zkf-core",
  "zkf-predicates",

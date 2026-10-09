@@ -45,9 +45,16 @@ impl<T: AsyncRead + Unpin> hyper::rt::Read for HyperIo<T> {
     ) -> Poll<std::io::Result<()>> {
         // SAFETY: the bytes are initialized below before they are advanced.
         let dst = unsafe { buf.as_mut() };
+        for byte in dst.iter_mut() {
+            byte.write(0);
+        }
+        // SAFETY: every MaybeUninit element was initialized before creating u8 references.
         let dst = unsafe { &mut *(dst as *mut [std::mem::MaybeUninit<u8>] as *mut [u8]) };
-        dst.fill(0);
         let n = futures::ready!(Pin::new(&mut self.0).poll_read(cx, dst))?;
+        if n > dst.len() {
+            return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "reader returned an invalid byte count")));
+        }
+        // SAFETY: the returned count is within the initialized destination.
         unsafe { buf.advance(n) };
         Poll::Ready(Ok(()))
     }
@@ -71,12 +78,41 @@ impl<T: AsyncWrite + Unpin> hyper::rt::Write for HyperIo<T> {
     }
 }
 
-/// Marks a browser stream `Send` for tlsn's MPC client bound. Sound because
-/// this wasm build has no threads: the value never leaves the one thread.
+/// Keeps browser handles on their originating worker, including atomic wasm builds.
+/// Moving the wrapper is allowed, but another thread cannot access or destroy T.
 #[cfg(target_arch = "wasm32")]
-pub(crate) struct AssertSend<T>(pub(crate) T);
+pub(crate) struct AssertSend<T> {
+    inner: std::mem::ManuallyDrop<T>,
+    owner: std::thread::ThreadId,
+}
 
 #[cfg(target_arch = "wasm32")]
+impl<T> AssertSend<T> {
+    pub(crate) fn new(inner: T) -> Self {
+        Self { inner: std::mem::ManuallyDrop::new(inner), owner: std::thread::current().id() }
+    }
+    fn local(&mut self) -> std::io::Result<&mut T> {
+        if self.owner != std::thread::current().id() {
+            return Err(std::io::Error::other("browser stream polled outside its originating worker"));
+        }
+        Ok(&mut self.inner)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T> Drop for AssertSend<T> {
+    fn drop(&mut self) {
+        if self.owner == std::thread::current().id() {
+            // SAFETY: T is destroyed only on the worker that created it.
+            unsafe { std::mem::ManuallyDrop::drop(&mut self.inner); }
+        }
+        // Misuse on another worker leaks the handle instead of touching that
+        // worker's unrelated JS handle table. Normal spawn_local teardown wipes it.
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+// SAFETY: all access and destruction of the !Send inner value is worker-bound.
 unsafe impl<T> Send for AssertSend<T> {}
 
 #[cfg(target_arch = "wasm32")]
@@ -86,7 +122,7 @@ impl<T: AsyncRead + Unpin> AsyncRead for AssertSend<T> {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.0).poll_read(cx, buf)
+        Pin::new(self.local()?).poll_read(cx, buf)
     }
 }
 
@@ -97,14 +133,14 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for AssertSend<T> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.0).poll_write(cx, buf)
+        Pin::new(self.local()?).poll_write(cx, buf)
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.0).poll_flush(cx)
+        Pin::new(self.local()?).poll_flush(cx)
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.0).poll_close(cx)
+        Pin::new(self.local()?).poll_close(cx)
     }
 }

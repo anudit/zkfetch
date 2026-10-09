@@ -204,6 +204,7 @@ async fn run(
             std::time::Duration::from_secs(60),
             zkf_prover::notarize(NotarizeParams {
                 notary_url: notary_url.clone(),
+                expected_notary_key: None,
                 url: format!("https://{SERVER_DOMAIN}/formats/json"),
                 method: None,
                 headers: vec![],

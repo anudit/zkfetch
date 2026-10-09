@@ -188,14 +188,15 @@ fn dfa_start(b: &mut CircuitBuilder, states: usize) -> Vec<Node<Feed>> {
 fn json_string_content(len: usize) -> Circuit {
     let mut b = CircuitBuilder::new();
     let bytes = input_bytes(&mut b, len);
-    let mut state = dfa_start(&mut b, 6);
+    // States encode JSON escapes, paired UTF-16 surrogates, and strict UTF-8.
+    let mut state = dfa_start(&mut b, 22);
     for x in &bytes {
-        let printable = ge_const(&mut b, x, 0x20);
+        let printable = in_range(&mut b, x, 0x20, 0x7f);
         let quote = eq_const(&mut b, x, b'"');
-        let backslash = eq_const(&mut b, x, b'\\');
-        let not_quote = b.add_inv_gate(quote);
-        let not_backslash = b.add_inv_gate(backslash);
-        let normal = and_all(&mut b, &[printable, not_quote, not_backslash]);
+        let slash = eq_const(&mut b, x, b'\\');
+        let nq = b.add_inv_gate(quote);
+        let ns = b.add_inv_gate(slash);
+        let normal = and_all(&mut b, &[printable, nq, ns]);
         let escaped = any_of(&mut b, x, b"\"\\/bfnrt");
         let u = eq_const(&mut b, x, b'u');
         let digit = in_range(&mut b, x, b'0', b'9');
@@ -203,18 +204,67 @@ fn json_string_content(len: usize) -> Circuit {
         let lower = in_range(&mut b, x, b'a', b'f');
         let du = or(&mut b, digit, upper);
         let hex = or(&mut b, du, lower);
+        let d = any_of(&mut b, x, b"Dd");
+        let nd = b.add_inv_gate(d);
+        let non_d = and_all(&mut b, &[hex, nd]);
+        let below_surrogate = in_range(&mut b, x, b'0', b'7');
+        let high = any_of(&mut b, x, b"89ABab");
+        let low = any_of(&mut b, x, b"CDEFcdef");
+        let cont = in_range(&mut b, x, 0x80, 0xbf);
+        let lead2 = in_range(&mut b, x, 0xc2, 0xdf);
+        let lead3 = any_of(
+            &mut b,
+            x,
+            &[
+                0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xee, 0xef,
+            ],
+        );
+        let e0 = eq_const(&mut b, x, 0xe0);
+        let ed = eq_const(&mut b, x, 0xed);
+        let f0 = eq_const(&mut b, x, 0xf0);
+        let f4 = eq_const(&mut b, x, 0xf4);
+        let lead4 = in_range(&mut b, x, 0xf1, 0xf3);
+        let e0cont = in_range(&mut b, x, 0xa0, 0xbf);
+        let edcont = in_range(&mut b, x, 0x80, 0x9f);
+        let f0cont = in_range(&mut b, x, 0x90, 0xbf);
+        let f4cont = in_range(&mut b, x, 0x80, 0x8f);
         state = dfa_step(
             &mut b,
             &state,
             &[
                 (0, normal, 0),
-                (0, backslash, 1),
+                (0, slash, 1),
                 (1, escaped, 0),
                 (1, u, 2),
-                (2, hex, 3),
+                (2, non_d, 3),
+                (2, d, 6),
                 (3, hex, 4),
                 (4, hex, 5),
                 (5, hex, 0),
+                (6, below_surrogate, 4),
+                (6, high, 7),
+                (7, hex, 8),
+                (8, hex, 9),
+                (9, slash, 10),
+                (10, u, 11),
+                (11, d, 12),
+                (12, low, 13),
+                (13, hex, 14),
+                (14, hex, 0),
+                (0, lead2, 15),
+                (15, cont, 0),
+                (0, lead3, 16),
+                (16, cont, 15),
+                (0, lead4, 17),
+                (17, cont, 16),
+                (0, e0, 18),
+                (18, e0cont, 15),
+                (0, ed, 19),
+                (19, edcont, 15),
+                (0, f0, 20),
+                (20, f0cont, 16),
+                (0, f4, 21),
+                (21, f4cont, 16),
             ],
         );
     }
@@ -431,6 +481,15 @@ mod tests {
             b"\\/\\b\\f\\n\\r\\t",
             "caf\u{e9}".as_bytes(),
             b"\\u12",
+            b"\\uD800",
+            b"\\uDC00",
+            b"\\uD800\\uDC00",
+            b"\\uD800x",
+            b"\xff",
+            b"\xc0\x80",
+            b"\xed\xa0\x80",
+            b"\xf4\x90\x80\x80",
+            "😀".as_bytes(),
             b"\x01",
         ];
         for &data in strings {

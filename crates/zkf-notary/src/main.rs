@@ -116,17 +116,22 @@ async fn serve_health(listener: TcpListener, config: Arc<NotaryConfig>) -> Resul
             let service = service_fn(move |req: Request<Incoming>| {
                 let metadata = metadata.clone();
                 async move {
-                    let response =
-                        if req.method() == hyper::Method::GET && req.uri().path() == "/health" {
-                            Response::builder()
-                                .header("Content-Type", "application/json")
-                                .header("Cache-Control", "no-store")
-                                .body(Full::new(metadata))
-                        } else {
-                            Response::builder()
-                                .status(404)
-                                .body(Full::new(Bytes::from_static(b"Not found")))
-                        };
+                    let response = if req.method() == hyper::Method::GET
+                        && req.uri().path() == "/health"
+                    {
+                        Response::builder()
+                            .header("Content-Type", "application/json")
+                            .header("Cache-Control", "no-store")
+                            .body(Full::new(metadata))
+                    } else if req.method() == hyper::Method::GET && req.uri().path() == "/metrics" {
+                        Response::builder()
+                            .header("Content-Type", "text/plain; version=0.0.4")
+                            .body(Full::new(Bytes::from(zkf_notary::metrics::text())))
+                    } else {
+                        Response::builder()
+                            .status(404)
+                            .body(Full::new(Bytes::from_static(b"Not found")))
+                    };
                     response
                 }
             });

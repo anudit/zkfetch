@@ -4,6 +4,8 @@
 //! byte against the attested commitments, then applies zkfetch policy
 //! (trusted notary keys, owner/context binding).
 
+mod policy;
+
 use anyhow::{Context, Result, anyhow, bail};
 use bincode::Options;
 use tlsn::{
@@ -15,7 +17,8 @@ use tlsn::{
     webpki::{CertificateDer, RootCertStore},
 };
 use zkf_core::{
-    EXT_CONTEXT, EXT_MODE, EXT_OWNER, EXT_SERVER, KeyView, VerifyOptions, VerifyOutput, b64,
+    EXT_CONTEXT, EXT_HANDSHAKE, EXT_MODE, EXT_OWNER, EXT_SERVER, KeyView, VerifyOptions,
+    VerifyOutput, b64,
 };
 
 /// Byte shown in place of undisclosed data.
@@ -38,6 +41,15 @@ pub fn verify(presentation_b64: &str, opts: &VerifyOptions) -> Result<VerifyOutp
                 .map_or(bytes.as_slice(), |e| e.presentation.as_slice()),
         )
         .context("invalid presentation encoding")?;
+
+    let handshake_hash = presentation.handshake_data().and_then(|data| {
+        if let tlsn::connection::CertBinding::V1_3(binding) = &data.binding {
+            use sha2::Digest;
+            Some(sha2::Sha256::digest(&binding.handshake_messages).to_vec())
+        } else {
+            None
+        }
+    });
 
     let key = presentation.verifying_key();
     let notary_key = KeyView {
@@ -80,6 +92,17 @@ pub fn verify(presentation_b64: &str, opts: &VerifyOptions) -> Result<VerifyOutp
         .verify(&provider)
         .map_err(|e| anyhow!("presentation invalid: {e}"))?;
 
+    if connection_info.version == tlsn::connection::TlsVersion::V1_3 {
+        let signed = extensions
+            .iter()
+            .find(|e| e.id == EXT_HANDSHAKE)
+            .ok_or_else(|| anyhow!("TLS 1.3 attestation lacks verified handshake binding"))?;
+        anyhow::ensure!(
+            handshake_hash.as_ref() == Some(&signed.value),
+            "TLS 1.3 identity handshake differs from the notary-verified transcript"
+        );
+    }
+
     let server_name =
         server_name.ok_or_else(|| anyhow!("presentation does not prove the server identity"))?;
     let mut transcript =
@@ -93,9 +116,15 @@ pub fn verify(presentation_b64: &str, opts: &VerifyOptions) -> Result<VerifyOutp
     let qs_claims =
         zkf_predicates::quicksilver::AttestedPredicates::from_attestation(&attestation)?;
     // Disclosed fields at authenticated paths, when the shape proofs allow it.
-    let json = qs_claims
+    let disclosed = qs_claims
         .as_ref()
-        .and_then(|claims| zkf_predicates::quicksilver::disclosed_fields(claims, &transcript).ok())
+        .and_then(|claims| zkf_predicates::quicksilver::disclosed_fields(claims, &transcript).ok());
+    let json_paths_authenticated = disclosed.is_some();
+    anyhow::ensure!(
+        !opts.require_json_paths || json_paths_authenticated,
+        "authenticated JSON paths are unavailable"
+    );
+    let json = disclosed
         .unwrap_or_default()
         .into_iter()
         .map(|(path, value)| zkf_core::JsonField { path, value })
@@ -147,6 +176,12 @@ pub fn verify(presentation_b64: &str, opts: &VerifyOptions) -> Result<VerifyOutp
         }
         other => bail!("unknown session mode {other:?}"),
     }
+    policy::check(
+        &transcript,
+        &server_name.to_string(),
+        connection_info.time,
+        opts,
+    )?;
     let owner = ext(EXT_OWNER);
     let context = ext(EXT_CONTEXT);
     if let Some(expected) = &opts.expected_owner
@@ -180,6 +215,7 @@ pub fn verify(presentation_b64: &str, opts: &VerifyOptions) -> Result<VerifyOutp
             .map(|r| [r.start, r.end])
             .collect(),
         json,
+        json_paths_authenticated,
         owner,
         context,
         predicates,

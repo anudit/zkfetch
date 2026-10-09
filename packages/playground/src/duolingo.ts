@@ -170,6 +170,7 @@ async function run(backend: Backend, tlsVersion: TlsVersionPreference): Promise<
     headers: target.headers,
     zkConfig: {
       notaryUrl: notary.url,
+      expectedNotaryKey: notary.publicKey,
       predicates,
       backend,
       tlsVersion,

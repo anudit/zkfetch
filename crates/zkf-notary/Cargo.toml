@@ -11,6 +11,9 @@ name = "zkf-notary"
 path = "src/main.rs"
 
 [dependencies]
+serde = { workspace = true }
+sha2 = { workspace = true }
+url = { workspace = true }
 zkf-core = { workspace = true }
 zkf-predicates = { workspace = true }
 tlsn = { workspace = true }

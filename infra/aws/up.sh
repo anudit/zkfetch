@@ -18,6 +18,9 @@ SSH_KEY="$STATE/id_ed25519"
 mkdir -p "$STATE" && chmod 700 "$STATE"
 [[ -f "$KEY_FILE" ]] || { echo "Missing $KEY_FILE (the hosted notary signing key)" >&2; exit 1; }
 
+ADMISSION_FILE=${ZKF_CAPABILITIES_FILE:?Set ZKF_CAPABILITIES_FILE to the private JSON capability configuration}
+[[ -f "$ADMISSION_FILE" ]] || { echo "Missing capability configuration" >&2; exit 1; }
+
 log "Building $IMAGE"
 docker build --platform linux/arm64 -f "$ROOT/infra/aws/Dockerfile.notary" -t "$IMAGE" "$ROOT"
 
@@ -88,8 +91,12 @@ for _ in $(seq 60); do "${SSH[@]}" test -f /var/lib/zkf-ready 2>/dev/null && bre
 log "Uploading the notary image"
 docker save "$IMAGE" | gzip -1 | "${SSH[@]}" 'gunzip | sudo docker load'
 # The signing key goes over SSH into a root-only file, never into user data.
-printf 'ZKF_NOTARY_KEY=%s\n' "$(tr -d '[:space:]' < "$KEY_FILE")" |
-  "${SSH[@]}" "sudo sh -c 'umask 077; cat > /etc/zkf-notary.env'"
+{
+  printf 'ZKF_NOTARY_KEY=%s\n' "$(tr -d '[:space:]' < "$KEY_FILE")"
+  printf 'ZKF_CAPABILITIES=%s\n' "$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])), separators=(",", ":")))' "$ADMISSION_FILE")"
+} | "${SSH[@]}" "sudo sh -c 'umask 077; cat > /etc/zkf-notary.env'"
+"${SSH[@]}" 'sudo mkdir -p /etc/zkfetch'
+cat "$ROOT/infra/aws/notary-egress.sh" | "${SSH[@]}" "sudo sh -c 'cat > /etc/zkfetch/notary-egress.sh'"
 
 log "Starting the notary and Caddy"
 "${SSH[@]}" sudo HOST="$HOST" IMAGE="$IMAGE" bash -s <<'EOF'
@@ -105,14 +112,17 @@ $HOST {
 }
 CADDY
 docker network inspect zkf >/dev/null 2>&1 || docker network create zkf >/dev/null
+bash /etc/zkfetch/notary-egress.sh
 docker rm -f zkf-notary zkf-caddy >/dev/null 2>&1 || true
 docker run -d --name zkf-notary --network zkf --restart unless-stopped \
+  --memory=1536m --memory-swap=1536m --pids-limit=256 \
+  --security-opt=no-new-privileges --cap-drop=ALL \
   --env-file /etc/zkf-notary.env -e ZKF_MAX_SESSIONS=16 -e ZKF_MAX_SESSIONS_PER_CLIENT=4 \
   -e ZKF_TRUST_FORWARDED=1 -e ZKF_SESSION_TIMEOUT_SECS=120 -e RAYON_NUM_THREADS=2 \
   --log-opt max-size=10m --log-opt max-file=3 "$IMAGE" >/dev/null
 docker run -d --name zkf-caddy --network zkf --restart unless-stopped \
   -p 80:80 -p 443:443 -v caddy_data:/data -v /etc/zkf-Caddyfile:/etc/caddy/Caddyfile:ro \
-  --log-opt max-size=10m --log-opt max-file=3 caddy:2.10 >/dev/null
+  --log-opt max-size=10m --log-opt max-file=3 caddy:2.10@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb >/dev/null
 docker image prune -f >/dev/null
 EOF
 

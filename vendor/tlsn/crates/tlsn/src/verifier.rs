@@ -1,7 +1,7 @@
 //! Verifier.
 
 pub mod state;
-mod verify;
+pub(crate) mod verify;
 
 pub use tlsn_core::{VerifierOutput, webpki::ServerCertVerifier};
 
@@ -309,7 +309,12 @@ impl Verifier<state::CommitAccepted<Proxy>> {
     where
         T: AsyncRead + AsyncWrite + Send + Unpin,
     {
-        let VerifierDeps::Proxy(VerifierProxyDeps { verifier, id }) = self.state.deps else {
+        let VerifierDeps::Proxy(VerifierProxyDeps {
+            verifier,
+            id,
+            server_name,
+        }) = self.state.deps
+        else {
             unreachable!("proxy-tls received incorrect deps")
         };
 
@@ -326,10 +331,16 @@ impl Verifier<state::CommitAccepted<Proxy>> {
         let (prover_read, mut prover_write) = prover_socket.split();
         let (server_read, mut server_write) = server_socket.split();
 
-        let mut prover_reader =
-            InspectReader::new(prover_read, &mut sent_buf, crate::proxy::PROXY_MAX_SENT_BYTES);
-        let mut server_reader =
-            InspectReader::new(server_read, &mut recv_buf, crate::proxy::PROXY_MAX_RECV_BYTES);
+        let mut prover_reader = InspectReader::new(
+            prover_read,
+            &mut sent_buf,
+            crate::proxy::PROXY_MAX_SENT_BYTES,
+        );
+        let mut server_reader = InspectReader::new(
+            server_read,
+            &mut recv_buf,
+            crate::proxy::PROXY_MAX_RECV_BYTES,
+        );
 
         futures::future::try_join(
             async {
@@ -355,6 +366,8 @@ impl Verifier<state::CommitAccepted<Proxy>> {
             .first_read()
             .ok_or_else(|| Error::io().with_msg("prover sent no TLS traffic"))?;
 
+        crate::proxy::validate_sni(&sent_buf, &server_name)?;
+
         // TLS 1.3 checks the Finished messages while finalizing (zkfetch P4).
         let (mut ctx, mut vm, output, finished_checks) = match *verifier {
             crate::proxy::AnyProxyVerifier::V12(verifier) => {
@@ -363,8 +376,7 @@ impl Verifier<state::CommitAccepted<Proxy>> {
                 (ctx, vm, output, Some((cf, sf)))
             }
             crate::proxy::AnyProxyVerifier::V13(verifier) => {
-                let (ctx, vm, output) =
-                    verifier.finalize(&sent_buf, &recv_buf, conn_time).await?;
+                let (ctx, vm, output) = verifier.finalize(&sent_buf, &recv_buf, conn_time).await?;
                 (ctx, vm, output, None)
             }
         };

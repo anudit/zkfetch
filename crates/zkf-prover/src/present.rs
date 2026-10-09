@@ -1,6 +1,7 @@
 //! Presentation building: maps a [`RevealSpec`] onto transcript ranges.
 
 use anyhow::{Context, Result, anyhow, bail};
+use bincode::Options;
 use tlsn::{
     attestation::{Attestation, CryptoProvider, Secrets, presentation::Presentation},
     rangeset::set::RangeSet,
@@ -20,11 +21,11 @@ const FRAMING_HEADERS: &[&str] = &["content-length", "transfer-encoding", "conte
 
 /// Builds a base64 presentation from base64 attestation + secrets.
 pub fn present(attestation_b64: &str, secrets_b64: &str, spec: &RevealSpec) -> Result<String> {
-    let attestation: Attestation =
-        bincode::deserialize(&b64::decode(attestation_b64)?).context("invalid attestation")?;
-    let secrets: Secrets =
-        bincode::deserialize(&b64::decode(secrets_b64)?).context("invalid secrets")?;
+    let attestation: Attestation = decode_input(attestation_b64).context("invalid attestation")?;
+    let secrets: Secrets = decode_input(secrets_b64).context("invalid secrets")?;
 
+    zkf_core::parsing::check_http_json_nesting(secrets.transcript().sent())?;
+    zkf_core::parsing::check_http_json_nesting(secrets.transcript().received())?;
     let transcript = HttpTranscript::parse(secrets.transcript())?;
     let mut builder = secrets.transcript_proof_builder();
 
@@ -71,9 +72,15 @@ pub fn present(attestation_b64: &str, secrets_b64: &str, spec: &RevealSpec) -> R
     // With attested shape proofs, disclosing JSON fields also reveals the
     // skeleton (keys and punctuation, not values) so the verifier can prove
     // each value's path. Without it a disclosure proves bytes, not a path.
+    anyhow::ensure!(
+        !spec.response.byte_only || spec.prove.is_empty(),
+        "byteOnly cannot be combined with path predicates"
+    );
     let shape_proofs = AttestedPredicates::from_attestation(&attestation)?.is_some();
     if let Some(body) = &response.body {
-        if !spec.prove.is_empty() || (shape_proofs && !spec.response.json_paths.is_empty()) {
+        if !spec.prove.is_empty()
+            || (shape_proofs && !spec.response.byte_only && !spec.response.json_paths.is_empty())
+        {
             let BodyContent::Json(doc) = &body.content else {
                 bail!("predicates require a JSON response");
             };
@@ -92,6 +99,7 @@ pub fn present(attestation_b64: &str, secrets_b64: &str, spec: &RevealSpec) -> R
             let BodyContent::Json(doc) = &body.content else {
                 bail!("jsonPaths requested but the response body is not JSON");
             };
+            zkf_predicates::validate_keys(&doc.root)?;
             for path in &spec.response.json_paths {
                 let ranges = json_key_value(&doc.root, path)
                     .ok_or_else(|| anyhow!("json path `{path}` not found"))?;
@@ -202,4 +210,18 @@ fn json_key_value(root: &JsonValue, path: &str) -> Option<RangeSet<usize>> {
         JsonValue::Array(_) => parent.get(last).map(|v| v.view().indices().clone()),
         _ => None,
     }
+}
+
+fn decode_input<T: serde::de::DeserializeOwned>(encoded: &str) -> Result<T> {
+    let limit = zkf_core::MAX_FRAME_LEN;
+    anyhow::ensure!(
+        encoded.len() <= limit.div_ceil(3) * 4,
+        "session input too large"
+    );
+    let bytes = b64::decode(encoded)?;
+    Ok(bincode::DefaultOptions::new()
+        .with_fixint_encoding()
+        .with_limit(limit as u64)
+        .reject_trailing_bytes()
+        .deserialize(&bytes)?)
 }

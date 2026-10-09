@@ -9,13 +9,15 @@ export type TlsVersionPreference = TlsVersion | "auto";
 export type NotarizeMode = "mpc" | "proxy";
 
 export interface NotarizeParams {
-  /** Defaults to auto: tries TLS 1.3, with TLS 1.2 retry for GET/HEAD/OPTIONS. */
+  /** Defaults to auto (TLS 1.3); requests are never retried. */
   tlsVersion?: TlsVersionPreference;
   mode?: NotarizeMode;
   /** Browser builds, MPC mode: WebSocket-to-TCP relay for the prover's server
    * connection (`relayUrl?target=host:port`). Proxy mode needs no relay. */
   relayUrl?: string;
   notaryUrl: string;
+  /** Signing key pin, compressed SEC1 hex; required for remote sessions. */
+  expectedNotaryKey?: string;
   url: string;
   method?: string;
   headers?: Header[];
@@ -81,7 +83,7 @@ export interface NotarizeOutput {
 
 export interface RevealSpec {
   request?: { target?: boolean; headers?: string[]; body?: boolean };
-  response?: { headers?: string[]; body?: boolean; jsonPaths?: string[] };
+  response?: { headers?: string[]; body?: boolean; jsonPaths?: string[]; byteOnly?: boolean };
   /** Prove comparisons over hidden unsigned JSON integers of at most 19 digits.
    * Reveals JSON keys, structure and scalar lengths; values remain hidden. */
   prove?: PredicateSpec[];
@@ -108,6 +110,13 @@ export interface VerifyOptions {
   expectedOwner?: string;
   expectedContext?: string;
   expectedPredicates?: PredicateSpec[];
+  expectedServerName?: string;
+  expectedMethod?: string;
+  expectedTarget?: string;
+  expectedStatus?: number;
+  maxAgeSecs?: number;
+  requireCompleteResponse?: boolean;
+  requireJsonPaths?: boolean;
 }
 
 export interface VerifyOutput {
@@ -129,6 +138,7 @@ export interface VerifyOutput {
   /** Disclosed response JSON fields at proven paths (empty if the session
    * has no QuickSilver shape proofs or the skeleton was not disclosed). */
   json: { path: string; value: unknown }[];
+  jsonPathsAuthenticated: boolean;
   owner: string | null;
   context: string | null;
   predicates: PredicateSpec[];

@@ -109,6 +109,16 @@ fn hidden_scalars_cannot_contain_structure() {
             b"text".as_slice(),
             b"\xe2\x82".as_slice(),
         ),
+        (
+            ScalarKind::StringContent,
+            b"\\uD800\\uDC00".as_slice(),
+            b"\\uD800".as_slice(),
+        ),
+        (
+            ScalarKind::StringContent,
+            b"\\u1234".as_slice(),
+            b"\\uDC00".as_slice(),
+        ),
     ] {
         for (data, valid) in [(good, true), (bad, false)] {
             let (mut claim, witness) = integer(data, 0);
@@ -128,6 +138,10 @@ fn ambiguous_json_rejected() {
     use tlsn_formats::spansy::json::parse;
     let doc = parse(b"{\"a\":1,\"\\u0061\":2}".as_slice()).unwrap();
     assert!(validate_keys(&doc.root).is_err());
+    for json in [r#"{"a.b":1,"a":{"b":2}}"#, r#"{"a\u002eb":1}"#, r#"{"":1}"#] {
+        let doc = parse(json.as_bytes()).unwrap();
+        assert!(validate_keys(&doc.root).is_err());
+    }
     let doc = parse(b"{\"items\":[{\"streak\":365}]}".as_slice()).unwrap();
     validate_keys(&doc.root).unwrap();
     assert!(resolve(&doc.root, "items.0.streak").is_ok());
@@ -159,4 +173,89 @@ fn bench_leaf_hash() {
             proof.len()
         );
     }
+}
+
+#[test]
+fn production_quicksilver_unicode_matches_strict_json() {
+    let cases: &[&[u8]] = &[
+        b"X",
+        b"hello",
+        "café".as_bytes(),
+        "😀".as_bytes(),
+        b"\\uD800\\uDC00",
+        b"\\uD800",
+        b"\\uDC00",
+        b"\\uD800x",
+        b"\\uD800\\u1234",
+        b"\\u1234",
+        b"\\uZZZZ",
+        b"\xff",
+        b"\xc0\x80",
+        b"\xed\xa0\x80",
+        b"\xf4\x90\x80\x80",
+        b"\xc2",
+        b"\x80",
+    ];
+    for data in cases {
+        let reference = std::str::from_utf8(data)
+            .ok()
+            .is_some_and(|s| serde_json::from_str::<String>(&format!("\"{s}\"")).is_ok());
+        assert_eq!(
+            tlsn::security_test_support::json_string(data),
+            reference,
+            "{data:?}"
+        );
+    }
+    for byte in 0..=255 {
+        let data = [byte];
+        let reference = std::str::from_utf8(&data)
+            .ok()
+            .is_some_and(|s| serde_json::from_str::<String>(&format!("\"{s}\"")).is_ok());
+        assert_eq!(tlsn::security_test_support::json_string(&data), reference);
+    }
+}
+
+#[test]
+fn production_mpc_handshake_substitution_and_truncation_are_rejected() {
+    assert_eq!(
+        tlsn::security_test_support::handshake_mutations(),
+        vec![true; 8]
+    );
+}
+#[test]
+fn production_proxy_record_and_byte_budgets_fail_closed() {
+    let record = |typ: u8, payload: usize| {
+        let mut wire = vec![typ, 3, 3];
+        wire.extend_from_slice(&(payload as u16).to_be_bytes());
+        wire.resize(payload + 5, 0);
+        wire
+    };
+    for limit in [1 << 17, 1 << 20] {
+        let (accepted, captured) = tlsn::security_test_support::proxy_records(
+            record(23, 1024).repeat(limit / 1024 + 2),
+            limit,
+        );
+        assert!(!accepted);
+        assert!(captured <= limit);
+    }
+    for wire in [
+        record(23, 0).repeat(4097),
+        record(22, 16384).repeat(9),
+        vec![23, 3, 3, 255, 255],
+        vec![255, 3, 3, 0, 0],
+    ] {
+        assert!(!tlsn::security_test_support::proxy_records(wire, 1 << 20).0);
+    }
+    assert!(tlsn::security_test_support::proxy_records(record(23, 1024), 1 << 20).0);
+}
+
+#[test]
+fn production_commitment_budget_rejects_overlap_count_and_bounds() {
+    use tlsn::transcript::Direction::Received;
+    let check = tlsn::security_test_support::hash_budget;
+    assert!(check(vec![(Received, 0..1024)], 0, 1024));
+    assert!(!check(vec![(Received, 0..1024); 3], 0, 1024));
+    assert!(!check(vec![(Received, 0..1); 2049], 0, 2049));
+    assert!(!check(vec![(Received, 0..(1 << 20) + 1)], 0, (1 << 20) + 1));
+    assert!(!check(vec![(Received, 0..1025)], 0, 1024));
 }

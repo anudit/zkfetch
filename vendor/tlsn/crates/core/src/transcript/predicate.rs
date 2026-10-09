@@ -136,21 +136,11 @@ pub fn evaluate(kind: &PredicateKind, data: &[u8]) -> bool {
 }
 
 fn json_string_content(data: &[u8]) -> bool {
-    // 0: normal, 1: after `\`, 2..=5: inside `\u` expecting hex digits.
-    let mut state = 0u8;
-    for &c in data {
-        state = match (state, c) {
-            (0, b'\\') => 1,
-            (0, b'"') => return false,
-            (0, c) if c >= 0x20 => 0,
-            (1, b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't') => 0,
-            (1, b'u') => 2,
-            (2..=4, c) if c.is_ascii_hexdigit() => state + 1,
-            (5, c) if c.is_ascii_hexdigit() => 0,
-            _ => return false,
-        };
-    }
-    state == 0
+    let Ok(content) = std::str::from_utf8(data) else {
+        return false;
+    };
+    // serde_json rejects unpaired surrogates and invalid JSON escape grammar.
+    serde_json::from_str::<String>(&format!("\"{content}\"")).is_ok()
 }
 
 fn json_atom(data: &[u8]) -> bool {

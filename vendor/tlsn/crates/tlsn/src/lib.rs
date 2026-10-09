@@ -125,3 +125,63 @@ mod sealed {
     impl Sealed for super::MpcTlsConfig {}
     impl Sealed for super::ProxyTlsConfig {}
 }
+
+/// Test-only access to the production JSON grammar circuit.
+#[cfg(feature = "security-test-support")]
+pub mod security_test_support {
+    /// Runs the pre-allocation commitment budget check used by the verifier.
+    pub fn hash_budget(
+        ranges: Vec<(crate::transcript::Direction, std::ops::Range<usize>)>,
+        sent_len: usize,
+        recv_len: usize,
+    ) -> bool {
+        let hashes: Vec<_> = ranges
+            .into_iter()
+            .map(|(direction, range)| {
+                (
+                    direction,
+                    crate::rangeset::set::RangeSet::from(range),
+                    crate::hash::HashAlgId::SHA256,
+                )
+            })
+            .collect();
+        crate::verifier::verify::check_hash_budget(hashes.iter(), sent_len, recv_len).is_ok()
+    }
+    /// Runs the production recording adapter against a bounded byte stream.
+    pub fn proxy_records(wire: Vec<u8>, limit: usize) -> (bool, usize) {
+        use futures::{AsyncReadExt, executor::block_on, io::Cursor};
+        let mut captured = Vec::new();
+        let accepted = {
+            let mut reader =
+                crate::proxy::InspectReader::new(Cursor::new(wire), &mut captured, limit);
+            block_on(reader.read_to_end(&mut Vec::new())).is_ok()
+        };
+        (accepted, captured.len())
+    }
+    /// Runs mutations against the active MPC TLS 1.3 handshake check.
+    pub fn handshake_mutations() -> Vec<bool> {
+        mpc_tls::security_test_support::handshake_mutations()
+    }
+    /// Evaluates the production QuickSilver JSON string circuit in plaintext.
+    pub fn json_string(data: &[u8]) -> bool {
+        use tlsn_core::transcript::predicate::PredicateKind;
+        if data.is_empty() {
+            return true;
+        }
+        let circuit = crate::transcript_internal::predicate::build_circuit(
+            data.len(),
+            &PredicateKind::JsonStringContent,
+        );
+        let input: Vec<bool> = data
+            .iter()
+            .flat_map(|b| (0..8).map(move |i| (b >> i) & 1 == 1))
+            .collect();
+        circuit
+            .evaluate(input)
+            .expect("circuit evaluates")
+            .iter()
+            .enumerate()
+            .fold(0u8, |acc, (i, &bit)| acc | (u8::from(bit) << i))
+            == 1
+    }
+}

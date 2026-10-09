@@ -129,8 +129,7 @@ overflowed, and left the proxy client pending forever.
 - `tlsn/src/prover/client/proxy/mod.rs`: the handshaking state returns the same
   error once the server has closed.
 
-zkfetch's `auto` TLS version then falls back to TLS 1.2 for idempotent
-requests. Regression tests: `*_server_hangup_during_handshake_fails` in
+zkfetch's `auto` now chooses TLS 1.3 and never retries an attempted session. Regression tests: `*_server_hangup_during_handshake_fails` in
 `crates/zkf-prover/tests/e2e.rs`.
 
 ## P6: bounded proxy traffic
@@ -154,3 +153,21 @@ verifier's circuit work.
 `tlsn/src/prover/client/proxy/mod.rs`: captured ECDHE secrets of handshakes
 that never finish (cancelled sessions) are dropped after five minutes, and
 every entry is zeroed when it is removed.
+
+
+## Security remediation — 9 October 2026
+
+The active TLS 1.3 follower reconstructs the public server handshake, checks
+Finished before application key derivation, and compares the certificate-binding
+prefix. The notary signs `zkf.handshake` for offline identity consistency. Proxy
+ClientHello SNI must match the dialed hostname. Both parties must use matching
+builds; this changes interactive wire messages. A fresh notary-key challenge
+also precedes session setup in first-party transport code.
+
+Hash commitments have aggregate count/byte budgets before VM allocation; the
+first-party committer partitions overlapping ranges. Proxy recording checks
+record count, plaintext handshake bytes and record headers. QuickSilver string
+circuits enforce strict UTF-8 and paired surrogate escapes. Captured/key-log
+secrets use zeroizing buffers; dropping a cancelled proxy client immediately
+removes its shared-secret registry entry. These changes have regression evidence,
+but do not replace an independent malicious-security review of these protocols.

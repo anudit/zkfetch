@@ -1,0 +1,18 @@
+groups:
+  - name: zkfetch-notary
+    rules:
+      - alert: ZkfetchAdmissionAbuse
+        expr: rate(zkf_admission_rejected_total[5m]) > 10
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "zkFetch admission rejection rate is elevated" }
+      - alert: ZkfetchProofFailures
+        expr: rate(zkf_sessions_failed_total[5m]) / clamp_min(rate(zkf_sessions_accepted_total[5m]), 0.01) > 0.5
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "More than half of admitted zkFetch sessions fail" }
+      - alert: ZkfetchMemoryPressure
+        expr: container_memory_working_set_bytes{name="zkf-notary"} > 1400000000
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "zkFetch notary is approaching its memory cap" }

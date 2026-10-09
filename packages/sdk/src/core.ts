@@ -33,10 +33,12 @@ function backendOrThrow(): Backend {
 
 /** zkfetch-specific settings, passed as `init.zkConfig`. */
 export interface ZkConfig {
-  /** Defaults to auto. TLS 1.2 retries are limited to GET/HEAD/OPTIONS. */
+  /** Defaults to auto (TLS 1.3). Choose 1.2 explicitly for compatibility; requests are never retried. */
   tlsVersion?: TlsVersionPreference;
   /** Notary WebSocket URL, e.g. `wss://notary.example`. */
   notaryUrl: string;
+  /** Signing key pin, compressed SEC1 hex; required for remote sessions. */
+  expectedNotaryKey?: string;
   /** Bound into the attestation (`zkf.owner`). */
   owner?: string;
   /** Verifier-supplied challenge bound into the attestation (`zkf.context`). */
@@ -206,17 +208,12 @@ export async function zkFetch(input: string | URL, init: ZkRequestInit): Promise
   return toResponse(out.response, session);
 }
 
-/** Uses the prepared session if it is still good, else a fresh one. A failed
- * prepared attempt is retried fresh only for idempotent methods. */
+/** Uses the prepared session if it is still good, else a fresh one. An attempted
+ * prepared session is never retried because the request may already have been sent. */
 async function notarizeWith(params: NotarizeParams, prepared: ZkPrepared | undefined): Promise<NotarizeOutput> {
   const session = await prepared?.take();
   if (!session) return backendOrThrow().notarize(params);
-  try {
-    return await session.notarize(params);
-  } catch (cause) {
-    if (!["GET", "HEAD", "OPTIONS"].includes((params.method ?? "GET").toUpperCase())) throw cause;
-    return backendOrThrow().notarize(params);
-  }
+  return session.notarize(params);
 }
 
 function notarizeParams(
@@ -227,6 +224,7 @@ function notarizeParams(
   const backend = checkedBackend(zkConfig.backend);
   return {
     notaryUrl: zkConfig.notaryUrl,
+    expectedNotaryKey: zkConfig.expectedNotaryKey,
     url,
     method: request.method,
     headers: [...new Headers(request.headers).entries()],

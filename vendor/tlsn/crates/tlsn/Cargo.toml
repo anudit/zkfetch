@@ -11,6 +11,7 @@ edition = "2024"
 workspace = true
 
 [features]
+security-test-support = ["tlsn-mpc-tls/security-test-support"]
 default = ["rayon", "hash-blake3"]
 mozilla-certs = ["tlsn-core/mozilla-certs"]
 rayon = ["mpz-zk/rayon", "mpz-garble/rayon"]
@@ -19,6 +20,7 @@ hash-keccak256 = ["mpz-hash/keccak256"]
 hash-blake3 = ["mpz-hash/blake3"]
 
 [dependencies]
+zeroize = { workspace = true }
 tlsn-attestation = { workspace = true }
 tlsn-cipher = { workspace = true }
 tlsn-core = { workspace = true }

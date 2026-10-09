@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // zkfetch CLI: fetch -> (interactive) reveal -> present -> verify.
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { writePrivateFile } from "./output";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
@@ -19,9 +20,9 @@ import {
 
 const USAGE = `zkfetch — fetch with a notarized MPC-TLS proof, then selectively disclose it.
 
-  zkfetch fetch <url> [-X METHOD] [-H "Name: value"]... [-d BODY] [--notary URL]
+  zkfetch fetch <url> [-X METHOD] [-H "Name: value"]... [-d BODY] [--notary URL] [--notary-key HEX]
                 [--owner ID] [--context NONCE] [--connect host:port] [--ca base64-der]
-                [--gte PATH=DECIMAL]... [--backend quicksilver|binius] [--tls-version 1.2|1.3|auto] [-o session.json]
+                [--gte PATH=DECIMAL]... [--backend quicksilver|binius] [--tls-version 1.2|1.3|auto] [-o session.json] [--print-response]
                   --gte     prove PATH >= DECIMAL to the notary now (QuickSilver, default)
                   --backend select the predicate backend for fetch and presentation
   zkfetch reveal <session.json> [-o presentation.txt]        interactive picker
@@ -33,7 +34,7 @@ const USAGE = `zkfetch — fetch with a notarized MPC-TLS proof, then selectivel
                 [--allow-untrusted]   inspect without a trusted notary key
   zkfetch dev                                                 start local notary + HTTPS fixture
 
-Env: ZKF_NOTARY_URL (default ws://127.0.0.1:7047), ZKF_EXTRA_CA (comma-separated base64 DER roots), ZKF_TLS_VERSION (default auto)
+Env: ZKF_NOTARY_KEY (required for remote sessions), ZKF_NOTARY_URL (default ws://127.0.0.1:7047), ZKF_EXTRA_CA (comma-separated base64 DER roots), ZKF_TLS_VERSION (default auto)
 session.json holds secrets that open every commitment; keep it private.`;
 
 const [cmd, ...rest] = process.argv.slice(2);
@@ -53,8 +54,8 @@ function readSession(path: string | undefined) {
 function writeOut(path: string | undefined, data: string, what: string, secret = false) {
   if (path) {
     // Sessions open every commitment: readable by the owner only.
-    writeFileSync(path, data, secret ? { mode: 0o600 } : {});
-    if (secret) chmodSync(path, 0o600);
+    if (secret) writePrivateFile(path, data);
+    else writeFileSync(path, data);
     console.error(`${what} written to ${path}`);
   } else {
     console.log(data);
@@ -67,6 +68,7 @@ async function cmdFetch() {
     header: { type: "string", short: "H", multiple: true },
     data: { type: "string", short: "d" },
     notary: { type: "string" },
+    "notary-key": { type: "string" },
     owner: { type: "string" },
     context: { type: "string" },
     connect: { type: "string" },
@@ -76,6 +78,7 @@ async function cmdFetch() {
     backend: { type: "string" },
     "tls-version": { type: "string" },
     out: { type: "string", short: "o" },
+    "print-response": { type: "boolean" },
   });
   const url = positionals[0];
   if (!url) throw new Error("missing url");
@@ -96,6 +99,7 @@ async function cmdFetch() {
     headers,
     body: values.data,
     zkConfig: {
+      expectedNotaryKey: values["notary-key"] ?? process.env.ZKF_NOTARY_KEY,
       notaryUrl: values.notary ?? process.env.ZKF_NOTARY_URL ?? "ws://127.0.0.1:7047",
       owner: values.owner,
       context: values.context,
@@ -108,7 +112,7 @@ async function cmdFetch() {
   });
   console.error(`HTTP ${res.status} (TLS ${res.zk.tlsVersion}) — notarized in ${((performance.now() - started) / 1000).toFixed(2)}s`);
   console.error(`notary ${res.zk.notaryKey.alg} ${res.zk.notaryKey.key}`);
-  console.error(await res.text());
+  if (values["print-response"]) console.error(await res.text());
   writeOut(values.out ?? "session.zkf.json", JSON.stringify(res.zk, null, 2), "session (contains secrets)", true);
 }
 

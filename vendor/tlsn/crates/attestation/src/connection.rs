@@ -70,6 +70,11 @@ pub struct ServerIdentityProof {
 }
 
 impl ServerIdentityProof {
+    /// Returns the handshake data; callers must still verify the identity proof.
+    pub fn handshake_data(&self) -> &HandshakeData {
+        self.opening.data()
+    }
+
     /// Checks the certificate binding against the attested protocol version.
     pub fn verify_tls_version(&self, version: TlsVersion) -> Result<(), ServerIdentityProofError> {
         if self.opening.data().binding.tls_version() != version {

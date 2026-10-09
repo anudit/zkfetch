@@ -53,3 +53,12 @@ pub struct SessionKeys {
     /// Server write MAC key.
     pub server_write_mac_key: Array<U8, 16>,
 }
+
+/// Helpers for executable production-handshake regression tests.
+#[cfg(feature = "security-test-support")]
+pub mod security_test_support {
+    /// Runs valid and mutated handshake evidence through the active follower check.
+    pub fn handshake_mutations() -> Vec<bool> {
+        crate::tls13::handshake_mutations()
+    }
+}
