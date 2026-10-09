@@ -3,10 +3,10 @@
 A single `t4g.small` (2 Graviton vCPUs, 2 GB) in `ap-south-1`, closer to
 India than the Cloudflare notaries (which India reaches via Hong Kong or
 Singapore). It runs the same notary binary, built natively for arm64 so PMULL
-and the AES instructions are used, behind Caddy for HTTPS, with 4 session
+and the AES instructions are used, as a systemd service behind native Caddy for HTTPS, with 4 session
 slots. New instances default to a 4 GiB gp3 root disk, using Amazon Linux 2023
 minimal with English locales only and 512 MiB of host swap. Package caches
-are cleaned and the cache timer disabled. It signs with `.zkf/hosted-notary.key`, so its public key matches the
+are cleaned, the cache timer disabled, and the unused server-side AWS CLI removed. It signs with `.zkf/hosted-notary.key`, so its public key matches the
 Cloudflare deployments and existing pins keep working.
 
 ```sh
@@ -38,6 +38,38 @@ triggered memory-limit OOM kills. Four is the default global ceiling, not a
 guarantee for arbitrary transcript sizes. `MAX_SESSIONS` and
 `MAX_SESSIONS_PER_CLIENT` override the admission limits; `ROOT_VOLUME_GIB`
 overrides the disk size for newly launched instances. Existing instances keep
-their disk, AMI, locales and swap settings when redeployed. The currently
-running instance was tested on a 6 GiB root volume; these defaults apply to
-the next new instance.
+their disk, AMI, locales and swap settings when redeployed. The native deployment has been tested on a fresh 4 GiB root volume.
+
+## Native services
+
+EC2 runs no Docker daemon or containers. `zkf-notary.service` binds only
+`127.0.0.1:7047` and its health/metrics listener to `127.0.0.1:9001`.
+`caddy.service` exposes HTTPS/HTTP on 443/80 and keeps certificates under
+`/var/lib/caddy`. Caddy is pinned to 2.10.2 with the official SHA-512 archive
+checksum verified before deployment.
+
+The notary runs as a dedicated unprivileged user, with a 1.5 GiB memory ceiling,
+zero service swap, 256 tasks and no capabilities. A boot-time
+`zkf-egress.service` restricts that user's outbound traffic to configured DNS
+resolvers and public IPv4 HTTPS; new connections to loopback, private ranges
+and metadata are rejected. Caddy forwards over loopback, so established replies
+remain allowed. The firewall does not restrict the deployer's SSH session.
+Journald is bounded to 50 MiB on disk and 16 MiB in volatile storage.
+
+`Dockerfile.native` is a **local build environment** for Linux ARM64, not an
+EC2 runtime. To skip Docker entirely, provide a prebuilt Linux ARM64 notary:
+
+```sh
+NOTARY_BINARY=/path/to/zkf-notary ZKF_CAPABILITIES_FILE=/private/capabilities.json infra/aws/up.sh
+```
+
+The binary must be compatible with Amazon Linux 2023's glibc; shared-library
+resolution is checked before startup. No compiler, source tree or build cache is uploaded.
+Service units live in [`systemd/`](systemd/). Logs and service status:
+
+```sh
+sudo journalctl -u zkf-notary -u caddy -f
+sudo systemctl status zkf-notary caddy zkf-egress
+```
+
+See the [native deployment comparison](../../docs/ec2-native-2026-10-09.md).

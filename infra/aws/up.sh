@@ -3,7 +3,7 @@
 #
 #   infra/aws/up.sh
 #
-# Builds the arm64 notary image locally, creates a tagged key pair, security
+# Builds the Linux arm64 notary binary locally, creates a tagged key pair, security
 # group and instance, then runs the notary behind Caddy (automatic HTTPS) at
 # wss://<ip>.sslip.io/notarize, or wss://$NOTARY_DOMAIN/notarize if set (point
 # that DNS name at the printed IP first). Signs with .zkf/hosted-notary.key,
@@ -12,7 +12,10 @@
 source "$(dirname "$0")/common.sh"
 
 INSTANCE_TYPE=${INSTANCE_TYPE:-t4g.small}
-IMAGE=zkfetch-notary:arm64
+ARTIFACTS="$STATE/artifacts"
+CADDY_VERSION=2.10.2
+# Official release archive checksum (SHA-512).
+CADDY_SHA512=6ce061a690312ab38367df3c5d5f89a2e4a263e7300d300d87356211bb81e79b15933e6d6203e03fbf26f15cc0311f264805f336147dbdd24938d84b57a4421c
 ROOT_VOLUME_GIB=${ROOT_VOLUME_GIB:-4}
 MAX_SESSIONS=${MAX_SESSIONS:-4}
 MAX_SESSIONS_PER_CLIENT=${MAX_SESSIONS_PER_CLIENT:-4}
@@ -27,8 +30,21 @@ mkdir -p "$STATE" && chmod 700 "$STATE"
 ADMISSION_FILE=${ZKF_CAPABILITIES_FILE:?Set ZKF_CAPABILITIES_FILE to the private JSON capability configuration}
 [[ -f "$ADMISSION_FILE" ]] || { echo "Missing capability configuration" >&2; exit 1; }
 
-log "Building $IMAGE"
-docker build --platform linux/arm64 -f "$ROOT/infra/aws/Dockerfile.notary" -t "$IMAGE" "$ROOT"
+mkdir -p "$ARTIFACTS"
+if [[ -n "${NOTARY_BINARY:-}" ]]; then
+  cp "$NOTARY_BINARY" "$ARTIFACTS/zkf-notary"
+else
+  log "Building Linux ARM64 binary locally (no Docker on EC2)"
+  docker buildx build --platform linux/arm64 -f "$ROOT/infra/aws/Dockerfile.native" \
+    --output "type=local,dest=$ARTIFACTS" "$ROOT"
+fi
+log "Fetching pinned Caddy $CADDY_VERSION"
+ARCHIVE="$ARTIFACTS/caddy.tar.gz"
+if [[ ! -f "$ARCHIVE" ]] || ! printf '%s  %s\n' "$CADDY_SHA512" "$ARCHIVE" | shasum -a 512 -c - >/dev/null 2>&1; then
+  curl -fsSL --retry 3 "https://github.com/caddyserver/caddy/releases/download/v$CADDY_VERSION/caddy_${CADDY_VERSION}_linux_arm64.tar.gz" -o "$ARCHIVE"
+fi
+printf '%s  %s\n' "$CADDY_SHA512" "$ARCHIVE" | shasum -a 512 -c -
+tar -xzf "$ARCHIVE" -C "$ARTIFACTS" caddy
 
 log "Key pair"
 if [[ ! -f "$SSH_KEY" ]]; then
@@ -67,14 +83,20 @@ if [[ "$INSTANCE" == "None" ]]; then
 set -e
 # Keep English locales and translations on this dedicated notary host.
 printf '%%_install_langs en:en_US\n' > /etc/rpm/macros.zkfetch-languages
-dnf install -y docker iptables glibc-langpack-en
-dnf remove -y --setopt=clean_requirements_on_remove=False glibc-all-langpacks
+dnf install -y iptables glibc-langpack-en
+dnf remove -y --setopt=clean_requirements_on_remove=False glibc-all-langpacks awscli-2
 localectl set-locale LANG=en_US.UTF-8
 systemctl disable --now dnf-makecache.timer || true
 dnf clean all
-systemctl enable --now docker
-usermod -aG docker ec2-user
-# Small host-only safety margin; the notary container has swap disabled.
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/zkfetch.conf <<JOURNAL
+[Journal]
+Storage=persistent
+SystemMaxUse=50M
+RuntimeMaxUse=16M
+JOURNAL
+systemctl restart systemd-journald
+# Small host-only safety margin; the notary service has swap disabled.
 fallocate -l 512M /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
 echo '/swapfile none swap defaults 0 0' >> /etc/fstab
 touch /var/lib/zkf-ready
@@ -96,46 +118,60 @@ echo "$INSTANCE at $IP ($HOST)"
 
 SSH=(ssh -i "$SSH_KEY" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new
      -o UserKnownHostsFile="$STATE/known_hosts" -o ConnectTimeout=10 "ec2-user@$IP")
-log "Waiting for SSH and Docker"
+log "Waiting for SSH and native host bootstrap"
 for _ in $(seq 60); do "${SSH[@]}" test -f /var/lib/zkf-ready 2>/dev/null && break; sleep 5; done
 "${SSH[@]}" test -f /var/lib/zkf-ready
 
-log "Uploading the notary image"
-docker save "$IMAGE" | gzip -1 | "${SSH[@]}" 'gunzip | sudo docker load'
-# The signing key goes over SSH into a root-only file, never into user data.
+log "Uploading native binaries and service units"
+REMOTE_STAGE=$("${SSH[@]}" mktemp -d /tmp/zkfetch-deploy.XXXXXX)
+[[ "$REMOTE_STAGE" =~ ^/tmp/zkfetch-deploy\.[a-zA-Z0-9]+$ ]] || { echo "invalid staging path" >&2; exit 1; }
+tar -czf - -C "$ARTIFACTS" zkf-notary caddy -C "$ROOT/infra/aws" notary-egress.sh systemd \
+  | "${SSH[@]}" "tar -xzf - -C '$REMOTE_STAGE'"
+# Only PID 1 reads this root-only file; credentials are never in user data.
 {
   printf 'ZKF_NOTARY_KEY=%s\n' "$(tr -d '[:space:]' < "$KEY_FILE")"
   printf 'ZKF_CAPABILITIES=%s\n' "$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])), separators=(",", ":")))' "$ADMISSION_FILE")"
+  printf 'ZKF_NOTARY_ADDR=127.0.0.1:7047\nZKF_HEALTH_ADDR=127.0.0.1:9001\nZKF_REQUIRE_KEY=1\n'
+  printf 'ZKF_MAX_SESSIONS=%s\nZKF_MAX_SESSIONS_PER_CLIENT=%s\n' "$MAX_SESSIONS" "$MAX_SESSIONS_PER_CLIENT"
+  printf 'ZKF_TRUST_FORWARDED=1\nZKF_SESSION_TIMEOUT_SECS=120\nRAYON_NUM_THREADS=2\n'
 } | "${SSH[@]}" "sudo sh -c 'umask 077; cat > /etc/zkf-notary.env'"
-"${SSH[@]}" 'sudo mkdir -p /etc/zkfetch'
-cat "$ROOT/infra/aws/notary-egress.sh" | "${SSH[@]}" "sudo sh -c 'cat > /etc/zkfetch/notary-egress.sh'"
 
-log "Starting the notary and Caddy"
-"${SSH[@]}" sudo HOST="$HOST" IMAGE="$IMAGE" MAX_SESSIONS="$MAX_SESSIONS" MAX_SESSIONS_PER_CLIENT="$MAX_SESSIONS_PER_CLIENT" bash -s <<'EOF'
+log "Installing and starting systemd services"
+"${SSH[@]}" sudo HOST="$HOST" STAGE="$REMOTE_STAGE" bash -s <<'EOF'
 set -euo pipefail
-cat > /etc/zkf-Caddyfile <<CADDY
+getent passwd zkf-notary >/dev/null || useradd --system --no-create-home --shell /sbin/nologin zkf-notary
+getent passwd caddy >/dev/null || useradd --system --home-dir /var/lib/caddy --no-create-home --shell /sbin/nologin caddy
+systemctl stop zkf-notary.service 2>/dev/null || true
+install -d /etc/zkfetch /etc/caddy
+# Replace binaries atomically so an existing process never sees a partial file.
+for binary in zkf-notary caddy; do
+  install -m755 "$STAGE/$binary" "/usr/local/bin/$binary.next"
+  mv -f "/usr/local/bin/$binary.next" "/usr/local/bin/$binary"
+done
+# Fail before startup if the supplied notary has incompatible shared libraries.
+ldd /usr/local/bin/zkf-notary > "$STAGE/ldd.txt"
+cat "$STAGE/ldd.txt"
+! grep -q 'not found' "$STAGE/ldd.txt"
+install -m755 "$STAGE/notary-egress.sh" /etc/zkfetch/notary-egress.sh
+install -m644 "$STAGE/systemd/"*.service /etc/systemd/system/
+cat > /etc/caddy/Caddyfile <<CADDY
 $HOST {
 	handle /health {
-		reverse_proxy zkf-notary:9001
+		reverse_proxy 127.0.0.1:9001
 	}
 	handle {
-		reverse_proxy zkf-notary:7047
+		reverse_proxy 127.0.0.1:7047
 	}
 }
 CADDY
-docker network inspect zkf >/dev/null 2>&1 || docker network create zkf >/dev/null
-bash /etc/zkfetch/notary-egress.sh
-docker rm -f zkf-notary zkf-caddy >/dev/null 2>&1 || true
-docker run -d --name zkf-notary --network zkf --restart unless-stopped \
-  --memory=1536m --memory-swap=1536m --pids-limit=256 \
-  --security-opt=no-new-privileges --cap-drop=ALL \
-  --env-file /etc/zkf-notary.env -e ZKF_MAX_SESSIONS="$MAX_SESSIONS" -e ZKF_MAX_SESSIONS_PER_CLIENT="$MAX_SESSIONS_PER_CLIENT" \
-  -e ZKF_TRUST_FORWARDED=1 -e ZKF_SESSION_TIMEOUT_SECS=120 -e RAYON_NUM_THREADS=2 \
-  --log-opt max-size=10m --log-opt max-file=3 "$IMAGE" >/dev/null
-docker run -d --name zkf-caddy --network zkf --restart unless-stopped \
-  -p 80:80 -p 443:443 -v caddy_data:/data -v /etc/zkf-Caddyfile:/etc/caddy/Caddyfile:ro \
-  --log-opt max-size=10m --log-opt max-file=3 caddy:2.10@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb >/dev/null
-docker image prune -f >/dev/null
+/usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+systemd-analyze verify /etc/systemd/system/zkf-{egress,notary}.service /etc/systemd/system/caddy.service
+systemctl daemon-reload
+systemctl enable zkf-egress.service zkf-notary.service caddy.service
+systemctl restart zkf-egress.service
+systemctl start zkf-notary.service
+systemctl restart caddy.service
+rm -rf "$STAGE"
 EOF
 
 log "Waiting for https://$HOST/health (first certificate takes up to a minute)"
@@ -155,4 +191,4 @@ jq -n --arg url "wss://$HOST/notarize" --arg health "https://$HOST/health" --arg
 jq '{url, health, publicKey, location, instanceType, deployedAt: (now|todate)}' "$STATE/deployment.json" \
   > "$ROOT/infra/aws/deployment.json"
 log "Notary live: wss://$HOST/notarize"
-echo "SSH: ssh -i $SSH_KEY ec2-user@$IP    Logs: sudo docker logs -f zkf-notary"
+echo "SSH: ssh -i $SSH_KEY ec2-user@$IP    Logs: sudo journalctl -u zkf-notary -f"

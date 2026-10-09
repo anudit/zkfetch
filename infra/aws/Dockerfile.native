@@ -1,0 +1,12 @@
+# Linux ARM64 build environment only; EC2 receives a binary, no Docker image.
+FROM rust:1.98.1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e AS build
+RUN apt-get update && apt-get install -y --no-install-recommends clang cmake pkg-config && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY vendor ./vendor
+RUN cargo build --locked --release -p zkf-notary
+RUN install -Dm755 target/release/zkf-notary /out/zkf-notary && strip /out/zkf-notary
+
+FROM scratch AS artifact
+COPY --from=build /out/zkf-notary /zkf-notary

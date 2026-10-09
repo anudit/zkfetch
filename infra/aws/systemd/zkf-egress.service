@@ -1,0 +1,13 @@
+[Unit]
+Description=zkfetch notary outbound firewall
+Wants=network-online.target
+After=network-online.target
+Before=zkf-notary.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /etc/zkfetch/notary-egress.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

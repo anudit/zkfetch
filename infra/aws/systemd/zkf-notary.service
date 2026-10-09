@@ -1,0 +1,39 @@
+[Unit]
+Description=zkfetch notary
+Wants=network-online.target
+Requires=zkf-egress.service
+After=network-online.target zkf-egress.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=zkf-notary
+Group=zkf-notary
+EnvironmentFile=/etc/zkf-notary.env
+ExecStart=/usr/local/bin/zkf-notary
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+KillMode=control-group
+OOMPolicy=kill
+MemoryAccounting=yes
+MemoryMax=1536M
+MemorySwapMax=0
+TasksMax=256
+LimitNOFILE=65536
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+LockPersonality=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
