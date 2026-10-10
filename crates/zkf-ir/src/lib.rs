@@ -54,8 +54,9 @@ enum Op {
         bit: usize,
         norm: bool,
     },
+    /// The input byte is shared by all eight output bits.
     InverseBit {
-        input: Byte,
+        input: std::sync::Arc<Byte>,
         bit: usize,
     },
 }
@@ -131,6 +132,10 @@ impl Witness {
 #[derive(Debug)]
 pub struct Circuit {
     ops: Vec<Op>,
+    /// Commitment widths (1 or 128) in op order, and their sum, maintained
+    /// on push: backends query them per proof and the op list is large.
+    widths: Vec<u8>,
+    bits: usize,
     constraints: Vec<Vec<Term>>,
     inputs: usize,
     owner: u64,
@@ -145,6 +150,8 @@ impl Default for Circuit {
             .expect("circuit identifiers exhausted");
         Self {
             ops: Vec::new(),
+            widths: Vec::new(),
+            bits: 0,
             constraints: Vec::new(),
             inputs: 0,
             profile: None,
@@ -216,6 +223,10 @@ impl Circuit {
     fn push(&mut self, op: Op) -> Wire {
         self.profile = None;
         let wire = Wire(self.ops.len(), self.owner);
+        if let Some(width) = commitment_width(&op) {
+            self.widths.push(width as u8);
+            self.bits += width;
+        }
         self.ops.push(op);
         wire
     }
@@ -364,8 +375,12 @@ impl Circuit {
         for wire in input.0 {
             self.require_wire(wire);
         }
+        let shared = std::sync::Arc::new(input);
         let out = Byte(std::array::from_fn(|bit| {
-            self.push(Op::InverseBit { input, bit })
+            self.push(Op::InverseBit {
+                input: shared.clone(),
+                bit,
+            })
         }));
         let square = std::array::from_fn(|i| field::byte_mul(1 << i, 1 << i));
         let input_sq = self.byte_linear(input, square, 0);
@@ -388,18 +403,7 @@ impl Circuit {
     }
     /// Counts only authenticated bits/field elements, excluding linear edges.
     pub fn committed_bits(&self) -> usize {
-        self.ops
-            .iter()
-            .map(|op| match op {
-                Op::Input { bit: true, .. }
-                | Op::InverseBit { .. }
-                | Op::BitProduct(..)
-                | Op::PolynomialBit(..)
-                | Op::AesHint { .. } => 1,
-                Op::Input { bit: false, .. } | Op::Product(..) => 128,
-                _ => 0,
-            })
-            .sum()
+        self.bits
     }
     pub fn constraint_count(&self) -> usize {
         self.constraints.len()
@@ -428,18 +432,7 @@ impl Circuit {
     /// Width of each authenticated value in commitment order. A field input
     /// is a linear combination of 128 authenticated bits; a bit uses one.
     pub fn commitment_widths(&self) -> Vec<usize> {
-        self.ops
-            .iter()
-            .filter_map(|op| match op {
-                Op::Input { bit: true, .. }
-                | Op::BitProduct(..)
-                | Op::PolynomialBit(..)
-                | Op::AesHint { .. }
-                | Op::InverseBit { .. } => Some(1),
-                Op::Input { bit: false, .. } | Op::Product(..) => Some(128),
-                _ => None,
-            })
-            .collect()
+        self.widths.iter().map(|w| usize::from(*w)).collect()
     }
 
     pub fn checked<'a>(&'a self, witness: &'a Witness) -> Result<CheckedWitness<'a>, Error> {
@@ -624,7 +617,7 @@ impl Circuit {
                     *norm,
                 ),
                 Op::InverseBit { input, bit } => {
-                    let x = witness.byte(*input);
+                    let x = witness.byte(**input);
                     Fe(((byte_inverse(x) >> bit) & 1) as u128)
                 }
             };
@@ -683,6 +676,18 @@ impl Circuit {
 }
 
 /// Turn bytes into input bit values in the IR's little-endian bit order.
+fn commitment_width(op: &Op) -> Option<usize> {
+    match op {
+        Op::Input { bit: true, .. }
+        | Op::BitProduct(..)
+        | Op::PolynomialBit(..)
+        | Op::AesHint { .. }
+        | Op::InverseBit { .. } => Some(1),
+        Op::Input { bit: false, .. } | Op::Product(..) => Some(128),
+        _ => None,
+    }
+}
+
 pub fn byte_inputs(bytes: &[u8]) -> Vec<Fe> {
     bytes
         .iter()

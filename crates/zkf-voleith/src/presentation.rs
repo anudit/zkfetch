@@ -628,6 +628,14 @@ mod tests {
         body: &[u8],
         last_padding: u8,
     ) -> (Attestation, Statement, Opening, SigningKey) {
+        fixture_full(body, last_padding, "")
+    }
+
+    fn fixture_full(
+        body: &[u8],
+        last_padding: u8,
+        extra_headers: &str,
+    ) -> (Attestation, Statement, Opening, SigningKey) {
         let key = [7u8; 16];
         let native = Aes128::new_from_slice(&key).unwrap();
         let ck: Vec<_> = (1..=2)
@@ -638,7 +646,7 @@ mod tests {
             })
             .collect();
         let headers = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{extra_headers}Content-Length: {}\r\n\r\n",
             body.len()
         )
         .into_bytes();
@@ -1339,6 +1347,53 @@ mod tests {
                 .collect();
             assert!(verify(&a, &signed, signing.verifying_key(), &presentation, &Query { path: &other, ..q }).is_err());
         }
+    }
+
+    #[test]
+    #[ignore = "diagnostic: session cost split"]
+    fn session_cost_split() {
+        // Duolingo-like: ~1.3 KiB of headers, a short JSON body.
+        let extra: String = (0..24)
+            .map(|i| format!("X-Header-{i:02}: {}\r\n", "v".repeat(30)))
+            .collect();
+        let body = br#"{"streakData":{"longestStreak":{"length":123}}}"#;
+        let (a, base, opening, _) = fixture_full(body, 0, &extra);
+        let head = zkf_attestation::response::Head { headers: base.headers.clone(), records: base.records.clone() };
+        let ciphertext = opening.verify(&a.recv).unwrap();
+        let states = zkf_ir::checkpoint::native_states(body).unwrap();
+        let commitments: Vec<_> = states.iter().enumerate()
+            .map(|(i, s)| zkf_ir::checkpoint::commit_native(&[7; 16], i + 1, s)).collect();
+        let keys = zkf_ir::tls::keys_commitment_statement(a.keys.c_server.0, a.keys.c_server.0);
+        let measure = |name: &str, c: &zkf_ir::Circuit| println!(
+            "session-split {name}: bits={} constraints={}", c.committed_bits(), c.constraint_count());
+        measure("keys-only", &keys);
+        let loops: usize = std::env::var("ZKF_REPEAT").ok().and_then(|v| v.parse().ok()).unwrap_or(2);
+        for _ in 0..loops {
+            let t = std::time::Instant::now();
+            let _ = zkf_ir::response::session(a.keys.c_server.0, a.keys.c_server.0, &a.recv, &ciphertext,
+                a.keys.iv_server.0, &head, &[], None).unwrap();
+            let head_ms = t.elapsed().as_secs_f64() * 1e3;
+            let t = std::time::Instant::now();
+            let c = zkf_ir::response::session(a.keys.c_server.0, a.keys.c_server.0, &a.recv, &ciphertext,
+                a.keys.iv_server.0, &head, &[], Some(&commitments)).unwrap();
+            let both_ms = t.elapsed().as_secs_f64() * 1e3;
+            let t = std::time::Instant::now();
+            let mut inputs = vec![7u8; 32];
+            inputs.truncate(32);
+            let w = c.eval(&byte_inputs(&inputs)).unwrap();
+            let eval_ms = t.elapsed().as_secs_f64() * 1e3;
+            drop(w);
+            println!("session-split build_ms head={head_ms:.1} head+checkpoints={both_ms:.1} eval_ms={eval_ms:.1}");
+        }
+        let started = std::time::Instant::now();
+        let head_only = zkf_ir::response::session(a.keys.c_server.0, a.keys.c_server.0, &a.recv, &ciphertext,
+            a.keys.iv_server.0, &head, &[], None).unwrap();
+        measure("signed-head", &head_only);
+        let with_checkpoints = zkf_ir::response::session(a.keys.c_server.0, a.keys.c_server.0, &a.recv, &ciphertext,
+            a.keys.iv_server.0, &head, &[], Some(&commitments)).unwrap();
+        measure("signed-head+checkpoints", &with_checkpoints);
+        println!("session-split headers={} body={} build_ms={:.1}", base.headers.len(), body.len(),
+            started.elapsed().as_secs_f64() * 1e3);
     }
 
     #[test]

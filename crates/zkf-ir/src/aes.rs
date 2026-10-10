@@ -78,7 +78,34 @@ impl ExpandedKey {
         crate::aes_norm::encrypt(self, c, input)
     }
 
+    /// Interactive (session) encoding. AES-128 blocks instantiate a cached
+    /// public graph template; the emitted ops are identical to a direct build.
     pub fn encrypt(&self, c: &mut Circuit, input: [Byte; 16]) -> [Byte; 16] {
+        if self.rounds.len() != 11 {
+            return self.encrypt_raw(c, input);
+        }
+        static TEMPLATE: std::sync::OnceLock<crate::template::Template> = std::sync::OnceLock::new();
+        let template = TEMPLATE.get_or_init(|| {
+            let mut graph = Circuit::default();
+            let rounds = (0..11)
+                .map(|_| std::array::from_fn(|_| graph.commit_byte()))
+                .collect();
+            let key = ExpandedKey { rounds };
+            let block = std::array::from_fn(|_| graph.commit_byte());
+            let encrypted = key.encrypt_raw(&mut graph, block);
+            crate::template::Template::new(graph, encrypted.iter().flat_map(|b| b.0).collect())
+        });
+        let inputs: Vec<_> = self
+            .rounds
+            .iter()
+            .flat_map(|r| r.iter().flat_map(|b| b.0))
+            .chain(input.iter().flat_map(|b| b.0))
+            .collect();
+        let output = template.instantiate(c, &inputs);
+        std::array::from_fn(|i| Byte(output[i * 8..i * 8 + 8].try_into().unwrap()))
+    }
+
+    fn encrypt_raw(&self, c: &mut Circuit, input: [Byte; 16]) -> [Byte; 16] {
         let mut state = std::array::from_fn(|i| c.byte_xor(input[i], self.rounds[0][i]));
         for round in 1..self.rounds.len() {
             state = state.map(|b| sbox(c, b));

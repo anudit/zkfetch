@@ -539,6 +539,40 @@ mod tests {
         )
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "diagnostic: session AES encoding cost over real MACs"]
+    async fn session_aes_encoding_cost() {
+        use crate::aes::ExpandedKey;
+        for norm in [false, true] {
+            let mut c = Circuit::default();
+            let key: Vec<_> = (0..16).map(|_| c.commit_byte()).collect();
+            let expanded = ExpandedKey::new(&mut c, &key).unwrap();
+            for i in 0..72u8 {
+                let input = std::array::from_fn(|j| c.public_byte(i ^ j as u8));
+                let out = if norm { expanded.encrypt_norm(&mut c, input) } else { expanded.encrypt(&mut c, input) };
+                let _ = out;
+            }
+            c.register_profile(if norm { "diag/aes/norm" } else { "diag/aes/standard" });
+            let raw = [9u8; 16];
+            let started = std::time::Instant::now();
+            let w = c.eval(&byte_inputs(&raw)).unwrap();
+            let eval_ms = started.elapsed().as_secs_f64() * 1e3;
+            let repeat: usize = std::env::var("ZKF_REPEAT").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+            let started = std::time::Instant::now();
+            for _ in 0..repeat {
+                let (p, v) = run_mode(&c, &w, &raw, b"aes", b"aes", true).await;
+                p.unwrap();
+                v.unwrap();
+            }
+            println!(
+                "aes-encoding norm={norm} bits={} constraints={} eval_ms={eval_ms:.1} prove+verify_ms={:.1}",
+                c.committed_bits(),
+                c.constraint_count(),
+                started.elapsed().as_secs_f64() * 1e3
+            );
+        }
+    }
+
     #[tokio::test]
     async fn cubic_relation_over_real_mpz_macs() {
         let mut c = Circuit::default();

@@ -16,6 +16,7 @@ impl Template {
         c.profile = None;
         let mut mapping = Vec::<Wire>::with_capacity(self.circuit.ops.len());
         let mut hints = HashMap::<usize, Arc<[Term]>>::new();
+        let mut bytes = HashMap::<usize, Arc<Byte>>::new();
         fn term(t: &Term, m: &[Wire]) -> Term {
             match *t {
                 Term::Constant(k) => Term::Constant(k),
@@ -60,7 +61,10 @@ impl Template {
                     norm: *norm,
                 },
                 Op::InverseBit { input, bit } => Op::InverseBit {
-                    input: Byte(input.0.map(|w| mapping[w.0])),
+                    input: bytes
+                        .entry(Arc::as_ptr(input) as usize)
+                        .or_insert_with(|| Arc::new(Byte(input.0.map(|w| mapping[w.0]))))
+                        .clone(),
                     bit: *bit,
                 },
                 Op::Input { .. } => unreachable!(),
