@@ -105,10 +105,14 @@ export interface NotarizeOutput {
 }
 
 /** A comparison over the unsigned integer value of a JSON object member.
- * `key` names a member of the response root object: it is not a path and does
- * not assert uniqueness. Use decimal strings above Number.MAX_SAFE_INTEGER. */
+ * Without `path`, `key` names a literal member of the response root object.
+ * Uniqueness is opt-in. Use decimal strings above Number.MAX_SAFE_INTEGER. */
 export interface MemberPredicate {
   key: string;
+  /** Complete root-to-leaf path, at most eight edges; numbers are array indices. */
+  path?: readonly (string | number)[];
+  /** Require unique named members in every selected enclosing object. */
+  unique?: boolean;
   op: "eq" | "ne" | "lt" | "le" | "gt" | "ge";
   value: string | number;
 }

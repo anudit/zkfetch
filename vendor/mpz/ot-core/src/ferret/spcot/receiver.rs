@@ -38,6 +38,17 @@ pub(crate) struct SPCOTReceiver {
 }
 
 impl SPCOTReceiver {
+    /// Release completed-check scratch without resetting the tree counter.
+    pub(crate) fn release_scratch(&mut self) {
+        assert!(
+            self.ws.is_empty() && self.check.is_none(),
+            "SPCOT check still pending"
+        );
+        self.ws.shrink_to_fit();
+        self.lengths.shrink_to_fit();
+        self.indices.shrink_to_fit();
+    }
+
     /// Creates a new SPCOT receiver.
     pub(crate) fn new() -> Self {
         Self {
@@ -264,6 +275,8 @@ impl SPCOTReceiver {
             return Err(ErrorRepr::Check.into());
         }
 
+        use zeroize::Zeroize;
+        self.ws.zeroize();
         self.ws.clear();
         self.lengths.clear();
         self.indices.clear();

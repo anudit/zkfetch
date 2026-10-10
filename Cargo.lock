@@ -5217,6 +5217,7 @@ dependencies = [
  "web-time 1.1.0",
  "ws_stream_tungstenite",
  "ws_stream_wasm",
+ "zkf-attestation",
 ]
 
 [[package]]
@@ -5236,6 +5237,7 @@ name = "zkf-ir"
 version = "0.1.0"
 dependencies = [
  "aes 0.8.4",
+ "aes-gcm 0.10.3",
  "anyhow",
  "futures",
  "getrandom 0.3.4",
@@ -5249,6 +5251,7 @@ dependencies = [
  "mpz-zk",
  "proptest",
  "rand 0.8.8",
+ "rand_chacha 0.3.1",
  "rayon",
  "serde_json",
  "serio",

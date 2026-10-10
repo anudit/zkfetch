@@ -151,10 +151,16 @@ struct SessionKey {
     max_recv: usize,
     /// The notary must know before the session that a v2 attestation follows.
     attestation_v2: bool,
+    vole_budget: usize,
 }
 
 impl SessionKey {
     fn new(params: &NotarizeParams) -> Result<Self> {
+        #[cfg(not(feature = "legacy-binius"))]
+        anyhow::ensure!(
+            !params.binius,
+            "Binius is disabled; rebuild with legacy-binius for zkf/1 sessions"
+        );
         let proxy = match params.mode.as_deref().unwrap_or("mpc") {
             "mpc" => false,
             "proxy" => true,
@@ -174,6 +180,23 @@ impl SessionKey {
             max_sent: params.max_sent.unwrap_or(DEFAULT_MAX_SENT),
             max_recv: params.max_recv.unwrap_or(DEFAULT_MAX_RECV),
             attestation_v2: params.attestation_v2,
+            // Ciphertext-only v2 has a request-independent ORIGO + key relation.
+            // Metadata profiles can select the middle class when the complete
+            // captured response is bounded; legacy/unbounded profiles retain
+            // the previous maximum. Overflow burns the lease, never refetches.
+            vole_budget: if params.attestation_v2
+                && !params.signed_response_head
+                && params.session_claims.is_empty()
+            {
+                tlsn::vole_pool::BUDGET_CLASSES[0]
+            } else if params.attestation_v2
+                && params.max_recv.is_some_and(|n| n <= 8192)
+                && params.session_claims.len() <= 1
+            {
+                tlsn::vole_pool::BUDGET_CLASSES[1]
+            } else {
+                tlsn::vole_pool::FLOW_BUDGET
+            },
         })
         .and_then(Self::check_v2)
     }
@@ -254,7 +277,9 @@ async fn prepare_with(
     if key.proxy && params.connect_addr.is_some() {
         bail!("connectAddr is not supported in proxy mode: the notary dials the server");
     }
-    if !params.attestation_v2 && (!params.session_claims.is_empty() || params.session_claim_nonce.is_some()) {
+    if !params.attestation_v2
+        && (!params.session_claims.is_empty() || params.session_claim_nonce.is_some())
+    {
         bail!("sessionClaims require attestationV2");
     }
     if key.attestation_v2 && tls_version != TlsVersion::V1_3 {
@@ -302,6 +327,7 @@ async fn prepare_with(
                 params.expected_notary_key.as_deref(),
                 public_open,
                 key.protocol_v2 && tls_version == TlsVersion::V1_3,
+                key.vole_budget,
             )
             .await?
             {
@@ -436,11 +462,25 @@ async fn notarize_auto(
         );
     }
     if !params.session_claims.is_empty() {
-        anyhow::ensure!(params.attestation_v2 && params.session_claims.len()<=16, "sessionClaims require v2 and at most 16 claims");
+        anyhow::ensure!(
+            params.attestation_v2 && params.session_claims.len() <= 16,
+            "sessionClaims require v2 and at most 16 claims"
+        );
         #[cfg(feature = "d1-experimental")]
-        d1::parse_nonce(params.session_claim_nonce.as_deref().ok_or_else(||anyhow!("sessionClaims require sessionClaimNonce"))?)?;
+        d1::parse_nonce(
+            params
+                .session_claim_nonce
+                .as_deref()
+                .ok_or_else(|| anyhow!("sessionClaims require sessionClaimNonce"))?,
+        )?;
         for claim in &params.session_claims {
-            anyhow::ensure!(claim.key.len()<=1024 && matches!(claim.op.as_str(),"eq"|"ne"|"lt"|"le"|"gt"|"ge"), "invalid session member predicate");
+            anyhow::ensure!(
+                claim.key.len() <= 1024
+                    && claim.path.is_empty()
+                    && !claim.unique
+                    && matches!(claim.op.as_str(), "eq" | "ne" | "lt" | "le" | "gt" | "ge"),
+                "invalid session member predicate"
+            );
             claim.value.value().map_err(anyhow::Error::msg)?;
         }
     }

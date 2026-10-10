@@ -6,6 +6,25 @@ use std::ops::Range;
 
 pub const HEAD_SELECTOR: &str = "zkf/2/response-head/v1";
 
+/// A typed root-to-leaf selector. Strings name object members; integers index
+/// arrays. A string containing a dot remains one literal member name.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JsonPathSegment {
+    Member(String),
+    Index(usize),
+}
+
+/// Public byte locations of one path edge, authenticated by the JSON circuit.
+/// Array edges have an empty encoded key, 0..0 key range and zero colon.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PathAnchor {
+    pub encoded_key: Vec<u8>,
+    pub key: Range<usize>,
+    pub colon: usize,
+    pub value: Range<usize>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecordView {
     pub content_len: usize,
@@ -38,7 +57,11 @@ pub fn member_claim(member: &str, op: &str, constant: u64, nonce: [u8; 32]) -> C
         bytes.iter().map(|b| format!("{b:02x}")).collect()
     }
     Claim::Predicate {
-        selector: format!("zkf/2/top-level-member/v2/{}/{}", hex(&nonce), hex(member.as_bytes())),
+        selector: format!(
+            "zkf/2/top-level-member/v2/{}/{}",
+            hex(&nonce),
+            hex(member.as_bytes())
+        ),
         op: op.into(),
         constant,
         result: true,

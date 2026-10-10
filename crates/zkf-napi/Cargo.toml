@@ -9,6 +9,9 @@ publish.workspace = true
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+legacy-binius = ["zkf-prover/legacy-binius", "zkf-verifier/legacy-binius"]
+
 [dependencies]
 zkf-core = { workspace = true }
 zkf-prover = { workspace = true }

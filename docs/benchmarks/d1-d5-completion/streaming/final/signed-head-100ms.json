@@ -1,0 +1,6319 @@
+{
+  "addedRttMs": 100,
+  "attestationV2": true,
+  "backend": "quicksilver",
+  "binius": false,
+  "logicalCpus": 12,
+  "maxRecv": null,
+  "maxSent": null,
+  "mode": "proxy",
+  "persistentVole": true,
+  "predicates": true,
+  "processLayout": "in process",
+  "protocolV2": true,
+  "requestedRuns": 4,
+  "reveal": false,
+  "runs": [
+    {
+      "bodyBytes": 722,
+      "fullMs": 1566.2250840000002,
+      "index": 0,
+      "presentMs": 51.340083,
+      "presentationBytes": 27930,
+      "startMs": 1.143958,
+      "timings": {
+        "attestMs": 152.814459,
+        "notaryConnectMs": 210.823042,
+        "prewarmed": false,
+        "proveMs": 64.685166,
+        "setupMs": 788.927916,
+        "tlsMs": 208.625167,
+        "totalMs": 1425.875791,
+        "voleResumed": false
+      },
+      "trafficUpDownChanges": [
+        525622,
+        1226342,
+        21
+      ],
+      "transportTrace": [
+        {
+          "bytes": 168,
+          "connection": 0,
+          "direction": "up",
+          "micros": 10
+        },
+        {
+          "bytes": 129,
+          "connection": 0,
+          "direction": "down",
+          "micros": 52228
+        },
+        {
+          "bytes": 126,
+          "connection": 0,
+          "direction": "up",
+          "micros": 105023
+        },
+        {
+          "bytes": 20,
+          "connection": 0,
+          "direction": "up",
+          "micros": 105035
+        },
+        {
+          "bytes": 166,
+          "connection": 0,
+          "direction": "down",
+          "micros": 157624
+        },
+        {
+          "bytes": 40,
+          "connection": 0,
+          "direction": "up",
+          "micros": 210648
+        },
+        {
+          "bytes": 46,
+          "connection": 0,
+          "direction": "up",
+          "micros": 210665
+        },
+        {
+          "bytes": 62,
+          "connection": 0,
+          "direction": "up",
+          "micros": 210746
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 262889
+        },
+        {
+          "bytes": 4128,
+          "connection": 0,
+          "direction": "down",
+          "micros": 266842
+        },
+        {
+          "bytes": 4136,
+          "connection": 0,
+          "direction": "up",
+          "micros": 319412
+        },
+        {
+          "bytes": 20,
+          "connection": 0,
+          "direction": "up",
+          "micros": 319905
+        },
+        {
+          "bytes": 16412,
+          "connection": 0,
+          "direction": "up",
+          "micros": 319952
+        },
+        {
+          "bytes": 32824,
+          "connection": 0,
+          "direction": "up",
+          "micros": 319975
+        },
+        {
+          "bytes": 16438,
+          "connection": 0,
+          "direction": "up",
+          "micros": 320008
+        },
+        {
+          "bytes": 16432,
+          "connection": 0,
+          "direction": "up",
+          "micros": 320529
+        },
+        {
+          "bytes": 32824,
+          "connection": 0,
+          "direction": "up",
+          "micros": 320603
+        },
+        {
+          "bytes": 16438,
+          "connection": 0,
+          "direction": "up",
+          "micros": 320648
+        },
+        {
+          "bytes": 16352,
+          "connection": 0,
+          "direction": "up",
+          "micros": 321093
+        },
+        {
+          "bytes": 80,
+          "connection": 0,
+          "direction": "up",
+          "micros": 321107
+        },
+        {
+          "bytes": 16412,
+          "connection": 0,
+          "direction": "up",
+          "micros": 321141
+        },
+        {
+          "bytes": 32744,
+          "connection": 0,
+          "direction": "up",
+          "micros": 321199
+        },
+        {
+          "bytes": 80,
+          "connection": 0,
+          "direction": "up",
+          "micros": 321214
+        },
+        {
+          "bytes": 26,
+          "connection": 0,
+          "direction": "up",
+          "micros": 321269
+        },
+        {
+          "bytes": 20,
+          "connection": 0,
+          "direction": "up",
+          "micros": 321651
+        },
+        {
+          "bytes": 32744,
+          "connection": 0,
+          "direction": "up",
+          "micros": 321662
+        },
+        {
+          "bytes": 80,
+          "connection": 0,
+          "direction": "up",
+          "micros": 321670
+        },
+        {
+          "bytes": 32850,
+          "connection": 0,
+          "direction": "up",
+          "micros": 321774
+        },
+        {
+          "bytes": 16432,
+          "connection": 0,
+          "direction": "up",
+          "micros": 322312
+        },
+        {
+          "bytes": 16412,
+          "connection": 0,
+          "direction": "up",
+          "micros": 322329
+        },
+        {
+          "bytes": 16412,
+          "connection": 0,
+          "direction": "up",
+          "micros": 322351
+        },
+        {
+          "bytes": 16438,
+          "connection": 0,
+          "direction": "up",
+          "micros": 322393
+        },
+        {
+          "bytes": 16432,
+          "connection": 0,
+          "direction": "up",
+          "micros": 322807
+        },
+        {
+          "bytes": 16392,
+          "connection": 0,
+          "direction": "up",
+          "micros": 322863
+        },
+        {
+          "bytes": 16432,
+          "connection": 0,
+          "direction": "up",
+          "micros": 322871
+        },
+        {
+          "bytes": 16438,
+          "connection": 0,
+          "direction": "up",
+          "micros": 322899
+        },
+        {
+          "bytes": 16352,
+          "connection": 0,
+          "direction": "up",
+          "micros": 323226
+        },
+        {
+          "bytes": 60,
+          "connection": 0,
+          "direction": "up",
+          "micros": 323235
+        },
+        {
+          "bytes": 16412,
+          "connection": 0,
+          "direction": "up",
+          "micros": 323265
+        },
+        {
+          "bytes": 14384,
+          "connection": 0,
+          "direction": "up",
+          "micros": 323280
+        },
+        {
+          "bytes": 38,
+          "connection": 0,
+          "direction": "down",
+          "micros": 376374
+        },
+        {
+          "bytes": 2104,
+          "connection": 0,
+          "direction": "up",
+          "micros": 428838
+        },
+        {
+          "bytes": 1829,
+          "connection": 0,
+          "direction": "up",
+          "micros": 429089
+        },
+        {
+          "bytes": 16348,
+          "connection": 0,
+          "direction": "down",
+          "micros": 483786
+        },
+        {
+          "bytes": 72,
+          "connection": 0,
+          "direction": "down",
+          "micros": 483800
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 483853
+        },
+        {
+          "bytes": 16420,
+          "connection": 0,
+          "direction": "down",
+          "micros": 483870
+        },
+        {
+          "bytes": 16332,
+          "connection": 0,
+          "direction": "down",
+          "micros": 483877
+        },
+        {
+          "bytes": 72,
+          "connection": 0,
+          "direction": "down",
+          "micros": 483885
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 483905
+        },
+        {
+          "bytes": 32736,
+          "connection": 0,
+          "direction": "down",
+          "micros": 483952
+        },
+        {
+          "bytes": 72,
+          "connection": 0,
+          "direction": "down",
+          "micros": 483965
+        },
+        {
+          "bytes": 32792,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484020
+        },
+        {
+          "bytes": 16420,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484040
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484053
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484088
+        },
+        {
+          "bytes": 32808,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484119
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484130
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484173
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484199
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484213
+        },
+        {
+          "bytes": 32808,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484256
+        },
+        {
+          "bytes": 32792,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484284
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484298
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484312
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484359
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484373
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484385
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484403
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484414
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484424
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484456
+        },
+        {
+          "bytes": 16420,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484466
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484492
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484502
+        },
+        {
+          "bytes": 21292,
+          "connection": 0,
+          "direction": "down",
+          "micros": 484525
+        },
+        {
+          "bytes": 91,
+          "connection": 0,
+          "direction": "up",
+          "micros": 541364
+        },
+        {
+          "bytes": 54,
+          "connection": 0,
+          "direction": "down",
+          "micros": 597055
+        },
+        {
+          "bytes": 2829,
+          "connection": 0,
+          "direction": "up",
+          "micros": 651576
+        },
+        {
+          "bytes": 32752,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720417
+        },
+        {
+          "bytes": 49284,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720450
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720488
+        },
+        {
+          "bytes": 32808,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720504
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720557
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720572
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720584
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720618
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720722
+        },
+        {
+          "bytes": 32808,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720741
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720788
+        },
+        {
+          "bytes": 32808,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720857
+        },
+        {
+          "bytes": 32736,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720912
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720928
+        },
+        {
+          "bytes": 72,
+          "connection": 0,
+          "direction": "down",
+          "micros": 720942
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721005
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721018
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721051
+        },
+        {
+          "bytes": 16348,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721084
+        },
+        {
+          "bytes": 56,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721095
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721146
+        },
+        {
+          "bytes": 32736,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721171
+        },
+        {
+          "bytes": 56,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721183
+        },
+        {
+          "bytes": 16420,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721218
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721258
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721311
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721326
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721356
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721421
+        },
+        {
+          "bytes": 16420,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721436
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721494
+        },
+        {
+          "bytes": 16420,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721505
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721549
+        },
+        {
+          "bytes": 16404,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721562
+        },
+        {
+          "bytes": 16420,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721608
+        },
+        {
+          "bytes": 16388,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721624
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721631
+        },
+        {
+          "bytes": 32792,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721665
+        },
+        {
+          "bytes": 32752,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721713
+        },
+        {
+          "bytes": 56,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721729
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721737
+        },
+        {
+          "bytes": 32792,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721774
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721797
+        },
+        {
+          "bytes": 15128,
+          "connection": 0,
+          "direction": "down",
+          "micros": 721821
+        },
+        {
+          "bytes": 20,
+          "connection": 0,
+          "direction": "up",
+          "micros": 773513
+        },
+        {
+          "bytes": 91,
+          "connection": 0,
+          "direction": "up",
+          "micros": 812641
+        },
+        {
+          "bytes": 70,
+          "connection": 0,
+          "direction": "down",
+          "micros": 911318
+        },
+        {
+          "bytes": 62,
+          "connection": 0,
+          "direction": "up",
+          "micros": 998303
+        },
+        {
+          "bytes": 20,
+          "connection": 0,
+          "direction": "up",
+          "micros": 998325
+        },
+        {
+          "bytes": 62,
+          "connection": 0,
+          "direction": "up",
+          "micros": 998390
+        },
+        {
+          "bytes": 274,
+          "connection": 0,
+          "direction": "up",
+          "micros": 999698
+        },
+        {
+          "bytes": 1653,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1052076
+        },
+        {
+          "bytes": 220,
+          "connection": 0,
+          "direction": "up",
+          "micros": 1103555
+        },
+        {
+          "bytes": 1116,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1155482
+        },
+        {
+          "bytes": 65536,
+          "connection": 0,
+          "direction": "up",
+          "micros": 1272973
+        },
+        {
+          "bytes": 6514,
+          "connection": 0,
+          "direction": "up",
+          "micros": 1273004
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1329278
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1329300
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1329338
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1331371
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1331396
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1331409
+        },
+        {
+          "bytes": 32,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1333517
+        },
+        {
+          "bytes": 32,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1333560
+        },
+        {
+          "bytes": 32,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1333569
+        },
+        {
+          "bytes": 64,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1338162
+        },
+        {
+          "bytes": 16,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1340701
+        },
+        {
+          "bytes": 48,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1341042
+        },
+        {
+          "bytes": 1112,
+          "connection": 0,
+          "direction": "down",
+          "micros": 1373695
+        }
+      ],
+      "verified": true,
+      "verifyMs": 76.57025,
+      "warmup": true,
+      "webSocketFrames": [
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 105023,
+          "opcode": 2,
+          "payload_bytes": 32
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 105024,
+          "opcode": 2,
+          "payload_bytes": 72
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 105024,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 105035,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 157630,
+          "opcode": 2,
+          "payload_bytes": 33
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 157631,
+          "opcode": 2,
+          "payload_bytes": 64
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 157631,
+          "opcode": 2,
+          "payload_bytes": 41
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 157632,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 157632,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 210649,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 210649,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 210665,
+          "opcode": 2,
+          "payload_bytes": 20
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 210665,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 210746,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 210746,
+          "opcode": 2,
+          "payload_bytes": 36
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 262896,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 266842,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 266844,
+          "opcode": 2,
+          "payload_bytes": 4108
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 319412,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 319412,
+          "opcode": 2,
+          "payload_bytes": 4108
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 319905,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 319952,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 319952,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 319976,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 319976,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 319976,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 319976,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320008,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320008,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320008,
+          "opcode": 2,
+          "payload_bytes": 20
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320529,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320530,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320530,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320628,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320628,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320629,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320629,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320648,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320648,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 320648,
+          "opcode": 2,
+          "payload_bytes": 20
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321093,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321093,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321107,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321141,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321141,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321199,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321199,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321199,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321214,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321269,
+          "opcode": 2,
+          "payload_bytes": 20
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321651,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321662,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321662,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321662,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321670,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321774,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321774,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321774,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321774,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 321774,
+          "opcode": 2,
+          "payload_bytes": 20
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322313,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322313,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322313,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322330,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322330,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322351,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322351,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322393,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322394,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322394,
+          "opcode": 2,
+          "payload_bytes": 20
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322811,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322811,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322811,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322863,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322872,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322872,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322872,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322900,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322900,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 322900,
+          "opcode": 2,
+          "payload_bytes": 20
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 323226,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 323226,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 323265,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 323265,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 323280,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 323280,
+          "opcode": 2,
+          "payload_bytes": 14356
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 376375,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 376375,
+          "opcode": 2,
+          "payload_bytes": 20
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 428839,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 428839,
+          "opcode": 2,
+          "payload_bytes": 2076
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 429089,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 429090,
+          "opcode": 2,
+          "payload_bytes": 1801
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483786,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483786,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483800,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483853,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483870,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483870,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483870,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483877,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483885,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483905,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483905,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483953,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483953,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483953,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 483965,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484021,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484021,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484021,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484040,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484040,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484040,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484053,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484088,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484119,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484119,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484119,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484119,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484130,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484173,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484200,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484200,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484213,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484213,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484257,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484257,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484257,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484257,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484284,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484284,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484285,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484298,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484313,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484313,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484359,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484373,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484385,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484385,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484403,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484415,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484415,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484424,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484456,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484466,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484466,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484466,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484492,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484502,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484525,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484525,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 484525,
+          "opcode": 2,
+          "payload_bytes": 4884
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 541364,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 541364,
+          "opcode": 2,
+          "payload_bytes": 65
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 597055,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 597055,
+          "opcode": 2,
+          "payload_bytes": 36
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 651576,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 651576,
+          "opcode": 2,
+          "payload_bytes": 2801
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720417,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720417,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720417,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720418,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720450,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720450,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720450,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720450,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720450,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720450,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720450,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720488,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720504,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720504,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720504,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720504,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720557,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720572,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720572,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720584,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720618,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720618,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720722,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720741,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720742,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720742,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720742,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720788,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720788,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720857,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720857,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720857,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720857,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720912,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720913,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720913,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720928,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720928,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 720942,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721005,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721005,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721018,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721018,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721052,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721084,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721084,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721146,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721171,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721171,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721171,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721218,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721218,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721218,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721258,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721312,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721312,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721326,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721326,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721356,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721356,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721421,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721421,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721437,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721437,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721437,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721494,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721505,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721505,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721505,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721550,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721562,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721562,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721608,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721608,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721608,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721624,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721631,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721665,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721665,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721665,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721713,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721713,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721713,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721713,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721737,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721774,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721774,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721774,
+          "opcode": 2,
+          "payload_bytes": 16384
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721797,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 721821,
+          "opcode": 2,
+          "payload_bytes": 15124
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 773513,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 812641,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 812641,
+          "opcode": 2,
+          "payload_bytes": 65
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 911318,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 911318,
+          "opcode": 2,
+          "payload_bytes": 36
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 911318,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 998303,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 998303,
+          "opcode": 2,
+          "payload_bytes": 36
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 998326,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 998407,
+          "opcode": 2,
+          "payload_bytes": 56
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 999699,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 999699,
+          "opcode": 2,
+          "payload_bytes": 246
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1052077,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1052077,
+          "opcode": 2,
+          "payload_bytes": 1633
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 1103555,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 1103556,
+          "opcode": 2,
+          "payload_bytes": 192
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1155483,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1155483,
+          "opcode": 2,
+          "payload_bytes": 1080
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1155483,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "up",
+          "fin": true,
+          "micros": 1272973,
+          "opcode": 2,
+          "payload_bytes": 72036
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1329278,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1329301,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1329338,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1331371,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1331397,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1331409,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1333517,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1333517,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1333560,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1333560,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1333569,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1333569,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1338162,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1338163,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1338163,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1338163,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1340701,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1341042,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1341042,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1341042,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1373695,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1373695,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1373695,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1373696,
+          "opcode": 2,
+          "payload_bytes": 1054
+        },
+        {
+          "connection": 0,
+          "direction": "down",
+          "fin": true,
+          "micros": 1373696,
+          "opcode": 2,
+          "payload_bytes": 14
+        }
+      ]
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 735.289292,
+      "index": 1,
+      "presentMs": 44.329333999999996,
+      "presentationBytes": 27930,
+      "startMs": 1568.0502079999999,
+      "timings": {
+        "attestMs": 151.0385,
+        "notaryConnectMs": 254.388958,
+        "prewarmed": false,
+        "proveMs": 50.730333,
+        "setupMs": 0.177792,
+        "tlsMs": 185.65937499999998,
+        "totalMs": 641.995,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": [
+        75840,
+        740626,
+        7
+      ],
+      "transportTrace": [
+        {
+          "bytes": 168,
+          "connection": 1,
+          "direction": "up",
+          "micros": 11
+        },
+        {
+          "bytes": 129,
+          "connection": 1,
+          "direction": "down",
+          "micros": 52471
+        },
+        {
+          "bytes": 126,
+          "connection": 1,
+          "direction": "up",
+          "micros": 105152
+        },
+        {
+          "bytes": 3095,
+          "connection": 1,
+          "direction": "up",
+          "micros": 105179
+        },
+        {
+          "bytes": 150,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165571
+        },
+        {
+          "bytes": 48996,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165626
+        },
+        {
+          "bytes": 16332,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165634
+        },
+        {
+          "bytes": 65328,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165658
+        },
+        {
+          "bytes": 32716,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165685
+        },
+        {
+          "bytes": 32664,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165759
+        },
+        {
+          "bytes": 65536,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165796
+        },
+        {
+          "bytes": 32456,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165804
+        },
+        {
+          "bytes": 65536,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165816
+        },
+        {
+          "bytes": 48788,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165825
+        },
+        {
+          "bytes": 65536,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165836
+        },
+        {
+          "bytes": 16124,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165839
+        },
+        {
+          "bytes": 65536,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165903
+        },
+        {
+          "bytes": 65536,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165911
+        },
+        {
+          "bytes": 64912,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165919
+        },
+        {
+          "bytes": 32664,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165927
+        },
+        {
+          "bytes": 17366,
+          "connection": 1,
+          "direction": "down",
+          "micros": 165937
+        },
+        {
+          "bytes": 16,
+          "connection": 1,
+          "direction": "down",
+          "micros": 168511
+        },
+        {
+          "bytes": 1653,
+          "connection": 1,
+          "direction": "down",
+          "micros": 169115
+        },
+        {
+          "bytes": 20,
+          "connection": 1,
+          "direction": "up",
+          "micros": 254099
+        },
+        {
+          "bytes": 30,
+          "connection": 1,
+          "direction": "up",
+          "micros": 254115
+        },
+        {
+          "bytes": 20,
+          "connection": 1,
+          "direction": "up",
+          "micros": 254122
+        },
+        {
+          "bytes": 67,
+          "connection": 1,
+          "direction": "up",
+          "micros": 254131
+        },
+        {
+          "bytes": 20,
+          "connection": 1,
+          "direction": "up",
+          "micros": 254139
+        },
+        {
+          "bytes": 118,
+          "connection": 1,
+          "direction": "up",
+          "micros": 257576
+        },
+        {
+          "bytes": 126,
+          "connection": 1,
+          "direction": "up",
+          "micros": 257594
+        },
+        {
+          "bytes": 16,
+          "connection": 1,
+          "direction": "down",
+          "micros": 305858
+        },
+        {
+          "bytes": 88,
+          "connection": 1,
+          "direction": "down",
+          "micros": 350162
+        },
+        {
+          "bytes": 1116,
+          "connection": 1,
+          "direction": "down",
+          "micros": 350434
+        },
+        {
+          "bytes": 65536,
+          "connection": 1,
+          "direction": "up",
+          "micros": 490752
+        },
+        {
+          "bytes": 6514,
+          "connection": 1,
+          "direction": "up",
+          "micros": 490771
+        },
+        {
+          "bytes": 16,
+          "connection": 1,
+          "direction": "down",
+          "micros": 545773
+        },
+        {
+          "bytes": 16,
+          "connection": 1,
+          "direction": "down",
+          "micros": 545805
+        },
+        {
+          "bytes": 16,
+          "connection": 1,
+          "direction": "down",
+          "micros": 545841
+        },
+        {
+          "bytes": 16,
+          "connection": 1,
+          "direction": "down",
+          "micros": 547564
+        },
+        {
+          "bytes": 32,
+          "connection": 1,
+          "direction": "down",
+          "micros": 547606
+        },
+        {
+          "bytes": 32,
+          "connection": 1,
+          "direction": "down",
+          "micros": 550755
+        },
+        {
+          "bytes": 16,
+          "connection": 1,
+          "direction": "down",
+          "micros": 550809
+        },
+        {
+          "bytes": 48,
+          "connection": 1,
+          "direction": "down",
+          "micros": 550821
+        },
+        {
+          "bytes": 64,
+          "connection": 1,
+          "direction": "down",
+          "micros": 555550
+        },
+        {
+          "bytes": 16,
+          "connection": 1,
+          "direction": "down",
+          "micros": 558169
+        },
+        {
+          "bytes": 48,
+          "connection": 1,
+          "direction": "down",
+          "micros": 558550
+        },
+        {
+          "bytes": 1112,
+          "connection": 1,
+          "direction": "down",
+          "micros": 588371
+        }
+      ],
+      "verified": true,
+      "verifyMs": 38.610209,
+      "warmup": false,
+      "webSocketFrames": [
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 105153,
+          "opcode": 2,
+          "payload_bytes": 32
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 105153,
+          "opcode": 2,
+          "payload_bytes": 72
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 105153,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 105180,
+          "opcode": 2,
+          "payload_bytes": 3087
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 165571,
+          "opcode": 2,
+          "payload_bytes": 33
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 165571,
+          "opcode": 2,
+          "payload_bytes": 64
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 165571,
+          "opcode": 2,
+          "payload_bytes": 41
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 165572,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 165626,
+          "opcode": 2,
+          "payload_bytes": 736016
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 168511,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 169115,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 169115,
+          "opcode": 2,
+          "payload_bytes": 1633
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 254099,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 254115,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 254115,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 254122,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 254131,
+          "opcode": 2,
+          "payload_bytes": 61
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 254139,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 257576,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 257576,
+          "opcode": 2,
+          "payload_bytes": 72
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 257576,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 257594,
+          "opcode": 2,
+          "payload_bytes": 120
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 305858,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 350162,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 350162,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 350162,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 350162,
+          "opcode": 2,
+          "payload_bytes": 32
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 350163,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 350434,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 350434,
+          "opcode": 2,
+          "payload_bytes": 1080
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 350434,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "up",
+          "fin": true,
+          "micros": 490753,
+          "opcode": 2,
+          "payload_bytes": 72036
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 545774,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 545806,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 545841,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 547564,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 547606,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 547606,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 550756,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 550756,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 550809,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 550821,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 550821,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 550821,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 555550,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 555550,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 555550,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 555550,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 558169,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 558550,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 558551,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 558551,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 588371,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 588371,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 588372,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 588372,
+          "opcode": 2,
+          "payload_bytes": 1054
+        },
+        {
+          "connection": 1,
+          "direction": "down",
+          "fin": true,
+          "micros": 588372,
+          "opcode": 2,
+          "payload_bytes": 14
+        }
+      ]
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 726.642458,
+      "index": 2,
+      "presentMs": 45.231166,
+      "presentationBytes": 27930,
+      "startMs": 2303.7778749999998,
+      "timings": {
+        "attestMs": 150.467709,
+        "notaryConnectMs": 246.626166,
+        "prewarmed": false,
+        "proveMs": 52.619125000000004,
+        "setupMs": 0.206125,
+        "tlsMs": 182.515875,
+        "totalMs": 632.435041,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": [
+        75840,
+        740646,
+        7
+      ],
+      "transportTrace": [
+        {
+          "bytes": 168,
+          "connection": 2,
+          "direction": "up",
+          "micros": 11
+        },
+        {
+          "bytes": 129,
+          "connection": 2,
+          "direction": "down",
+          "micros": 52240
+        },
+        {
+          "bytes": 3221,
+          "connection": 2,
+          "direction": "up",
+          "micros": 104918
+        },
+        {
+          "bytes": 150,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166442
+        },
+        {
+          "bytes": 65328,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166507
+        },
+        {
+          "bytes": 16332,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166516
+        },
+        {
+          "bytes": 48996,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166536
+        },
+        {
+          "bytes": 32549,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166551
+        },
+        {
+          "bytes": 167,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166560
+        },
+        {
+          "bytes": 65536,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166697
+        },
+        {
+          "bytes": 65536,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166716
+        },
+        {
+          "bytes": 65536,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166728
+        },
+        {
+          "bytes": 65536,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166736
+        },
+        {
+          "bytes": 64496,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166759
+        },
+        {
+          "bytes": 65536,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166806
+        },
+        {
+          "bytes": 65536,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166822
+        },
+        {
+          "bytes": 65536,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166835
+        },
+        {
+          "bytes": 49406,
+          "connection": 2,
+          "direction": "down",
+          "micros": 166853
+        },
+        {
+          "bytes": 16,
+          "connection": 2,
+          "direction": "down",
+          "micros": 169883
+        },
+        {
+          "bytes": 1673,
+          "connection": 2,
+          "direction": "down",
+          "micros": 170643
+        },
+        {
+          "bytes": 50,
+          "connection": 2,
+          "direction": "up",
+          "micros": 246485
+        },
+        {
+          "bytes": 20,
+          "connection": 2,
+          "direction": "up",
+          "micros": 246504
+        },
+        {
+          "bytes": 87,
+          "connection": 2,
+          "direction": "up",
+          "micros": 246532
+        },
+        {
+          "bytes": 118,
+          "connection": 2,
+          "direction": "up",
+          "micros": 249871
+        },
+        {
+          "bytes": 126,
+          "connection": 2,
+          "direction": "up",
+          "micros": 249880
+        },
+        {
+          "bytes": 16,
+          "connection": 2,
+          "direction": "down",
+          "micros": 298928
+        },
+        {
+          "bytes": 72,
+          "connection": 2,
+          "direction": "down",
+          "micros": 341500
+        },
+        {
+          "bytes": 16,
+          "connection": 2,
+          "direction": "down",
+          "micros": 341562
+        },
+        {
+          "bytes": 1116,
+          "connection": 2,
+          "direction": "down",
+          "micros": 341808
+        },
+        {
+          "bytes": 65536,
+          "connection": 2,
+          "direction": "up",
+          "micros": 481877
+        },
+        {
+          "bytes": 6514,
+          "connection": 2,
+          "direction": "up",
+          "micros": 481903
+        },
+        {
+          "bytes": 16,
+          "connection": 2,
+          "direction": "down",
+          "micros": 537620
+        },
+        {
+          "bytes": 32,
+          "connection": 2,
+          "direction": "down",
+          "micros": 537645
+        },
+        {
+          "bytes": 16,
+          "connection": 2,
+          "direction": "down",
+          "micros": 539637
+        },
+        {
+          "bytes": 32,
+          "connection": 2,
+          "direction": "down",
+          "micros": 539651
+        },
+        {
+          "bytes": 32,
+          "connection": 2,
+          "direction": "down",
+          "micros": 541673
+        },
+        {
+          "bytes": 16,
+          "connection": 2,
+          "direction": "down",
+          "micros": 541724
+        },
+        {
+          "bytes": 16,
+          "connection": 2,
+          "direction": "down",
+          "micros": 541739
+        },
+        {
+          "bytes": 32,
+          "connection": 2,
+          "direction": "down",
+          "micros": 541746
+        },
+        {
+          "bytes": 64,
+          "connection": 2,
+          "direction": "down",
+          "micros": 546036
+        },
+        {
+          "bytes": 16,
+          "connection": 2,
+          "direction": "down",
+          "micros": 548535
+        },
+        {
+          "bytes": 48,
+          "connection": 2,
+          "direction": "down",
+          "micros": 548830
+        },
+        {
+          "bytes": 1096,
+          "connection": 2,
+          "direction": "down",
+          "micros": 580025
+        },
+        {
+          "bytes": 16,
+          "connection": 2,
+          "direction": "down",
+          "micros": 580038
+        }
+      ],
+      "verified": true,
+      "verifyMs": 37.039,
+      "warmup": false,
+      "webSocketFrames": [
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 104918,
+          "opcode": 2,
+          "payload_bytes": 32
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 104919,
+          "opcode": 2,
+          "payload_bytes": 72
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 104919,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 104919,
+          "opcode": 2,
+          "payload_bytes": 3087
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 166442,
+          "opcode": 2,
+          "payload_bytes": 33
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 166443,
+          "opcode": 2,
+          "payload_bytes": 64
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 166443,
+          "opcode": 2,
+          "payload_bytes": 41
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 166443,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 166507,
+          "opcode": 2,
+          "payload_bytes": 736016
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 169883,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 170644,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 170644,
+          "opcode": 2,
+          "payload_bytes": 160
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 170644,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 170644,
+          "opcode": 2,
+          "payload_bytes": 1473
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 246485,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 246485,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 246485,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 246505,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 246532,
+          "opcode": 2,
+          "payload_bytes": 61
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 246532,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 249871,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 249872,
+          "opcode": 2,
+          "payload_bytes": 72
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 249872,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 249880,
+          "opcode": 2,
+          "payload_bytes": 120
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 298928,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 341500,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 341501,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 341501,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 341501,
+          "opcode": 2,
+          "payload_bytes": 32
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 341562,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 341808,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 341808,
+          "opcode": 2,
+          "payload_bytes": 1080
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 341808,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "up",
+          "fin": true,
+          "micros": 481878,
+          "opcode": 2,
+          "payload_bytes": 72036
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 537621,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 537646,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 537646,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 539637,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 539651,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 539651,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 541673,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 541673,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 541724,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 541739,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 541746,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 541746,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 546036,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 546037,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 546037,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 546037,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 548535,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 548831,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 548831,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 548831,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 580026,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 580026,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 580026,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 580026,
+          "opcode": 2,
+          "payload_bytes": 1054
+        },
+        {
+          "connection": 2,
+          "direction": "down",
+          "fin": true,
+          "micros": 580038,
+          "opcode": 2,
+          "payload_bytes": 14
+        }
+      ]
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 726.321292,
+      "index": 3,
+      "presentMs": 44.236667,
+      "presentationBytes": 27930,
+      "startMs": 3030.898375,
+      "timings": {
+        "attestMs": 151.019833,
+        "notaryConnectMs": 246.090125,
+        "prewarmed": false,
+        "proveMs": 52.214625,
+        "setupMs": 0.200375,
+        "tlsMs": 183.216625,
+        "totalMs": 632.741666,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": [
+        75840,
+        740626,
+        7
+      ],
+      "transportTrace": [
+        {
+          "bytes": 168,
+          "connection": 3,
+          "direction": "up",
+          "micros": 11
+        },
+        {
+          "bytes": 129,
+          "connection": 3,
+          "direction": "down",
+          "micros": 52291
+        },
+        {
+          "bytes": 116,
+          "connection": 3,
+          "direction": "up",
+          "micros": 104265
+        },
+        {
+          "bytes": 10,
+          "connection": 3,
+          "direction": "up",
+          "micros": 104276
+        },
+        {
+          "bytes": 3095,
+          "connection": 3,
+          "direction": "up",
+          "micros": 104302
+        },
+        {
+          "bytes": 150,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164356
+        },
+        {
+          "bytes": 65328,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164436
+        },
+        {
+          "bytes": 16540,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164458
+        },
+        {
+          "bytes": 16332,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164465
+        },
+        {
+          "bytes": 48638,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164509
+        },
+        {
+          "bytes": 16485,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164535
+        },
+        {
+          "bytes": 65536,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164851
+        },
+        {
+          "bytes": 65536,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164869
+        },
+        {
+          "bytes": 48580,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164886
+        },
+        {
+          "bytes": 32664,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164936
+        },
+        {
+          "bytes": 65536,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164955
+        },
+        {
+          "bytes": 48788,
+          "connection": 3,
+          "direction": "down",
+          "micros": 164968
+        },
+        {
+          "bytes": 65536,
+          "connection": 3,
+          "direction": "down",
+          "micros": 165099
+        },
+        {
+          "bytes": 65536,
+          "connection": 3,
+          "direction": "down",
+          "micros": 165119
+        },
+        {
+          "bytes": 48580,
+          "connection": 3,
+          "direction": "down",
+          "micros": 165139
+        },
+        {
+          "bytes": 32664,
+          "connection": 3,
+          "direction": "down",
+          "micros": 165162
+        },
+        {
+          "bytes": 33747,
+          "connection": 3,
+          "direction": "down",
+          "micros": 165177
+        },
+        {
+          "bytes": 16,
+          "connection": 3,
+          "direction": "down",
+          "micros": 167993
+        },
+        {
+          "bytes": 1653,
+          "connection": 3,
+          "direction": "down",
+          "micros": 169327
+        },
+        {
+          "bytes": 40,
+          "connection": 3,
+          "direction": "up",
+          "micros": 245887
+        },
+        {
+          "bytes": 10,
+          "connection": 3,
+          "direction": "up",
+          "micros": 245902
+        },
+        {
+          "bytes": 107,
+          "connection": 3,
+          "direction": "up",
+          "micros": 245947
+        },
+        {
+          "bytes": 118,
+          "connection": 3,
+          "direction": "up",
+          "micros": 249669
+        },
+        {
+          "bytes": 126,
+          "connection": 3,
+          "direction": "up",
+          "micros": 249679
+        },
+        {
+          "bytes": 16,
+          "connection": 3,
+          "direction": "down",
+          "micros": 297413
+        },
+        {
+          "bytes": 22,
+          "connection": 3,
+          "direction": "down",
+          "micros": 339072
+        },
+        {
+          "bytes": 66,
+          "connection": 3,
+          "direction": "down",
+          "micros": 339088
+        },
+        {
+          "bytes": 1116,
+          "connection": 3,
+          "direction": "down",
+          "micros": 339367
+        },
+        {
+          "bytes": 65536,
+          "connection": 3,
+          "direction": "up",
+          "micros": 481577
+        },
+        {
+          "bytes": 6514,
+          "connection": 3,
+          "direction": "up",
+          "micros": 481594
+        },
+        {
+          "bytes": 16,
+          "connection": 3,
+          "direction": "down",
+          "micros": 537060
+        },
+        {
+          "bytes": 32,
+          "connection": 3,
+          "direction": "down",
+          "micros": 537101
+        },
+        {
+          "bytes": 48,
+          "connection": 3,
+          "direction": "down",
+          "micros": 539169
+        },
+        {
+          "bytes": 32,
+          "connection": 3,
+          "direction": "down",
+          "micros": 541273
+        },
+        {
+          "bytes": 16,
+          "connection": 3,
+          "direction": "down",
+          "micros": 541358
+        },
+        {
+          "bytes": 48,
+          "connection": 3,
+          "direction": "down",
+          "micros": 541372
+        },
+        {
+          "bytes": 64,
+          "connection": 3,
+          "direction": "down",
+          "micros": 547449
+        },
+        {
+          "bytes": 16,
+          "connection": 3,
+          "direction": "down",
+          "micros": 549847
+        },
+        {
+          "bytes": 48,
+          "connection": 3,
+          "direction": "down",
+          "micros": 550124
+        },
+        {
+          "bytes": 1112,
+          "connection": 3,
+          "direction": "down",
+          "micros": 579758
+        }
+      ],
+      "verified": true,
+      "verifyMs": 37.076334,
+      "warmup": false,
+      "webSocketFrames": [
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 104265,
+          "opcode": 2,
+          "payload_bytes": 32
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 104266,
+          "opcode": 2,
+          "payload_bytes": 72
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 104276,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 104302,
+          "opcode": 2,
+          "payload_bytes": 3087
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 164356,
+          "opcode": 2,
+          "payload_bytes": 33
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 164356,
+          "opcode": 2,
+          "payload_bytes": 64
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 164356,
+          "opcode": 2,
+          "payload_bytes": 41
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 164356,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 164437,
+          "opcode": 2,
+          "payload_bytes": 736016
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 167993,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 169327,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 169327,
+          "opcode": 2,
+          "payload_bytes": 1633
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 245887,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 245887,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 245902,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 245947,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 245947,
+          "opcode": 2,
+          "payload_bytes": 61
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 245947,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 249669,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 249669,
+          "opcode": 2,
+          "payload_bytes": 72
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 249669,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 249679,
+          "opcode": 2,
+          "payload_bytes": 120
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 297414,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 339072,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 339073,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 339089,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 339089,
+          "opcode": 2,
+          "payload_bytes": 32
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 339089,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 339367,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 339367,
+          "opcode": 2,
+          "payload_bytes": 1080
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 339367,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "up",
+          "fin": true,
+          "micros": 481577,
+          "opcode": 2,
+          "payload_bytes": 72036
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 537060,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 537102,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 537102,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 539169,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 539169,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 539169,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 541273,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 541273,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 541358,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 541372,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 541372,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 541372,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 547450,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 547450,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 547450,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 547450,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 549848,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 550124,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 550124,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 550124,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 579759,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 579759,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 579759,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 579759,
+          "opcode": 2,
+          "payload_bytes": 1054
+        },
+        {
+          "connection": 3,
+          "direction": "down",
+          "fin": true,
+          "micros": 579760,
+          "opcode": 2,
+          "payload_bytes": 14
+        }
+      ]
+    },
+    {
+      "bodyBytes": 722,
+      "fullMs": 742.003917,
+      "index": 4,
+      "presentMs": 46.572666,
+      "presentationBytes": 27930,
+      "startMs": 3757.711083,
+      "timings": {
+        "attestMs": 151.58966700000002,
+        "notaryConnectMs": 247.372458,
+        "prewarmed": false,
+        "proveMs": 50.243916,
+        "setupMs": 0.18537499999999998,
+        "tlsMs": 180.08558399999998,
+        "totalMs": 629.477125,
+        "voleResumed": true
+      },
+      "trafficUpDownChanges": [
+        75840,
+        740626,
+        7
+      ],
+      "transportTrace": [
+        {
+          "bytes": 168,
+          "connection": 4,
+          "direction": "up",
+          "micros": 11
+        },
+        {
+          "bytes": 129,
+          "connection": 4,
+          "direction": "down",
+          "micros": 52245
+        },
+        {
+          "bytes": 126,
+          "connection": 4,
+          "direction": "up",
+          "micros": 104212
+        },
+        {
+          "bytes": 3095,
+          "connection": 4,
+          "direction": "up",
+          "micros": 104240
+        },
+        {
+          "bytes": 150,
+          "connection": 4,
+          "direction": "down",
+          "micros": 165955
+        },
+        {
+          "bytes": 65328,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166030
+        },
+        {
+          "bytes": 48996,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166043
+        },
+        {
+          "bytes": 16332,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166049
+        },
+        {
+          "bytes": 32601,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166076
+        },
+        {
+          "bytes": 65536,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166204
+        },
+        {
+          "bytes": 65536,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166219
+        },
+        {
+          "bytes": 65536,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166229
+        },
+        {
+          "bytes": 65536,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166239
+        },
+        {
+          "bytes": 64496,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166252
+        },
+        {
+          "bytes": 65536,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166311
+        },
+        {
+          "bytes": 65536,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166332
+        },
+        {
+          "bytes": 64912,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166350
+        },
+        {
+          "bytes": 50145,
+          "connection": 4,
+          "direction": "down",
+          "micros": 166362
+        },
+        {
+          "bytes": 16,
+          "connection": 4,
+          "direction": "down",
+          "micros": 169181
+        },
+        {
+          "bytes": 1653,
+          "connection": 4,
+          "direction": "down",
+          "micros": 169910
+        },
+        {
+          "bytes": 40,
+          "connection": 4,
+          "direction": "up",
+          "micros": 247129
+        },
+        {
+          "bytes": 97,
+          "connection": 4,
+          "direction": "up",
+          "micros": 247147
+        },
+        {
+          "bytes": 20,
+          "connection": 4,
+          "direction": "up",
+          "micros": 247151
+        },
+        {
+          "bytes": 118,
+          "connection": 4,
+          "direction": "up",
+          "micros": 250243
+        },
+        {
+          "bytes": 126,
+          "connection": 4,
+          "direction": "up",
+          "micros": 250253
+        },
+        {
+          "bytes": 16,
+          "connection": 4,
+          "direction": "down",
+          "micros": 299608
+        },
+        {
+          "bytes": 88,
+          "connection": 4,
+          "direction": "down",
+          "micros": 339007
+        },
+        {
+          "bytes": 1100,
+          "connection": 4,
+          "direction": "down",
+          "micros": 339330
+        },
+        {
+          "bytes": 16,
+          "connection": 4,
+          "direction": "down",
+          "micros": 339342
+        },
+        {
+          "bytes": 65536,
+          "connection": 4,
+          "direction": "up",
+          "micros": 477715
+        },
+        {
+          "bytes": 6514,
+          "connection": 4,
+          "direction": "up",
+          "micros": 477731
+        },
+        {
+          "bytes": 16,
+          "connection": 4,
+          "direction": "down",
+          "micros": 533430
+        },
+        {
+          "bytes": 32,
+          "connection": 4,
+          "direction": "down",
+          "micros": 533498
+        },
+        {
+          "bytes": 16,
+          "connection": 4,
+          "direction": "down",
+          "micros": 535408
+        },
+        {
+          "bytes": 32,
+          "connection": 4,
+          "direction": "down",
+          "micros": 535477
+        },
+        {
+          "bytes": 32,
+          "connection": 4,
+          "direction": "down",
+          "micros": 537454
+        },
+        {
+          "bytes": 16,
+          "connection": 4,
+          "direction": "down",
+          "micros": 537497
+        },
+        {
+          "bytes": 48,
+          "connection": 4,
+          "direction": "down",
+          "micros": 537508
+        },
+        {
+          "bytes": 48,
+          "connection": 4,
+          "direction": "down",
+          "micros": 541771
+        },
+        {
+          "bytes": 16,
+          "connection": 4,
+          "direction": "down",
+          "micros": 541783
+        },
+        {
+          "bytes": 16,
+          "connection": 4,
+          "direction": "down",
+          "micros": 544304
+        },
+        {
+          "bytes": 48,
+          "connection": 4,
+          "direction": "down",
+          "micros": 544594
+        },
+        {
+          "bytes": 1112,
+          "connection": 4,
+          "direction": "down",
+          "micros": 576621
+        }
+      ],
+      "verified": true,
+      "verifyMs": 37.507917,
+      "warmup": false,
+      "webSocketFrames": [
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 104212,
+          "opcode": 2,
+          "payload_bytes": 32
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 104212,
+          "opcode": 2,
+          "payload_bytes": 72
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 104212,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 104240,
+          "opcode": 2,
+          "payload_bytes": 3087
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 165955,
+          "opcode": 2,
+          "payload_bytes": 33
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 165956,
+          "opcode": 2,
+          "payload_bytes": 64
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 165956,
+          "opcode": 2,
+          "payload_bytes": 41
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 165956,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 166030,
+          "opcode": 2,
+          "payload_bytes": 736016
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 169181,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 169910,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 169910,
+          "opcode": 2,
+          "payload_bytes": 1633
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 247129,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 247129,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 247147,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 247147,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 247147,
+          "opcode": 2,
+          "payload_bytes": 61
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 247151,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 250243,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 250243,
+          "opcode": 2,
+          "payload_bytes": 72
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 250243,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 250253,
+          "opcode": 2,
+          "payload_bytes": 120
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 299608,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 339007,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 339007,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 339007,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 339007,
+          "opcode": 2,
+          "payload_bytes": 32
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 339007,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 339330,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 339330,
+          "opcode": 2,
+          "payload_bytes": 1080
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 339342,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "up",
+          "fin": true,
+          "micros": 477718,
+          "opcode": 2,
+          "payload_bytes": 72036
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 533430,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 533498,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 533499,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 535408,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 535477,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 535477,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 537454,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 537454,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 537497,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 537508,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 537508,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 537508,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 541771,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 541771,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 541771,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 541784,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 544304,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 544594,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 544594,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 544594,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 576621,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 576621,
+          "opcode": 2,
+          "payload_bytes": 4
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 576621,
+          "opcode": 2,
+          "payload_bytes": 14
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 576621,
+          "opcode": 2,
+          "payload_bytes": 1054
+        },
+        {
+          "connection": 4,
+          "direction": "down",
+          "fin": true,
+          "micros": 576621,
+          "opcode": 2,
+          "payload_bytes": 14
+        }
+      ]
+    }
+  ],
+  "sessionClaim": false,
+  "signedHead": true,
+  "tls": "1.3",
+  "warmup": 1,
+  "workload": "local TLS fixture /formats/json, hidden id >= 1000"
+}

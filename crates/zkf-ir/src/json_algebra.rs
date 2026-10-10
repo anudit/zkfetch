@@ -2,6 +2,7 @@
 //! JSON document with a bounded private stack; no parser trace or skeleton is
 //! public. The caller must authenticate document boundaries (e.g. HTTP body)
 //! and connect every byte to its ciphertext decryption relation.
+use crate::json::{JsonPathSegment, PathAnchor};
 use crate::json_circuit::{JsonCircuitError, MAX_DEPTH, MAX_DOCUMENT_BYTES, Selection};
 use crate::{
     Byte, Circuit,
@@ -93,6 +94,100 @@ fn assert_false(c: &mut Algebra<'_>, wire: Wire) {
     c.assert_false(wire);
 }
 
+fn bind_key(
+    c: &mut Algebra<'_>,
+    document: &[Byte],
+    encoded: &[u8],
+    key: std::ops::Range<usize>,
+    colon: usize,
+    value_start: usize,
+) -> Result<(), JsonCircuitError> {
+    if key.start >= key.end
+        || key.end > colon
+        || colon >= value_start
+        || value_start >= document.len()
+        || key.len() != encoded.len()
+    {
+        return Err(JsonCircuitError::Bounds);
+    }
+    serde_json::from_slice::<String>(encoded).map_err(|_| JsonCircuitError::Key)?;
+    for (i, value) in encoded.iter().enumerate() {
+        c.assert_byte(document[key.start + i], *value);
+    }
+    for (i, byte) in document.iter().enumerate().take(value_start).skip(key.end) {
+        if i == colon {
+            c.assert_byte(*byte, b':');
+        } else {
+            let ws = equals_any(c, *byte, b" \t\n\r");
+            assert_true(c, ws);
+        }
+    }
+    Ok(())
+}
+
+/// Match a decoded member name at every possible opening quote. The grammar
+/// authenticates strings independently. This DP accepts literal UTF-8, short
+/// escapes and case-insensitive Unicode/surrogate escapes, so uniqueness cannot
+/// be bypassed with e.g. "a" versus "\u0061".
+fn decoded_key_matches(c: &mut Algebra<'_>, document: &[Byte], name: &str) -> Vec<Wire> {
+    let mut zero = c.public_bit(false);
+    let mut suffix: Vec<_> = document.iter().map(|b| eq(c, *b, b'"')).collect();
+    suffix.push(zero);
+    for ch in name.chars().rev() {
+        let mut alternatives: Vec<(Vec<u8>, bool)> = Vec::new();
+        if ch >= ' ' && ch != '"' && ch != '\\' {
+            alternatives.push((ch.to_string().into_bytes(), false));
+        }
+        let short = match ch {
+            '"' => Some(b'"'),
+            '\\' => Some(b'\\'),
+            '/' => Some(b'/'),
+            '\x08' => Some(b'b'),
+            '\x0c' => Some(b'f'),
+            '\n' => Some(b'n'),
+            '\r' => Some(b'r'),
+            '\t' => Some(b't'),
+            _ => None,
+        };
+        if let Some(short) = short {
+            alternatives.push((vec![b'\\', short], false));
+        }
+        let mut units = [0u16; 2];
+        let unicode: Vec<u8> = ch
+            .encode_utf16(&mut units)
+            .iter()
+            .flat_map(|unit| format!("\\u{unit:04x}").into_bytes())
+            .collect();
+        alternatives.push((unicode, true));
+        let mut next = vec![zero; document.len() + 1];
+        for (position, slot) in next.iter_mut().enumerate().take(document.len()) {
+            for (encoding, hex) in &alternatives {
+                if position + encoding.len() > document.len() {
+                    continue;
+                }
+                let mut matches = suffix[position + encoding.len()];
+                for (offset, expected) in encoding.iter().enumerate() {
+                    let byte = document[position + offset];
+                    let class = if *hex && offset % 6 >= 2 && expected.is_ascii_alphabetic() {
+                        equals_any(c, byte, &[*expected, expected.to_ascii_uppercase()])
+                    } else {
+                        eq(c, byte, *expected)
+                    };
+                    matches = and(c, matches, class);
+                }
+                *slot = or(c, *slot, matches);
+            }
+        }
+        let mut constants = [zero];
+        c.checkpoint(&mut [&mut next, &mut constants]);
+        zero = constants[0];
+        suffix = next;
+    }
+    (0..document.len())
+        .map(|position| suffix.get(position + 1).copied().unwrap_or(zero))
+        .collect()
+}
+
 /// Authenticate grammar and the exact extent of one selected member. Other
 /// key/value bytes and all parser/stack states remain private circuit wires.
 /// Returns the selected encoded value wires for revelation or predicates.
@@ -111,7 +206,15 @@ pub fn member_bounded(
     max_depth: usize,
     prefix_only: bool,
 ) -> Result<Vec<Byte>, JsonCircuitError> {
-    member_profile(circuit, document, selection, max_depth, prefix_only, false)
+    member_profile(
+        circuit,
+        document,
+        selection,
+        max_depth,
+        prefix_only,
+        false,
+        None,
+    )
 }
 
 /// Authenticate a member of the root object, with the same prefix grammar checks.
@@ -122,7 +225,46 @@ pub fn top_level_member(
     max_depth: usize,
     prefix_only: bool,
 ) -> Result<Vec<Byte>, JsonCircuitError> {
-    member_profile(circuit, document, selection, max_depth, prefix_only, true)
+    member_profile(
+        circuit,
+        document,
+        selection,
+        max_depth,
+        prefix_only,
+        true,
+        None,
+    )
+}
+
+/// Authenticate each edge from the root, including direct array indices.
+/// Unique proofs parse the full document and reject duplicate names along
+/// the selected path, including alternative JSON escape encodings.
+pub fn path_member(
+    circuit: &mut Circuit,
+    document: &[Byte],
+    path: &[JsonPathSegment],
+    anchors: &[PathAnchor],
+    unique: bool,
+) -> Result<Vec<Byte>, JsonCircuitError> {
+    if path.is_empty() || path.len() > 8 || path.len() != anchors.len() {
+        return Err(JsonCircuitError::Bounds);
+    }
+    let last = anchors.last().unwrap();
+    let selection = Selection {
+        encoded_key: &last.encoded_key,
+        key: last.key.clone(),
+        colon: last.colon,
+        value: last.value.clone(),
+    };
+    member_profile(
+        circuit,
+        document,
+        &selection,
+        8,
+        !unique,
+        false,
+        Some((path, anchors, unique)),
+    )
 }
 
 fn member_profile(
@@ -132,6 +274,7 @@ fn member_profile(
     max_depth: usize,
     prefix_only: bool,
     top_level: bool,
+    path: Option<(&[JsonPathSegment], &[PathAnchor], bool)>,
 ) -> Result<Vec<Byte>, JsonCircuitError> {
     let mut compiler = Algebra::new(circuit);
     let c = &mut compiler;
@@ -141,32 +284,87 @@ fn member_profile(
     }
     if document.is_empty()
         || document.len() > MAX_DOCUMENT_BYTES
-        || s.key.start >= s.key.end
-        || s.key.end > s.colon
-        || s.colon >= s.value.start
         || s.value.start >= s.value.end
         || s.value.end > document.len()
-        || s.key.len() != s.encoded_key.len()
     {
         return Err(JsonCircuitError::Bounds);
     }
-    serde_json::from_slice::<String>(s.encoded_key).map_err(|_| JsonCircuitError::Key)?;
-    for (i, value) in s.encoded_key.iter().enumerate() {
-        c.assert_byte(document[s.key.start + i], *value);
-    }
-    for (i, byte) in document
-        .iter()
-        .enumerate()
-        .take(s.value.start)
-        .skip(s.key.end)
-    {
-        if i == s.colon {
-            c.assert_byte(*byte, b':');
-        } else {
-            let ws = equals_any(c, *byte, b" \t\n\r");
-            assert_true(c, ws);
+    if let Some((steps, anchors, _)) = path {
+        for (level, (step, anchor)) in steps.iter().zip(anchors).enumerate() {
+            if anchor.value.start >= anchor.value.end
+                || anchor.value.end > MAX_DOCUMENT_BYTES
+                || anchor.value.start >= document.len()
+                || (level > 0
+                    && (anchor.value.start <= anchors[level - 1].value.start
+                        || anchor.value.end > anchors[level - 1].value.end))
+            {
+                return Err(JsonCircuitError::Bounds);
+            }
+            match step {
+                JsonPathSegment::Member(name) => {
+                    if name.len() > 1024
+                        || serde_json::from_slice::<String>(&anchor.encoded_key)
+                            .map_err(|_| JsonCircuitError::Key)?
+                            != *name
+                    {
+                        return Err(JsonCircuitError::Key);
+                    }
+                    bind_key(
+                        c,
+                        document,
+                        &anchor.encoded_key,
+                        anchor.key.clone(),
+                        anchor.colon,
+                        anchor.value.start,
+                    )?;
+                }
+                JsonPathSegment::Index(index) => {
+                    if *index >= MAX_DOCUMENT_BYTES
+                        || !anchor.encoded_key.is_empty()
+                        || anchor.key != (0..0)
+                        || anchor.colon != 0
+                    {
+                        return Err(JsonCircuitError::Bounds);
+                    }
+                }
+            }
+            if let Some(next) = steps.get(level + 1) {
+                c.assert_byte(
+                    document[anchor.value.start],
+                    match next {
+                        JsonPathSegment::Member(_) => b'{',
+                        JsonPathSegment::Index(_) => b'[',
+                    },
+                );
+            }
         }
+    } else {
+        bind_key(
+            c,
+            document,
+            s.encoded_key,
+            s.key.clone(),
+            s.colon,
+            s.value.start,
+        )?;
     }
+    let unique_matches: Vec<_> = if let Some((steps, _, true)) = path {
+        steps
+            .iter()
+            .map(|step| match step {
+                JsonPathSegment::Member(name) => {
+                    let matches = decoded_key_matches(c, document, name);
+                    matches
+                        .into_iter()
+                        .map(|b| c.export_bit(b))
+                        .collect::<Vec<_>>()
+                }
+                JsonPathSegment::Index(_) => Vec::new(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let mut one = c.public_bit(true);
     let mut zero = c.public_bit(false);
     let mut grammar = [zero; 10];
@@ -181,6 +379,9 @@ fn member_profile(
     let mut unicode_high = zero;
     let mut unicode_low = zero;
     let mut pair_required = zero;
+    let mut indices = path
+        .map(|(steps, _, _)| vec![vec![zero; 16]; steps.len()])
+        .unwrap_or_default();
     let through = if prefix_only {
         s.value.end.saturating_add(1).min(document.len())
     } else {
@@ -251,7 +452,7 @@ fn member_profile(
         let container = or(c, open_obj, open_arr);
         let push = and(c, value_src, container);
         let value_start = or(c, scalar_start, push);
-        if position == s.key.start {
+        if path.is_none() && position == s.key.start {
             assert_true(c, key_start);
         }
         if position == s.value.start {
@@ -259,6 +460,64 @@ fn member_profile(
             if top_level {
                 assert_true(c, depth[1]);
                 assert_true(c, kind[0]);
+            }
+        }
+        if let Some((steps, anchors, unique)) = path {
+            for (level, (step, anchor)) in steps.iter().zip(anchors).enumerate() {
+                // Never leave the selected parent and re-enter a sibling.
+                if level > 0
+                    && position > anchors[level - 1].value.start
+                    && position <= anchor.value.start
+                {
+                    let outside = any(c, &depth[..=level]);
+                    assert_false(c, outside);
+                }
+                if position == anchor.value.start {
+                    assert_true(c, value_start);
+                    assert_true(c, depth[level + 1]);
+                    match step {
+                        JsonPathSegment::Member(_) => assert_true(c, kind[level]),
+                        JsonPathSegment::Index(index) => {
+                            assert_false(c, kind[level]);
+                            for (bit, count) in indices[level].iter().enumerate() {
+                                if index >> bit & 1 == 1 {
+                                    assert_true(c, *count);
+                                } else {
+                                    assert_false(c, *count);
+                                }
+                            }
+                        }
+                    }
+                }
+                if matches!(step, JsonPathSegment::Member(_)) && position == anchor.key.start {
+                    assert_true(c, key_start);
+                    assert_true(c, depth[level + 1]);
+                }
+                if matches!(step, JsonPathSegment::Index(_))
+                    && position < anchor.value.start
+                    && (level == 0 || position > anchors[level - 1].value.start)
+                {
+                    let event = and(c, value_start, depth[level + 1]);
+                    let mut carry = event;
+                    for count in &mut indices[level] {
+                        let next_carry = and(c, *count, carry);
+                        *count = c.xor_bit(*count, carry);
+                        carry = next_carry;
+                    }
+                    assert_false(c, carry);
+                }
+                if unique
+                    && matches!(step, JsonPathSegment::Member(_))
+                    && position != anchor.key.start
+                    && (level == 0
+                        || (position > anchors[level - 1].value.start
+                            && position < anchors[level - 1].value.end))
+                {
+                    let direct = and(c, key_start, depth[level + 1]);
+                    let matches = c.import_bit(unique_matches[level][position]);
+                    let duplicate = and(c, direct, matches);
+                    assert_false(c, duplicate);
+                }
             }
         }
         for (src, dest) in [
@@ -280,6 +539,14 @@ fn member_profile(
         let obj_end = and(c, obj_end_src, close_obj);
         let arr_end = and(c, arr_end_src, close_arr);
         let pop = or(c, obj_end, arr_end);
+        if let Some((_, anchors, true)) = path {
+            for (level, anchor) in anchors.iter().enumerate().take(anchors.len() - 1) {
+                if position + 1 == anchor.value.end {
+                    assert_true(c, pop);
+                    assert_true(c, depth[level + 2]);
+                }
+            }
+        }
         let mut parent_obj = zero;
         for i in 2..=max_depth {
             let bit = and(c, depth[i], kind[i - 2]);
@@ -451,14 +718,16 @@ fn member_profile(
             one,
             zero,
         ];
-        c.checkpoint(&mut [
+        let mut sections: Vec<&mut [Wire]> = vec![
             &mut grammar,
             &mut lex,
             &mut depth,
             &mut kind,
             &mut selected_depth,
             &mut unicode,
-        ]);
+        ];
+        sections.extend(indices.iter_mut().map(|v| v.as_mut_slice()));
+        c.checkpoint(&mut sections);
         [
             unicode_d,
             unicode_high,
@@ -492,6 +761,101 @@ mod tests {
     use super::*;
     use crate::byte_inputs;
     use std::ops::Range;
+
+    fn accepts_path(
+        body: &[u8],
+        steps: &[JsonPathSegment],
+        anchors: &[PathAnchor],
+        unique: bool,
+    ) -> bool {
+        let mut c = Circuit::default();
+        let bytes: Vec<_> = body.iter().map(|_| c.commit_byte()).collect();
+        if path_member(&mut c, &bytes, steps, anchors, unique).is_err() {
+            return false;
+        }
+        c.eval(&byte_inputs(body)).is_ok()
+    }
+    fn selection(body: &[u8], path: &[JsonPathSegment]) -> Vec<PathAnchor> {
+        crate::json::values(body)
+            .unwrap()
+            .into_iter()
+            .find(|v| v.path == path)
+            .unwrap()
+            .anchors
+    }
+    fn names(names: &[&str]) -> Vec<JsonPathSegment> {
+        names
+            .iter()
+            .map(|n| JsonPathSegment::Member((*n).into()))
+            .collect()
+    }
+    #[test]
+    fn exact_paths_reject_sibling_and_nested_substitutions() {
+        let body = br#"{"streakData":{"longestStreak":{"length":123}},"other":{"longestStreak":{"length":999}},"length":888}"#;
+        let path = names(&["streakData", "longestStreak", "length"]);
+        let anchors = selection(body, &path);
+        assert!(accepts_path(body, &path, &anchors, false));
+        assert!(accepts_path(body, &path, &anchors, true));
+        let mut wrong = anchors.clone();
+        let sibling = selection(body, &names(&["other", "longestStreak", "length"]));
+        wrong[1..].clone_from_slice(&sibling[1..]);
+        assert!(!accepts_path(body, &path, &wrong, false));
+        let wrong = selection(body, &names(&["length"]));
+        assert!(!accepts_path(body, &path, &wrong, false));
+    }
+    #[test]
+    fn array_indices_count_only_direct_elements() {
+        let body = br#"{"rows":[{"v":1,"junk":[1,2,3]},[3,4],{"v":123}]}"#;
+        let path = vec![
+            JsonPathSegment::Member("rows".into()),
+            JsonPathSegment::Index(2),
+            JsonPathSegment::Member("v".into()),
+        ];
+        let anchors = selection(body, &path);
+        assert!(accepts_path(body, &path, &anchors, false));
+        let mut wrong = path.clone();
+        wrong[1] = JsonPathSegment::Index(0);
+        assert!(!accepts_path(body, &wrong, &anchors, false));
+        let array = br#"[0,{"junk":[1,2]},123]"#;
+        let path = vec![JsonPathSegment::Index(2)];
+        let anchors = selection(array, &path);
+        assert!(accepts_path(array, &path, &anchors, true));
+    }
+    #[test]
+    fn uniqueness_checks_escaped_duplicates_and_ancestors() {
+        for body in [
+            br#"{"a":{"v":1},"a":{"v":2}}"#.as_slice(),
+            br#"{"a":{"v":1,"\u0076":2}}"#,
+            br#"{"a":{"v":1},"\u0061":{"v":2}}"#,
+        ] {
+            let path = names(&["a", "v"]);
+            let anchors = selection(body, &path);
+            assert!(accepts_path(body, &path, &anchors, false));
+            assert!(!accepts_path(body, &path, &anchors, true));
+        }
+        for body in [
+            br#"{"\u0061":{"\u0076":1}}"#.as_slice(),
+            br#"{"a":{"v":1},"other":{"v":2}}"#,
+        ] {
+            let path = names(&["a", "v"]);
+            assert!(accepts_path(body, &path, &selection(body, &path), true));
+        }
+        let body = "{\"😀\":1,\"\\ud83d\\uDe00\":2}".as_bytes();
+        let path = names(&["😀"]);
+        assert!(!accepts_path(body, &path, &selection(body, &path), true));
+    }
+    #[test]
+    fn path_depth_eight_and_malformed_grammar() {
+        let body = br#"{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"h":1}}}}}}}}"#;
+        let path = names(&["a", "b", "c", "d", "e", "f", "g", "h"]);
+        assert!(accepts_path(body, &path, &selection(body, &path), true));
+        let mut bad = body.to_vec();
+        bad[5] = b']';
+        assert!(!accepts_path(&bad, &path, &selection(body, &path), false));
+        let body = br#"{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"h":{"i":1}}}}}}}}}"#;
+        let path = names(&["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
+        assert!(!accepts_path(body, &path, &selection(body, &path), false));
+    }
     #[test]
     fn measured_membership_cost() {
         let body = br#"{"userId":1,"id":1,"title":"delectus aut autem","completed":false}"#;

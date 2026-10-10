@@ -146,12 +146,19 @@ fn attestation_v1() -> u8 {
 }
 
 /// A comparison over the unsigned integer value of a JSON object member,
-/// proven offline against a v2 attestation. `key` names a member of
-/// the root object: it is not a path and does not assert uniqueness.
+/// proven offline against a v2 attestation. Without `path`, `key` names a
+/// literal root member. Uniqueness is explicitly opt-in.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MemberPredicate {
     pub key: String,
+    /// Optional complete typed path; without it, `key` names a root member.
+    /// For a member leaf its name must equal `key`; for an array leaf use "".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path: Vec<zkf_attestation::response::JsonPathSegment>,
+    /// Reject duplicate named members in every selected enclosing object.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unique: bool,
     /// "eq", "ne", "lt", "le", "gt" or "ge".
     pub op: String,
     pub value: Decimal,
@@ -265,6 +272,7 @@ pub struct RevealSpec {
 pub enum PredicateBackend {
     #[default]
     Quicksilver,
+    #[cfg(feature = "legacy-binius")]
     Binius,
 }
 

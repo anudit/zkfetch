@@ -9,6 +9,48 @@ fn err(e: impl std::fmt::Display) -> Error {
     Error::from_reason(e.to_string())
 }
 
+/// A move-only prepared session. Taking or disposing it burns the lease.
+#[napi]
+pub struct PreparedSession {
+    inner: std::sync::Mutex<Option<zkf_prover::Prepared>>,
+}
+
+#[napi]
+impl PreparedSession {
+    #[napi]
+    pub async fn notarize(&self, params_json: String) -> Result<String> {
+        let params: NotarizeParams = serde_json::from_str(&params_json).map_err(err)?;
+        let session = self
+            .inner
+            .lock()
+            .map_err(err)?
+            .take()
+            .ok_or_else(|| err("prepared session already consumed or disposed"))?;
+        let output = zkf_prover::notarize_prepared(session, params)
+            .await
+            .map_err(|e| err(format!("{e:#}")))?;
+        serde_json::to_string(&output).map_err(err)
+    }
+
+    #[napi]
+    pub fn dispose(&self) -> Result<()> {
+        self.inner.lock().map_err(err)?.take();
+        Ok(())
+    }
+}
+
+/// Establish request-independent setup without sending the HTTP request.
+#[napi]
+pub async fn prepare(params_json: String) -> Result<PreparedSession> {
+    let params: NotarizeParams = serde_json::from_str(&params_json).map_err(err)?;
+    let session = zkf_prover::prepare(&params)
+        .await
+        .map_err(|e| err(format!("{e:#}")))?;
+    Ok(PreparedSession {
+        inner: std::sync::Mutex::new(Some(session)),
+    })
+}
+
 /// Runs a notarized fetch. Input: `NotarizeParams` JSON. Output: `NotarizeOutput` JSON.
 #[napi]
 pub async fn notarize(params_json: String) -> Result<String> {
@@ -37,22 +79,29 @@ pub fn verify(presentation: String, options_json: String) -> Result<String> {
 /// Builds a v2 presentation (base64) from a v2 attestation, its secrets and a
 /// `PresentV2Request` JSON. Experimental; proving takes seconds.
 #[napi(js_name = "presentV2")]
-pub async fn present_v2(attestation: String, secrets: String, request_json: String) -> Result<String> {
+pub async fn present_v2(
+    attestation: String,
+    secrets: String,
+    request_json: String,
+) -> Result<String> {
     let request: PresentV2Request = serde_json::from_str(&request_json).map_err(err)?;
-    napi::tokio::task::spawn_blocking(move || zkf_prover::present_v2(&attestation, &secrets, &request))
-        .await
-        .map_err(err)?
-        .map_err(|e| err(format!("{e:#}")))
+    napi::tokio::task::spawn_blocking(move || {
+        zkf_prover::present_v2(&attestation, &secrets, &request)
+    })
+    .await
+    .map_err(err)?
+    .map_err(|e| err(format!("{e:#}")))
 }
 
 /// Verifies a v2 presentation. Input: `VerifyV2Options` JSON. Output: `VerifyV2Output` JSON.
 #[napi(js_name = "verifyV2")]
 pub async fn verify_v2(presentation: String, options_json: String) -> Result<String> {
     let opts: VerifyV2Options = serde_json::from_str(&options_json).map_err(err)?;
-    let output = napi::tokio::task::spawn_blocking(move || zkf_verifier::verify_v2(&presentation, &opts))
-        .await
-        .map_err(err)?
-        .map_err(|e| err(format!("{e:#}")))?;
+    let output =
+        napi::tokio::task::spawn_blocking(move || zkf_verifier::verify_v2(&presentation, &opts))
+            .await
+            .map_err(err)?
+            .map_err(|e| err(format!("{e:#}")))?;
     serde_json::to_string(&output).map_err(err)
 }
 

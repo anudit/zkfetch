@@ -3,7 +3,7 @@ import { tokenUserId } from "./auth";
 import { claimsFromFields, readClaims } from "./claims";
 import { API, DEFAULT_USERNAME, DISCLOSURES, NOTARY } from "./defaults";
 import type { ProofVersion, ProverReply, ProverRequest } from "./messages";
-import { streakMember, v2VerificationPolicy } from "./v2";
+import { TOP_LEVEL_URL, TOP_LEVEL_PREDICATE, topLevelVerificationPolicy, streakMember, v2VerificationPolicy } from "./v2";
 
 const send = (message: ProverReply) => self.postMessage(message);
 // Proxy mode binds a prepared session to the notary and host only, so it can
@@ -14,6 +14,7 @@ const DISCLOSURE = { response: { jsonPaths: DISCLOSURES } };
 
 let loading: Promise<void> | undefined;
 let prepared: ZkPrepared | undefined;
+let preparedTarget: "duolingo" | "top-level" | undefined;
 let preparedVersion: ProofVersion | undefined;
 let expiry: ReturnType<typeof setTimeout> | undefined;
 
@@ -29,23 +30,25 @@ function discard() {
   prepared?.dispose();
   prepared = undefined;
   preparedVersion = undefined;
+  preparedTarget = undefined;
 }
 
-async function startPrepare(version: ProofVersion) {
+async function startPrepare(version: ProofVersion, target: "duolingo" | "top-level") {
   await loading;
-  if (prepared?.usable && preparedVersion === version) return;
+  if (prepared?.usable && preparedVersion === version && preparedTarget === target) return;
   discard();
   const started = performance.now();
-  const session = prepare(`${API}/users`, config(version));
+  const session = prepare(target === "top-level" ? TOP_LEVEL_URL : `${API}/users`, config(version));
   prepared = session;
   preparedVersion = version;
+  preparedTarget = target;
   expiry = setTimeout(() => {
     if (prepared !== session) return;
     discard();
     send({ type: "prepared-expired" });
   }, session.expiresAt - Date.now());
   const ok = await session.ready();
-  if (prepared === session) send({ type: "prepared", version, ok, setupMs: performance.now() - started });
+  if (prepared === session) send({ type: "prepared", version, target, ok, setupMs: performance.now() - started });
 }
 
 async function prove(message: Extract<ProverRequest, { type: "prove" }>) {
@@ -67,14 +70,14 @@ async function prove(message: Extract<ProverRequest, { type: "prove" }>) {
   }
   if (!userId || !/^\d+$/.test(userId)) throw new Error("Could not find a Duolingo user ID. Open Duolingo and sign in again.");
   const v2 = message.version === 2;
-  if (v2) streakMember(""); // Reject unsupported nested-path claims before notarization.
   send({ type: "progress", text: v2 ? "Notarizing encrypted Duolingo response…" : "Notarizing username and longest streak…" });
   // Hand over the prepared session (still preparing is fine: it is further
   // along than a new one). The SDK falls back to a fresh session if needed.
-  if (preparedVersion !== message.version) discard();
+  if (preparedVersion !== message.version || preparedTarget !== "duolingo") discard();
   const session = prepared;
   prepared = undefined;
   preparedVersion = undefined;
+  preparedTarget = undefined;
   clearTimeout(expiry);
   const fields = v2 ? "streakData%7BlongestStreak%7Blength%7D%7D" : "username,streakData%7BlongestStreak%7D";
   const response = await zkFetch(`${API}/users/${userId}?fields=${fields}`, {
@@ -92,7 +95,7 @@ async function prove(message: Extract<ProverRequest, { type: "prove" }>) {
     // Keep the cookie-disclosure guard enabled. No downgrade to v1 on failure.
     const presentation = await response.zk.presentV2({ predicate, nonce: message.nonce });
     send({ type: "proof", proof: {
-      version: 2, presentation, predicate, nonce: message.nonce,
+      version: 2, target: "duolingo", presentation, predicate, nonce: message.nonce,
       elapsedMs: performance.now() - started, presentMs: performance.now() - presentStarted,
       timings: response.zk.timings, tlsVersion: response.zk.tlsVersion, threads: threads(),
     } });
@@ -110,14 +113,39 @@ async function prove(message: Extract<ProverRequest, { type: "prove" }>) {
   });
 }
 
+async function proveExample(message: Extract<ProverRequest, { type: "prove-example" }>) {
+  const started = performance.now();
+  await loading;
+  topLevelVerificationPolicy(TOP_LEVEL_PREDICATE, message.nonce, NOTARY.publicKey);
+  send({ type: "progress", text: "Notarizing the public JSON example…" });
+  if (preparedVersion !== 2 || preparedTarget !== "top-level") discard();
+  const session = prepared;
+  prepared = undefined;
+  preparedVersion = undefined;
+  preparedTarget = undefined;
+  clearTimeout(expiry);
+  const response = await zkFetch(TOP_LEVEL_URL, { zkConfig: { ...config(2), prepared: session } });
+  if (!response.ok) throw new Error(`Example endpoint returned HTTP ${response.status}.`);
+  const body = JSON.parse(await response.text());
+  if (body?.id !== 1) throw new Error("Example endpoint did not return top-level id = 1.");
+  if (response.zk.attestationVersion !== 2) throw new Error("The notary did not return a v2 attestation.");
+  send({ type: "progress", text: "Proving top-level id = 1 offline…" });
+  const presentStarted = performance.now();
+  const predicate = { ...TOP_LEVEL_PREDICATE };
+  const presentation = await response.zk.presentV2({ predicate, nonce: message.nonce });
+  send({ type: "proof", proof: { version: 2, target: "top-level", presentation, predicate, nonce: message.nonce,
+    elapsedMs: performance.now() - started, presentMs: performance.now() - presentStarted,
+    timings: response.zk.timings, tlsVersion: response.zk.tlsVersion, threads: threads() } });
+}
+
 async function verifyProof(message: Extract<ProverRequest, { type: "verify" }>) {
   send({ type: "progress", text: "Loading prover…" });
   await loading;
   send({ type: "progress", text: "Verifying proof locally…" });
   const started = performance.now();
   if (message.version === 2) {
-    const verified = await verifyV2(message.presentation, v2VerificationPolicy(message.predicate, message.nonce, NOTARY.publicKey));
-    if (!/^HTTP\/1\.[01] 200\b/.test(verified.responseHeaders)) throw new Error("The proof does not contain a successful Duolingo response.");
+    const verified = await verifyV2(message.presentation, (message.target === "top-level" ? topLevelVerificationPolicy : v2VerificationPolicy)(message.predicate, message.nonce, NOTARY.publicKey));
+    if (!/^HTTP\/1\.[01] 200\b/.test(verified.responseHeaders)) throw new Error("The proof does not contain a successful HTTP response.");
     send({ type: "verified", version: 2, verified, elapsedMs: performance.now() - started });
     return;
   }
@@ -125,7 +153,7 @@ async function verifyProof(message: Extract<ProverRequest, { type: "verify" }>) 
   if (!verified.notaryTrusted || verified.serverName !== "www.duolingo.com") {
     throw new Error("Proof does not match the trusted notary and Duolingo server.");
   }
-  if (!/^HTTP\/1\.[01] 200\b/.test(verified.recv)) throw new Error("The proof does not contain a successful Duolingo response.");
+  if (!/^HTTP\/1\.[01] 200\b/.test(verified.recv)) throw new Error("The proof does not contain a successful HTTP response.");
   send({ type: "verified", version: 1, verified, elapsedMs: performance.now() - started, ...claimsFromFields(verified.json) });
 }
 
@@ -140,8 +168,9 @@ self.onmessage = (event: MessageEvent<ProverRequest>) => {
   };
   switch (message.type) {
     case "init": load(message).catch(fail); break;
-    case "prepare": startPrepare(message.version).catch(() => send({ type: "prepared", version: message.version, ok: false })); break;
+    case "prepare": startPrepare(message.version, message.target).catch(() => send({ type: "prepared", version: message.version, target: message.target, ok: false })); break;
     case "dispose": discard(); break;
+    case "prove-example": proveExample(message).catch(fail); break;
     case "prove": prove(message).catch(fail); break;
     case "verify": verifyProof(message).catch(fail); break;
   }

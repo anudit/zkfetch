@@ -27,7 +27,9 @@ pub(crate) struct ClientLease {
 }
 impl ClientLease {
     pub(crate) fn finish(mut self) {
-        self.pool.park();
+        if self.pool.park().is_err() {
+            return;
+        }
         let Some(generation) = self.request.generation.checked_add(1) else {
             return;
         };
@@ -61,6 +63,7 @@ pub(crate) async fn open(
     pin: Option<&str>,
     proxy_open: Option<notary_auth::ProxyOpen>,
     low_latency: bool,
+    budget: usize,
 ) -> Result<Option<ClientLease>> {
     use rand::RngCore;
     let mut cached = {
@@ -80,6 +83,9 @@ pub(crate) async fn open(
         }
     };
     let opening = if low_latency {
+        if let Some(c) = cached.as_mut() {
+            c.pool.set_budget(budget).map_err(anyhow::Error::msg)?;
+        }
         let ferret = match cached.as_mut() {
             Some(c) => c.pool.start_prefill().map_err(anyhow::Error::msg)?,
             None => vec![],
@@ -91,7 +97,7 @@ pub(crate) async fn open(
             notary_auth::SetupOpen {
                 // Cold bootstrap completes before forwarding the first TLS flight.
                 proxy: if cached.is_some() { proxy_open } else { None },
-                budget: tlsn::vole_pool::FLOW_BUDGET as u32,
+                budget: budget as u32,
                 ferret,
             },
         )
@@ -109,6 +115,7 @@ pub(crate) async fn open(
     } else {
         ProverVolePool::new(opening.binding)
     };
+    pool.set_budget(budget).map_err(anyhow::Error::msg)?;
     let prefill_check = if opening.low_latency && opening.resumed {
         pool.prefill_check(&opening.ferret_reply)
             .map_err(anyhow::Error::msg)?

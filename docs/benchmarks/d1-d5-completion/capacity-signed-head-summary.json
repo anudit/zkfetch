@@ -1,0 +1,72 @@
+{
+  "complete": true,
+  "allVerified": true,
+  "scope": "cgroup memory.current and host metrics sampled every 500 ms; peaks may be undersampled",
+  "capacityReport": "capacity-signed-head.json",
+  "levels": [
+    {
+      "parallel": 2,
+      "verified": 12,
+      "attempted": 12,
+      "warmMedianMs": 1842.7484364999998,
+      "resumedWarm": 10,
+      "peakNotaryCgroupMiB": 857.33203125,
+      "minimumHostAvailableMiB": 655.56640625,
+      "peakHostCpuPct": 68.93203883495146,
+      "peakSwapMiB": 18.3125,
+      "peakIowaitPct": 0.0,
+      "serviceRestarts": 0,
+      "hostOomKillCounterStart": 4,
+      "hostOomKillCounterEnd": 4,
+      "diskUsedGiB": 1.2680511474609375
+    },
+    {
+      "parallel": 4,
+      "verified": 24,
+      "attempted": 24,
+      "warmMedianMs": 2598.025854,
+      "resumedWarm": 20,
+      "peakNotaryCgroupMiB": 1120.42578125,
+      "minimumHostAvailableMiB": 347.44140625,
+      "peakHostCpuPct": 96.0,
+      "peakSwapMiB": 18.3125,
+      "peakIowaitPct": 0.0,
+      "serviceRestarts": 0,
+      "hostOomKillCounterStart": 4,
+      "hostOomKillCounterEnd": 4,
+      "diskUsedGiB": 1.2680511474609375
+    },
+    {
+      "parallel": 8,
+      "verified": 48,
+      "attempted": 48,
+      "warmMedianMs": 3328.772812,
+      "resumedWarm": 40,
+      "peakNotaryCgroupMiB": 1234.01171875,
+      "minimumHostAvailableMiB": 140.359375,
+      "peakHostCpuPct": 100.0,
+      "peakSwapMiB": 18.3125,
+      "peakIowaitPct": 1.8518518518518519,
+      "serviceRestarts": 0,
+      "hostOomKillCounterStart": 4,
+      "hostOomKillCounterEnd": 4,
+      "diskUsedGiB": 1.2680511474609375
+    },
+    {
+      "parallel": 16,
+      "verified": 96,
+      "attempted": 96,
+      "warmMedianMs": 6321.915625000001,
+      "resumedWarm": 80,
+      "peakNotaryCgroupMiB": 1383.0078125,
+      "minimumHostAvailableMiB": 120.328125,
+      "peakHostCpuPct": 99.05660377358491,
+      "peakSwapMiB": 18.3125,
+      "peakIowaitPct": 1.941747572815534,
+      "serviceRestarts": 0,
+      "hostOomKillCounterStart": 4,
+      "hostOomKillCounterEnd": 4,
+      "diskUsedGiB": 1.2680511474609375
+    }
+  ]
+}

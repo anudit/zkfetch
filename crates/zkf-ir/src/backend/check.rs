@@ -60,6 +60,119 @@ impl Polynomial {
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct ProverPolynomials(pub Vec<Polynomial>);
 
+impl crate::stream::Plan<'_> {
+    /// Stream authenticated prover wires through the public liveness schedule.
+    /// The callback receives the original constraint index: schedule order may
+    /// differ from transcript coefficient order. Caller-owned witness and tags
+    /// still exist; this bounds the additional authenticated-wire allocation.
+    pub fn prover_constraints(
+        &self,
+        checked: &CheckedWitness<'_>,
+        tags: &[Fe],
+        mut consume: impl FnMut(usize, Polynomial),
+    ) -> Result<(), Error> {
+        if !std::ptr::eq(self.circuit, checked.circuit) {
+            return Err(Error::ForeignCircuit);
+        }
+        if tags.len() != self.circuit.commitment_count() {
+            return Err(Error::InputCount);
+        }
+        let mut tags = tags.iter();
+        let mut storage = Zeroizing::new(vec![Polynomial::zero(); self.slot_count]);
+        for step in 0..self.checks.steps() {
+            if let Some(op) = self.circuit.ops.get(step) {
+                let value = match op {
+                    Op::Public(value) => Polynomial::linear(*value, Fe::ZERO),
+                    Op::Linear {
+                        terms, constant, ..
+                    } => terms
+                        .iter()
+                        .fold(Polynomial::linear(*constant, Fe::ZERO), |acc, (c, w)| {
+                            acc.xor(storage[self.slots[w.0]].scale(*c))
+                        }),
+                    _ => Polynomial::linear(checked.witness.values[step], *tags.next().unwrap()),
+                };
+                storage[self.slots[step]] = value;
+            }
+            for index in self.checks.at(step) {
+                let get = |w: crate::Wire| storage[self.slots[w.0]];
+                let value = self.circuit.constraints[*index].iter().fold(
+                    Polynomial::zero(),
+                    |acc, term| {
+                        acc.xor(match *term {
+                            Term::Constant(c) => Polynomial([Fe::ZERO, Fe::ZERO, Fe::ZERO, c]),
+                            Term::Linear(c, x) => get(x).shift(2).scale(c),
+                            Term::Quadratic(c, x, y) => {
+                                get(x).linear_product(get(y)).shift(1).scale(c)
+                            }
+                            Term::Cubic(c, x, y, z) => get(x)
+                                .linear_product(get(y))
+                                .quadratic_times_linear(get(z))
+                                .scale(c),
+                        })
+                    },
+                );
+                consume(*index, value);
+            }
+            for edge in self.release.at(step) {
+                storage[self.slots[*edge]].zeroize();
+            }
+        }
+        Ok(())
+    }
+
+    /// Stream verifier MAC keys with identical constraint indices and degree
+    /// homogenization. No witness or plaintext is supplied to this evaluator.
+    pub fn verifier_constraints(
+        &self,
+        commitments: &[Fe],
+        delta: Fe,
+        mut consume: impl FnMut(usize, Fe),
+    ) -> Result<(), Error> {
+        if commitments.len() != self.circuit.commitment_count() {
+            return Err(Error::InputCount);
+        }
+        let mut keys = commitments.iter();
+        let mut storage = Zeroizing::new(vec![Fe::ZERO; self.slot_count]);
+        let delta2 = delta * delta;
+        let delta3 = delta2 * delta;
+        for step in 0..self.checks.steps() {
+            if let Some(op) = self.circuit.ops.get(step) {
+                let value = match op {
+                    Op::Public(value) => *value * delta,
+                    Op::Linear {
+                        terms, constant, ..
+                    } => terms
+                        .iter()
+                        .fold(delta.scale_public(*constant), |acc, (c, w)| {
+                            acc ^ storage[self.slots[w.0]].scale_public(*c)
+                        }),
+                    _ => *keys.next().unwrap(),
+                };
+                storage[self.slots[step]] = value;
+            }
+            for index in self.checks.at(step) {
+                let get = |w: crate::Wire| storage[self.slots[w.0]];
+                let value = self.circuit.constraints[*index]
+                    .iter()
+                    .fold(Fe::ZERO, |acc, term| {
+                        acc ^ match *term {
+                            Term::Constant(c) => delta3.scale_public(c),
+                            Term::Linear(c, x) => (get(x) * delta2).scale_public(c),
+                            Term::Quadratic(c, x, y) => (get(x) * get(y) * delta).scale_public(c),
+                            Term::Cubic(c, x, y, z) => (get(x) * get(y) * get(z)).scale_public(c),
+                        }
+                    });
+                consume(*index, value);
+            }
+            for edge in self.release.at(step) {
+                storage[self.slots[*edge]].zeroize();
+            }
+        }
+        Ok(())
+    }
+}
+
 impl Circuit {
     /// Construct authenticated wires from independently supplied commitment
     /// tags. Public constants have zero tags and linear maps are free.
@@ -224,6 +337,87 @@ mod tests {
     use super::*;
     use crate::{aes::sbox, byte_inputs};
     use proptest::prelude::*;
+    #[test]
+    fn authenticated_stream_matches_materialized_checks_and_detects_mutation() {
+        for compact in [false, true] {
+            let mut c = Circuit::default();
+            let key: Vec<_> = (0..16).map(|_| c.commit_byte()).collect();
+            let expanded = crate::aes::ExpandedKey::new(&mut c, &key).unwrap();
+            for block in 0..3u8 {
+                let input = [block; 16].map(|b| c.public_byte(b));
+                let output = if compact {
+                    expanded.encrypt_norm(&mut c, input)
+                } else {
+                    expanded.encrypt(&mut c, input)
+                };
+                // An equality created after the block keeps its operands alive.
+                let zero = c.public_byte(0);
+                let copy = c.byte_xor(output[0], zero);
+                c.assert_equal(output[0].0[0], copy.0[0]);
+            }
+            let w = c.eval(&byte_inputs(&[17; 16])).unwrap();
+            let checked = c.checked(&w).unwrap();
+            let tags: Vec<_> = (0..c.commitment_count())
+                .map(|i| Fe(i as u128 + 73))
+                .collect();
+            let delta = Fe(321);
+            let mut keys = c.correlated_keys(&w, &tags, delta).unwrap();
+            let expected_p = c.constraint_polynomials_checked(&checked, &tags).unwrap();
+            let expected_v = c.verifier_constraints(&keys, delta).unwrap();
+            let plan = c.streaming_plan(&[]).unwrap();
+            let mut seen = vec![false; c.constraint_count()];
+            plan.prover_constraints(&checked, &tags, |index, poly| {
+                assert!(!seen[index]);
+                seen[index] = true;
+                assert_eq!(poly, expected_p.0[index]);
+                assert_eq!(poly.at(delta), expected_v[index]);
+            })
+            .unwrap();
+            assert!(seen.iter().all(|v| *v));
+            plan.verifier_constraints(&keys, delta, |index, value| {
+                assert_eq!(value, expected_v[index])
+            })
+            .unwrap();
+            keys[0] = keys[0] ^ Fe::ONE;
+            let changed = c.verifier_constraints(&keys, delta).unwrap();
+            assert_ne!(changed, expected_v);
+            plan.verifier_constraints(&keys, delta, |index, value| {
+                assert_eq!(value, changed[index])
+            })
+            .unwrap();
+            assert!(matches!(
+                plan.verifier_constraints(&[], delta, |_, _| {}),
+                Err(Error::InputCount)
+            ));
+            let other = Circuit::default();
+            let other_w = other.eval(&[]).unwrap();
+            assert!(matches!(
+                plan.prover_constraints(&other.checked(&other_w).unwrap(), &tags, |_, _| {}),
+                Err(Error::ForeignCircuit)
+            ));
+        }
+    }
+
+    #[test]
+    fn authenticated_stream_handles_constant_only_constraints() {
+        let mut c = Circuit::default();
+        c.assert_zero(vec![Term::Constant(Fe::ZERO)]);
+        let w = c.eval(&[]).unwrap();
+        let plan = c.streaming_plan(&[]).unwrap();
+        let mut count = 0;
+        plan.prover_constraints(&c.checked(&w).unwrap(), &[], |index, poly| {
+            assert_eq!(index, 0);
+            assert_eq!(poly, Polynomial::zero());
+            count += 1;
+        })
+        .unwrap();
+        assert_eq!(count, 1);
+        plan.verifier_constraints(&[], Fe(42), |index, value| {
+            assert_eq!(index, 0);
+            assert_eq!(value, Fe::ZERO);
+        })
+        .unwrap();
+    }
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(32))]
         #[test]

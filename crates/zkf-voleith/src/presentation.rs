@@ -23,6 +23,7 @@ const MAX_DOCUMENT: usize = 1024;
 const MAX_HEADERS: usize = 16384;
 
 pub use zkf_attestation::response::RecordView;
+pub use zkf_attestation::response::{JsonPathSegment, PathAnchor};
 
 /// Public statement metadata. Positions disclose lengths, not hidden values.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,13 +34,16 @@ pub struct Statement {
     pub key: Range<usize>,
     pub colon: usize,
     pub value: Range<usize>,
+    pub anchors: Vec<PathAnchor>,
 }
 
 /// The relying party supplies this policy independently of the presentation.
-/// `key` means a member of the root object, without uniqueness guarantees.
+/// Without `path`, `key` names a literal root member. Uniqueness is opt-in.
 pub struct Query<'a> {
     pub server_name: &'a str,
     pub key: &'a str,
+    pub path: &'a [JsonPathSegment],
+    pub unique: bool,
     pub comparison: Comparison,
     pub constant: u64,
     pub nonce: [u8; 32],
@@ -53,7 +57,31 @@ pub struct Presentation {
     pub proof: Vec<u8>,
 }
 
-const PRESENTATION_MAGIC: &[u8; 8] = b"zkf2prs\x04";
+const PRESENTATION_MAGIC: &[u8; 8] = b"zkf2prs\x05";
+
+pub fn effective_path(q: &Query<'_>) -> Result<Vec<JsonPathSegment>> {
+    let path = if q.path.is_empty() {
+        vec![JsonPathSegment::Member(q.key.into())]
+    } else {
+        q.path.to_vec()
+    };
+    ensure!(
+        path.len() <= 8
+            && path.iter().all(|step| match step {
+                JsonPathSegment::Member(name) => name.len() <= 1024,
+                JsonPathSegment::Index(index) => *index < MAX_DOCUMENT,
+            }),
+        "JSON path exceeds depth or selector bounds"
+    );
+    ensure!(
+        match path.last().unwrap() {
+            JsonPathSegment::Member(name) => name == q.key,
+            JsonPathSegment::Index(_) => q.key.is_empty(),
+        },
+        "key must match the path leaf (empty for an array index)"
+    );
+    Ok(path)
+}
 /// Bounds decoding before any proof work; proofs grow with the document.
 pub const MAX_PRESENTATION_BYTES: usize = 32 << 20;
 
@@ -142,8 +170,34 @@ fn relation(
         statement.encoded_key.len() <= 4096,
         "member encoding exceeds cap"
     );
-    let decoded_key: String = serde_json::from_slice(&statement.encoded_key)?;
-    ensure!(decoded_key == query.key, "member policy mismatch");
+    let path = effective_path(query)?;
+    let path_profile = !query.path.is_empty() || query.unique;
+    if path_profile {
+        ensure!(
+            statement.anchors.len() == path.len(),
+            "missing path anchors"
+        );
+        let last = statement.anchors.last().unwrap();
+        ensure!(
+            last.encoded_key == statement.encoded_key
+                && last.key == statement.key
+                && last.colon == statement.colon
+                && last.value == statement.value,
+            "leaf anchor mismatch"
+        );
+        for anchor in &statement.anchors {
+            ensure!(
+                anchor.value.start < anchor.value.end && anchor.value.end <= MAX_DOCUMENT,
+                "path anchor outside document"
+            );
+        }
+    } else {
+        ensure!(statement.anchors.is_empty(), "unexpected path anchors");
+    }
+    if matches!(path.last(), Some(JsonPathSegment::Member(_))) {
+        let decoded_key: String = serde_json::from_slice(&statement.encoded_key)?;
+        ensure!(decoded_key == query.key, "member policy mismatch");
+    }
     ensure!(
         opening.offset == 0 && opening.length == a.recv.len,
         "this context profile requires the whole ciphertext stream"
@@ -176,9 +230,10 @@ fn relation(
     verify_headers(&statement.headers, body_len)?;
     // Validate statement bounds before allocating the parser circuit.
     ensure!(
-        statement.key.start < statement.key.end
-            && statement.key.end <= body_len
-            && statement.colon < body_len
+        (matches!(path.last(), Some(JsonPathSegment::Index(_)))
+            || (statement.key.start < statement.key.end
+                && statement.key.end <= body_len
+                && statement.colon < body_len))
             && statement.value.start < statement.value.end
             && statement.value.end <= body_len,
         "member selection outside document"
@@ -191,7 +246,13 @@ fn relation(
     // A mismatched reserved claim must fail, never fall back to another profile.
     ensure!(signed_head || !a.claims.iter().any(|claim| matches!(claim,
         zkf_attestation::Claim::Reveal {selector,..} if selector == zkf_attestation::response::HEAD_SELECTOR)), "signed response head differs");
-    zkf_ir::response::offline_relation(
+    if path_profile {
+        ensure!(
+            statement.anchors.iter().all(|a| a.value.end <= body_len),
+            "path anchor beyond body"
+        );
+    }
+    zkf_ir::response::offline_relation_path(
         a.keys.c_server.0,
         &a.recv,
         &ciphertext,
@@ -206,6 +267,7 @@ fn relation(
         },
         query.comparison,
         query.constant,
+        path_profile.then_some((path.as_slice(), statement.anchors.as_slice(), query.unique)),
     )
     .map_err(anyhow::Error::msg)
 }
@@ -281,7 +343,7 @@ fn context<'a>(a: &Attestation, q: &Query<'_>, binding: &'a [u8]) -> Result<Cont
     })
 }
 fn query_binding(q: &Query<'_>, statement: &Statement) -> Result<Vec<u8>> {
-    let mut bytes = b"zkf/2/http-json/top-level-prefix-context-profile-4/depth-4\0".to_vec();
+    let mut bytes = b"zkf/2/http-json/path-context-profile-5/depth-8\0".to_vec();
     for value in [q.server_name, q.key] {
         bytes.extend_from_slice(&(value.len() as u64).to_le_bytes());
         bytes.extend_from_slice(value.as_bytes());
@@ -295,6 +357,10 @@ fn query_binding(q: &Query<'_>, statement: &Statement) -> Result<Vec<u8>> {
         Comparison::Ge => 5,
     });
     bytes.extend_from_slice(&q.constant.to_le_bytes());
+    let path = bincode::serialize(&q.path)?;
+    bytes.extend_from_slice(&(path.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(&path);
+    bytes.push(u8::from(q.unique));
     let metadata = bincode::serialize(statement)?;
     bytes.extend_from_slice(&(metadata.len() as u64).to_le_bytes());
     bytes.extend_from_slice(&metadata);
@@ -303,6 +369,9 @@ fn query_binding(q: &Query<'_>, statement: &Statement) -> Result<Vec<u8>> {
 
 const SIGNED_CLAIM_PROOF: &[u8] = b"zkf/2/presentation/notary-signed-top-level-member/v2";
 fn has_signed_claim(a: &Attestation, q: &Query<'_>) -> bool {
+    if !q.path.is_empty() || q.unique {
+        return false;
+    }
     let op = match q.comparison {
         Comparison::Eq => "eq",
         Comparison::Ne => "ne",
@@ -343,6 +412,7 @@ pub fn prove(
             key: 0..0,
             colon: 0,
             value: 0..0,
+            anchors: Vec::new(),
         };
         return Ok(Presentation {
             statement,
@@ -389,7 +459,8 @@ pub fn verify(
             presentation.statement.encoded_key.is_empty()
                 && presentation.statement.key == (0..0)
                 && presentation.statement.colon == 0
-                && presentation.statement.value == (0..0),
+                && presentation.statement.value == (0..0)
+                && presentation.statement.anchors.is_empty(),
             "noncanonical signed-claim metadata"
         );
         let head = zkf_attestation::response::Head {
@@ -543,6 +614,7 @@ mod tests {
             key: 1..5,
             colon: 5,
             value: 6..9,
+            anchors: Vec::new(),
         };
         let opening = recv.open(0, recv.direction.len).unwrap();
         (a, statement, opening, signing)
@@ -551,10 +623,148 @@ mod tests {
         Query {
             server_name: "example.com",
             key: "id",
+            path: &[],
+            unique: false,
             comparison: Comparison::Ge,
             constant: 100,
             nonce: [2; 32],
         }
+    }
+
+    fn path_statement(
+        body: &[u8],
+        mut statement: Statement,
+        path: &[JsonPathSegment],
+    ) -> Statement {
+        let member = zkf_ir::json::values(body)
+            .unwrap()
+            .into_iter()
+            .find(|v| v.path == path)
+            .unwrap();
+        let leaf = member.anchors.last().unwrap();
+        statement.encoded_key = leaf.encoded_key.clone();
+        statement.key = leaf.key.clone();
+        statement.colon = leaf.colon;
+        statement.value = leaf.value.clone();
+        statement.anchors = member.anchors;
+        statement
+    }
+
+    #[test]
+    fn nested_path_proof_binds_policy_ancestors_indices_and_uniqueness() {
+        let body = br#"{"streakData":{"longestStreak":{"length":123}},"other":{"longestStreak":{"length":123}},"rows":[10,123]}"#;
+        let path: Vec<_> = ["streakData", "longestStreak", "length"]
+            .into_iter()
+            .map(|s| JsonPathSegment::Member(s.into()))
+            .collect();
+        let (mut a, statement, opening, signing) = fixture_body(body);
+        a.claims.push(
+            zkf_attestation::response::Head {
+                headers: statement.headers.clone(),
+                records: statement.records.clone(),
+            }
+            .claim(),
+        );
+        let signature = a.sign(&signing).unwrap();
+        let q = Query {
+            key: "length",
+            path: &path,
+            unique: true,
+            ..query()
+        };
+        let statement = path_statement(body, statement, &path);
+        let proof = prove(&a, statement, opening, &q, &[7; 16], Parameters::Fast).unwrap();
+        verify(&a, &signature, signing.verifying_key(), &proof, &q).unwrap();
+        let other: Vec<_> = ["other", "longestStreak", "length"]
+            .into_iter()
+            .map(|s| JsonPathSegment::Member(s.into()))
+            .collect();
+        assert!(
+            verify(
+                &a,
+                &signature,
+                signing.verifying_key(),
+                &proof,
+                &Query { path: &other, ..q }
+            )
+            .is_err()
+        );
+        assert!(
+            verify(
+                &a,
+                &signature,
+                signing.verifying_key(),
+                &proof,
+                &Query { unique: false, ..q }
+            )
+            .is_err()
+        );
+        let mut changed = proof.clone();
+        changed.statement.anchors[0].value.start += 1;
+        assert!(verify(&a, &signature, signing.verifying_key(), &changed, &q).is_err());
+        let array_path = vec![
+            JsonPathSegment::Member("rows".into()),
+            JsonPathSegment::Index(1),
+        ];
+        let (a, statement, opening, signing) = fixture_body(body);
+        let signature = a.sign(&signing).unwrap();
+        let q = Query {
+            key: "",
+            path: &array_path,
+            unique: false,
+            ..query()
+        };
+        let proof = prove(
+            &a,
+            path_statement(body, statement, &array_path),
+            opening,
+            &q,
+            &[7; 16],
+            Parameters::Fast,
+        )
+        .unwrap();
+        verify(&a, &signature, signing.verifying_key(), &proof, &q).unwrap();
+        let wrong = vec![
+            JsonPathSegment::Member("rows".into()),
+            JsonPathSegment::Index(0),
+        ];
+        assert!(
+            verify(
+                &a,
+                &signature,
+                signing.verifying_key(),
+                &proof,
+                &Query { path: &wrong, ..q }
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn uniqueness_rejects_duplicate_path_names_with_alternative_escapes() {
+        let body = br#"{"streakData":{"longestStreak":{"length":123,"\u006cength":123}}}"#;
+        let path: Vec<_> = ["streakData", "longestStreak", "length"]
+            .into_iter()
+            .map(|s| JsonPathSegment::Member(s.into()))
+            .collect();
+        let (a, statement, opening, _) = fixture_body(body);
+        let q = Query {
+            key: "length",
+            path: &path,
+            unique: true,
+            ..query()
+        };
+        assert!(
+            prove(
+                &a,
+                path_statement(body, statement, &path),
+                opening,
+                &q,
+                &[7; 16],
+                Parameters::Fast
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -603,7 +813,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             session.profile(),
-            Some("zkf/2/session/standard-aes/top-level/depth-4/v4")
+            Some("zkf/2/session/standard-aes/prefix/top-level/depth-4/v5")
         );
         assert_eq!(
             session
@@ -651,11 +861,51 @@ mod tests {
     }
 
     #[test]
+    fn session_claim_prefix_skips_tail_but_authenticates_record_padding() {
+        let body = format!("{{\"id\":123,\"tail\":\"{}\"}}", "x".repeat(900));
+        for padding in [0, 1] {
+            let (a, statement, opening, _) = fixture_body_padding(body.as_bytes(), padding);
+            let head = zkf_attestation::response::Head {
+                headers: statement.headers.clone(),
+                records: statement.records.clone(),
+            };
+            let claim = zkf_attestation::response::MemberClaim {
+                member: "id".into(),
+                op: "ge".into(),
+                constant: 100,
+                nonce: [31; 32],
+                encoded_key: statement.encoded_key,
+                key: statement.key,
+                colon: statement.colon,
+                value: statement.value,
+            };
+            let c = zkf_ir::response::session(
+                a.keys.c_server.0,
+                a.keys.c_server.0,
+                &a.recv,
+                &opening.verify(&a.recv).unwrap(),
+                a.keys.iv_server.0,
+                &head,
+                &[claim],
+            )
+            .unwrap();
+            assert!(
+                c.committed_bits() < 30_000,
+                "session decrypted unselected tail: {} bits",
+                c.committed_bits()
+            );
+            assert_eq!(c.eval_checked(&byte_inputs(&[7; 32])).is_ok(), padding == 0);
+        }
+    }
+
+    #[test]
     fn nested_balance_cannot_satisfy_offline_or_signed_session_claim() {
         let body = br#"{"balance":10,"history":[{"balance":999999}]}"#;
         let (a, mut statement, opening, signing) = fixture_body(body);
         let q = Query {
             key: "balance",
+            path: &[],
+            unique: false,
             constant: 999999,
             ..query()
         };

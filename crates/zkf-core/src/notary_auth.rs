@@ -83,7 +83,7 @@ mod tests {
 /// Opening marker: 192 random bits remain in the challenge.
 pub const POOL_MAGIC: &[u8; 8] = b"ZKFPOOL1";
 /// Negotiates the pipelined proof and in-session attestation flow.
-pub const FLOW_MAGIC: &[u8; 8] = b"ZKFFLOW3";
+pub const FLOW_MAGIC: &[u8; 8] = b"ZKFFLOW4";
 
 /// Public TLS first flight. No application data or private proof inputs.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -248,6 +248,33 @@ pub async fn respond_pool_with<S: AsyncRead + AsyncWrite + Unpin, T, F>(
 where
     F: FnOnce(&mut Option<T>, &Option<SetupOpen>) -> Result<Vec<u8>>,
 {
+    respond_pool_with_async(
+        stream,
+        secret,
+        scope,
+        cache,
+        |mut cached, setup| async move {
+            let reply = prefill(&mut cached, &setup)?;
+            Ok((cached, reply))
+        },
+    )
+    .await
+}
+
+/// Removes a lease before awaiting admission, then preprocesses before signing
+/// the opening. Cancellation burns the lease while waiting; no upstream I/O is
+/// performed by this function.
+pub async fn respond_pool_with_async<S: AsyncRead + AsyncWrite + Unpin, T, F, Fut>(
+    stream: &mut S,
+    secret: &[u8; 32],
+    scope: [u8; 32],
+    cache: &crate::setup_pool::PoolCache<T>,
+    prefill: F,
+) -> Result<Option<(PoolOpening, Option<T>)>>
+where
+    F: FnOnce(Option<T>, Option<SetupOpen>) -> Fut,
+    Fut: std::future::Future<Output = Result<(Option<T>, Vec<u8>)>>,
+{
     use sha2::{Digest, Sha256};
     let mut nonce = [0; 32];
     stream.read_exact(&mut nonce).await?;
@@ -296,8 +323,8 @@ where
     } else {
         (None, Vec::new())
     };
-    let mut cached = cache.take(scope, request);
-    let ferret_reply = prefill(&mut cached, &setup)?;
+    let cached = cache.take(scope, request);
+    let (cached, ferret_reply) = prefill(cached, setup.clone()).await?;
     let resumed = cached.is_some();
     let mut next = request;
     if !resumed {
@@ -401,6 +428,44 @@ mod pool_tests {
         let server = server.unwrap().unwrap().0;
         assert_eq!(client.ferret_reply, [4, 5, 6]);
         assert_eq!(client.binding, server.binding);
+    }
+
+    #[tokio::test]
+    async fn cancellation_while_waiting_for_admission_burns_checked_out_state() {
+        use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+        struct Tracked(Arc<AtomicBool>);
+        impl Drop for Tracked {
+            fn drop(&mut self) { self.0.store(true, Ordering::SeqCst); }
+        }
+        let cache = PoolCache::new(1, std::time::Duration::from_secs(60));
+        let dropped = Arc::new(AtomicBool::new(false));
+        let entered = Arc::new(AtomicBool::new(false));
+        let old = PoolRequest::default();
+        cache.put([9; 32], old, Tracked(dropped.clone()));
+        let request = PoolRequest { generation: 1, ..old };
+        let (a, b) = tokio::io::duplex(4096);
+        let (mut a, mut b) = (a.compat(), b.compat());
+        let setup = SetupOpen { proxy: None, budget: 1_000_000, ferret: vec![] };
+        let entered_callback = entered.clone();
+        let mut waiting = Box::pin(async {
+            futures::join!(
+                authenticate_pool_setup(&mut a, None, request, setup),
+                respond_pool_with_async(&mut b, &[7; 32], [9; 32], &cache,
+                    |cached, _| async move {
+                        assert!(cached.is_some());
+                        entered_callback.store(true, Ordering::SeqCst);
+                        std::future::pending::<()>().await;
+                        Ok((cached, vec![]))
+                    })
+            )
+        });
+        assert!(futures::poll!(&mut waiting).is_pending());
+        assert!(entered.load(Ordering::SeqCst));
+        assert!(!dropped.load(Ordering::SeqCst));
+        assert!(cache.take([9; 32], request).is_none());
+        drop(waiting);
+        assert!(dropped.load(Ordering::SeqCst));
+        assert!(cache.take([9; 32], request).is_none());
     }
 
     #[test]

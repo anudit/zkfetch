@@ -20,6 +20,7 @@ fn gte(path: &str, minimum: u64) -> zkf_core::PredicateSpec {
 
 /// Reproducible W0 native baseline. Kept out of normal test runs because it
 /// creates measured files and intentionally exercises the slower offline path.
+#[cfg(feature = "legacy-binius")]
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "run explicitly to record the D1/D3 fixture baseline"]
 async fn d1_d3_native_baseline() {
@@ -203,6 +204,7 @@ async fn spawn_notary() -> (String, String) {
     (url, key)
 }
 
+#[cfg(feature = "legacy-binius")]
 #[tokio::test(flavor = "multi_thread")]
 async fn notarize_present_verify() {
     let fixture = spawn_fixture().await;
@@ -596,6 +598,7 @@ async fn auto_never_retries_get_or_post() {
     );
 }
 
+#[cfg(feature = "legacy-binius")]
 #[tokio::test(flavor = "multi_thread")]
 async fn tls13_notarize_present_verify() {
     let _ = tracing_subscriber::fmt()
@@ -1198,6 +1201,7 @@ async fn reveal_commits_only_disclosed_bytes() {
     }
 }
 
+#[cfg(feature = "legacy-binius")]
 #[tokio::test(flavor = "multi_thread")]
 async fn reveal_with_binius_keeps_later_predicates() {
     let declared = RevealSpec {
@@ -1326,6 +1330,8 @@ mod attestation_v2 {
     fn member(op: &str, value: u64) -> MemberPredicate {
         MemberPredicate {
             key: "id".into(),
+            path: Vec::new(),
+            unique: false,
             op: op.into(),
             value: Decimal::Number(value),
         }
@@ -1362,6 +1368,9 @@ mod attestation_v2 {
         p.tls_version = Some("1.3".into());
         p.expected_notary_key = Some(notary_key.clone());
         p.attestation_v2 = true;
+        // Ciphertext-only uses 1M; the later known claim switches the same
+        // parked pool to the bounded-response 2M class.
+        p.max_recv = Some(8192);
         p.context = Some("challenge-1".into());
         p.headers = vec![("Authorization".into(), "Bearer v2-secret".into())];
 
@@ -1470,6 +1479,22 @@ mod attestation_v2 {
             // A v2 presentation is not a v1 one.
             assert!(zkf_verifier::verify(&presentation, &VerifyOptions::default()).is_err());
 
+            if round == 0 {
+                use zkf_attestation::response::JsonPathSegment::{Member, Index};
+                let nested = MemberPredicate {
+                    key: "age".into(), path: vec![Member("information".into()), Member("family".into()),
+                        Member("siblings".into()), Index(0), Member("age".into())],
+                    unique: true, op: "eq".into(), value: zkf_core::Decimal::Number(24),
+                };
+                let proof = zkf_prover::present_v2(&out.attestation, &out.secrets, &request(nested.clone(), &nonce)).unwrap();
+                let nested_opts = VerifyV2Options { predicate: nested.clone(), ..opts.clone() };
+                zkf_verifier::verify_v2(&proof, &nested_opts).unwrap();
+                let mut wrong = nested.clone(); wrong.path[3] = Index(1);
+                assert!(zkf_verifier::verify_v2(&proof, &VerifyV2Options { predicate: wrong, ..opts.clone() }).is_err());
+                let root = MemberPredicate { path: vec![], unique: false, ..nested };
+                assert!(zkf_verifier::verify_v2(&proof, &VerifyV2Options { predicate: root, ..opts.clone() }).is_err());
+            }
+
             // A false claim cannot be proven, and secrets do not transfer.
             assert!(
                 zkf_prover::present_v2(
@@ -1504,4 +1529,15 @@ mod attestation_v2 {
         let mut false_claim=p;false_claim.session_claims=vec![member("gt",1234567890)];false_claim.session_claim_nonce=Some(nonce);
         assert!(zkf_prover::notarize(false_claim).await.is_err());
     }
+}
+
+#[cfg(not(feature = "legacy-binius"))]
+#[tokio::test]
+async fn disabled_binius_fails_before_prepare_or_fetch_io() {
+    let mut p = params("ws://127.0.0.1:1".into(), "127.0.0.1:1".into(), vec![]);
+    p.binius = true;
+    let fetch = zkf_prover::notarize(p.clone()).await.unwrap_err();
+    assert!(fetch.to_string().contains("Binius is disabled"));
+    let prepared = zkf_prover::prepare(&p).await;
+    assert!(prepared.err().unwrap().to_string().contains("Binius is disabled"));
 }

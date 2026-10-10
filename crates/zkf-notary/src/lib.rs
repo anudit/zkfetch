@@ -12,6 +12,7 @@ mod admission;
 #[cfg(feature = "d1-experimental")]
 mod d1;
 pub mod metrics;
+mod resources;
 
 use anyhow::{Context, Result, bail};
 use bincode::Options;
@@ -529,27 +530,44 @@ where
         !attestation_v2 || cfg!(feature = "d1-experimental"),
         "this notary does not support v2 attestations"
     );
-    let opening = zkf_core::notary_auth::respond_pool_with(
+    let mut allocation = None;
+    let allocation_slot = &mut allocation;
+    let opening = zkf_core::notary_auth::respond_pool_with_async(
         &mut socket,
         &config.signing_key,
         scope,
         &VOLE_POOLS,
-        |cached, setup| {
-            if let Some(setup) = setup {
+        |mut cached, setup| async move {
+            if let Some(setup) = &setup {
                 if let Some(open) = &setup.proxy {
                     tlsn::validate_proxy_open(&open.client_hello, &open.host)?;
                 }
                 anyhow::ensure!(
-                    setup.budget == tlsn::vole_pool::FLOW_BUDGET as u32,
+                    tlsn::vole_pool::valid_budget(setup.budget as usize),
                     "unsupported VOLE budget"
                 );
-                if let Some(pool) = cached {
-                    return pool
+            }
+            // The opening deadline bounds queueing. Holding this guard through
+            // verification also bounds simultaneous large-class allocations.
+            *allocation_slot = Some(
+                resources::acquire(
+                    setup
+                        .as_ref()
+                        .map_or(tlsn::vole_pool::FLOW_BUDGET, |s| s.budget as usize),
+                )
+                .await?,
+            );
+            if let Some(setup) = &setup {
+                if let Some(pool) = &mut cached {
+                    pool.set_budget(setup.budget as usize)
+                        .map_err(anyhow::Error::msg)?;
+                    let reply = pool
                         .accept_prefill(&setup.ferret)
-                        .map_err(anyhow::Error::msg);
+                        .map_err(anyhow::Error::msg)?;
+                    return Ok((cached, reply));
                 }
             }
-            Ok(vec![])
+            Ok((cached, vec![]))
         },
     );
     #[cfg(not(target_arch = "wasm32"))]
@@ -558,10 +576,24 @@ where
         .map_err(|_| anyhow::anyhow!("notary authentication opening deadline exceeded"))??;
     #[cfg(target_arch = "wasm32")]
     let opening = opening.await?;
+    // Plain legacy authentication bypasses the pool callback, but its record
+    // layer allocation still consumes the conservative large-class allowance.
+    let _allocation = match allocation {
+        Some(permit) => permit,
+        None => resources::acquire(tlsn::vole_pool::FLOW_BUDGET).await?,
+    };
     let mut pool_lease = opening.map(|(opening, cached)| {
         let mut pool =
             cached.unwrap_or_else(|| tlsn::vole_pool::VerifierVolePool::new(opening.binding));
         pool.bind(opening.binding);
+        // Setup is authenticated before forwarding or allocating the session.
+        pool.set_budget(
+            opening
+                .setup
+                .as_ref()
+                .map_or(tlsn::vole_pool::FLOW_BUDGET, |setup| setup.budget as usize),
+        )
+        .expect("validated opening budget");
         pool.set_low_latency(opening.low_latency);
         pool.set_pipeline_tls(opening.proxy_open.is_some());
         pool.set_opened_host(if opening.resumed {
@@ -644,8 +676,9 @@ where
                 // Publish the next lease before replying, so an immediate next session
                 // cannot race attestation delivery and unexpectedly reset the pool.
                 if let Some((opening, mut pool)) = pool_lease.take() {
-                    pool.park();
-                    VOLE_POOLS.put(scope, opening.request, pool);
+                    if pool.park().is_ok() {
+                        VOLE_POOLS.put(scope, opening.request, pool);
+                    }
                 }
                 transport::write_frame(&mut reply, &attestation).await?;
                 handle.close();
@@ -675,8 +708,10 @@ where
     let request_bytes = transport::read_frame(&mut socket).await?;
     let attestation = sign_reply(config, &request_bytes, verified)?;
     transport::write_frame(&mut socket, &attestation).await?;
-    if let Some((opening, pool)) = pool_lease {
-        VOLE_POOLS.put(scope, opening.request, pool);
+    if let Some((opening, mut pool)) = pool_lease {
+        if pool.park().is_ok() {
+            VOLE_POOLS.put(scope, opening.request, pool);
+        }
     }
     futures::AsyncWriteExt::close(&mut socket).await.ok();
     Ok(())
@@ -696,7 +731,10 @@ struct Verified {
 fn sign_reply(config: &NotaryConfig, request_bytes: &[u8], verified: Verified) -> Result<Vec<u8>> {
     #[cfg(feature = "d1-experimental")]
     if let Some(evidence) = verified.d1 {
-        let host = verified.host.as_deref().expect("v2 sessions are proxy sessions");
+        let host = verified
+            .host
+            .as_deref()
+            .expect("v2 sessions are proxy sessions");
         return d1::sign(config, request_bytes, &verified.transcript, host, evidence);
     }
     let attestation = sign_attestation(

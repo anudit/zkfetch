@@ -17,6 +17,7 @@ import {
 export * from "./types";
 
 interface Addon {
+  prepare(paramsJson: string): Promise<{ notarize(paramsJson: string): Promise<string>; dispose(): void }>;
   notarize(paramsJson: string): Promise<string>;
   present(attestation: string, secrets: string, specJson: string): string;
   verify(presentation: string, optionsJson: string): string;
@@ -25,6 +26,24 @@ interface Addon {
 }
 
 const addon = createRequire(import.meta.url)(join(import.meta.dir, "..", "zkf.node")) as Addon;
+
+/** Single-use setup ahead of the HTTP request; disposal burns its VOLE lease. */
+export async function prepare(params: NotarizeParams): Promise<{
+  notarize(params: NotarizeParams): Promise<NotarizeOutput>;
+  dispose(): void;
+}> {
+  validatePredicates(params.predicates);
+  validatePredicates(params.reveal?.prove);
+  const session = await addon.prepare(JSON.stringify(params));
+  return {
+    async notarize(request) {
+      validatePredicates(request.predicates);
+      validatePredicates(request.reveal?.prove);
+      return JSON.parse(await session.notarize(JSON.stringify(request)));
+    },
+    dispose: () => session.dispose(),
+  };
+}
 
 export async function notarize(params: NotarizeParams): Promise<NotarizeOutput> {
   validatePredicates(params.predicates);

@@ -130,3 +130,36 @@ The relation covers both key OWFs and optional public HTTP framing/member
 claims, including independent claim nonces. The verifier signs only after
 acceptance. The interactive single-key reference bridge remains available.
 See [binding and soundness conditions](../../docs/v2-presentation-optimizations.md).
+
+### Completion-plan session coefficient stream
+
+The degree-three bridge derives a domain-separated ChaCha8 seed from the
+post-commitment challenge and the length-delimited full binding once, then
+expands individual field coefficients. This replaces one SHA-256 hash over the
+whole binding per constraint; coefficients are not powers of a field seed.
+Binding domain v2 and D1 key-frame flows 11/12 require coordinated clients and
+notary. Secret verifier rows/checks are now zeroized. The exact security margin
+is NOT certified: see `docs/v2-soundness.md`, including MPZ's pointer-bit Δ domain.
+
+The TLSN mux release barrier also rechecks newly registered streams and pending
+commands under the same lock that publishes release. A deterministic race test
+queues the attestation stream between the driver's first queue poll and release;
+it must be included in the same underlying proof write.
+
+### Bounded parked pools and authenticated size classes
+
+FLOW4 retains the three-exchange flow and negotiates seed-only parking. On a
+successful lease, both Ferret cores zeroize unused output correlations, retain
+exactly the configured bootstrap reserve, and shrink their buffers. Transfer IDs,
+PRG state and consistency transcript remain monotone; burned correlations are
+never restored. Compaction refuses an active extension or outstanding allocation.
+Legacy pool openings keep their existing behavior. Class changes (1M/2M/3.5M)
+are authenticated by the setup signature and forbidden on live leases.
+Paired tests cover class changes, compacted warm extensions, matching correlations,
+budget overflow and tampering. The notary queues weighted allocations before
+preprocessing and upstream forwarding; cancellation burns checked-out state.
+The allocation bound is eight units (8/4/2 small/medium/large extensions);
+sixteen admitted requests can queue. Sixteen simultaneous warm extensions
+exceeded the hosted 1.5 GiB service limit, so connection count alone is not a
+safe allocation bound. SPCOT vectors are wiped after checks and their empty
+scratch allocations are released when parking; tree counters are preserved.

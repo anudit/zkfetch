@@ -34,10 +34,13 @@ pub fn verify_v2(presentation_b64: &str, opts: &VerifyV2Options) -> Result<Verif
             trusted = Some(key);
         }
     }
-    let key = trusted.ok_or_else(|| anyhow!("attestation is not signed by a trusted notary key"))?;
+    let key =
+        trusted.ok_or_else(|| anyhow!("attestation is not signed by a trusted notary key"))?;
 
     ensure!(
-        a.server.name.eq_ignore_ascii_case(&opts.expected_server_name),
+        a.server
+            .name
+            .eq_ignore_ascii_case(&opts.expected_server_name),
         "server name mismatch"
     );
     if let Some(max_age) = opts.max_age_secs {
@@ -63,6 +66,8 @@ pub fn verify_v2(presentation_b64: &str, opts: &VerifyV2Options) -> Result<Verif
     let query = Query {
         server_name: &a.server.name,
         key: &opts.predicate.key,
+        path: &opts.predicate.path,
+        unique: opts.predicate.unique,
         comparison: presentation::parse_comparison(&opts.predicate.op)?,
         constant: opts.predicate.value.value().map_err(anyhow::Error::msg)?,
         nonce,

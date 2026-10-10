@@ -7,7 +7,7 @@ pub(crate) static REJECTED: AtomicU64 = AtomicU64::new(0);
 pub(crate) static ACTIVE: AtomicU64 = AtomicU64::new(0);
 /// Prometheus text for the private health listener.
 pub fn text() -> String {
-    [
+    let mut output: String = [
         ("zkf_sessions_accepted_total", &ACCEPTED),
         ("zkf_sessions_completed_total", &COMPLETED),
         ("zkf_sessions_failed_total", &FAILED),
@@ -16,5 +16,10 @@ pub fn text() -> String {
     ]
     .iter()
     .map(|(name, counter)| format!("{name} {}\n", counter.load(Ordering::Relaxed)))
-    .collect()
+    .collect();
+    output.push_str(&format!(
+        "zkf_vole_budget_units_active {}\n",
+        crate::resources::active_units()
+    ));
+    output
 }

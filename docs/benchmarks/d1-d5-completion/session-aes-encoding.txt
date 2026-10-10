@@ -1,0 +1,15 @@
+   Compiling zkf-ir v0.1.0 (/Users/anudit/Documents/GitHub/zkfetch/crates/zkf-ir)
+    Finished `release` profile [optimized] target(s) in 5.96s
+     Running unittests src/lib.rs (target/release/deps/zkf_ir-9c938952ec31d97c)
+
+running 1 test
+encoding=standard blocks=52 committed_bits=67008 constraints=17552 median_ms=112.324
+authenticated_wire_values_full=802560 authenticated_wire_values_stream=1585 prover_check_full_ms=27.935 prover_check_stream_ms=12.191
+public_schedule_bytes=25822352 schedule_build_ms=14.328
+encoding=compact blocks=52 committed_bits=50368 constraints=17552 median_ms=125.985
+authenticated_wire_values_full=769280 authenticated_wire_values_stream=1731 prover_check_full_ms=40.313 prover_check_stream_ms=23.750
+public_schedule_bytes=24757392 schedule_build_ms=18.884
+test backend::mpz::tests::benchmark_session_aes_encodings ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out; finished in 1.57s
+

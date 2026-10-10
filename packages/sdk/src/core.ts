@@ -138,7 +138,7 @@ export class ZkPrepared {
  * Starts the request-independent part of a `zkFetch` to `input` now, so the
  * later request only runs the TLS, proof and attestation phases. The session
  * is bound to the notary, mode, TLS version, MPC limits and (proxy mode) host.
- * On runtimes without support (native) it is a no-op.
+ * Supported by native and wasm backends.
  */
 export function prepare(input: string | URL, zkConfig: Omit<ZkConfig, "prepared">): ZkPrepared {
   const backend = backendOrThrow();

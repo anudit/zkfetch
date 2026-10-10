@@ -7,6 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [features]
+legacy-binius = ["zkf-core/legacy-binius", "zkf-predicates/legacy-binius"]
 parallel = ["zkf-voleith?/parallel"]
 default = ["d1-experimental"]
 # v2 (D1) attestations and VOLE-in-the-Head presentations. Experimental:

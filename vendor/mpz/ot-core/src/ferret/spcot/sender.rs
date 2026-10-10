@@ -24,6 +24,13 @@ pub(crate) struct SPCOTSender {
 }
 
 impl SPCOTSender {
+    /// Release scratch allocation only after its consistency check completed.
+    /// This does not reset the monotonic tree counter or any correlation state.
+    pub(crate) fn release_scratch(&mut self) {
+        assert!(self.vs.is_empty(), "SPCOT check still pending");
+        self.vs.shrink_to_fit();
+    }
+
     /// Creates a new SPCOT sender.
     pub(crate) fn new(delta: Block) -> Self {
         Self {
@@ -189,6 +196,8 @@ impl SPCOTSender {
         // Computes H'(V)
         let hashed_v = hash(&v.to_bytes());
 
+        use zeroize::Zeroize;
+        self.vs.zeroize();
         self.vs.clear();
         self.transcript.reset();
 

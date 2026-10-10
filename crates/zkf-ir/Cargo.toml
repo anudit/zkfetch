@@ -8,7 +8,7 @@ publish.workspace = true
 
 [features]
 parallel = ["dep:rayon"]
-mpz-backend = ["dep:anyhow", "dep:mpz-zk", "dep:mpz-vm-core", "dep:mpz-common", "dep:mpz-ot", "dep:serio", "dep:rand"]
+mpz-backend = ["dep:anyhow", "dep:mpz-zk", "dep:mpz-vm-core", "dep:mpz-common", "dep:mpz-ot", "dep:serio", "dep:rand", "dep:rand_chacha"]
 
 [dependencies]
 rayon = {version="1",optional=true}
@@ -27,11 +27,13 @@ mpz-core = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alph
 mpz-ot = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6", optional = true }
 serio = { version = "0.2", optional = true }
 rand = { workspace = true, optional = true }
+rand_chacha = { version = "0.3", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
+aes-gcm = "0.10"
 aes = "0.8"
 hex.workspace = true
 proptest = "1"

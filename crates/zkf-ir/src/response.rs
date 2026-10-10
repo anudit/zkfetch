@@ -231,7 +231,7 @@ pub fn session(
     head: &Head,
     claims: &[zkf_attestation::response::MemberClaim],
 ) -> Result<Circuit, String> {
-    body_len(direction, head)?;
+    let body_bytes = body_len(direction, head)?;
     if claims.len() > 16 {
         return Err("too many session claims".into());
     }
@@ -259,7 +259,27 @@ pub fn session(
                     Scope::Full
                 },
                 false,
-                None,
+                if claims.is_empty() {
+                    None
+                } else {
+                    let limit = claims
+                        .iter()
+                        .map(|claim| {
+                            claim
+                                .value
+                                .end
+                                .checked_add(1)
+                                .ok_or_else(|| "claim prefix overflow".to_string())
+                        })
+                        .collect::<Result<Vec<_>, _>>()?
+                        .into_iter()
+                        .max()
+                        .unwrap();
+                    if limit > body_bytes {
+                        return Err("claim delimiter beyond response body".into());
+                    }
+                    Some(limit)
+                },
             )?;
             for claim in claims {
                 if claim.member.len() > 1024
@@ -314,6 +334,36 @@ pub fn offline_relation(
     comparison: crate::predicates::Comparison,
     constant: u64,
 ) -> Result<Circuit, String> {
+    offline_relation_path(
+        commitment,
+        direction,
+        ciphertext,
+        iv,
+        head,
+        signed_head,
+        selection,
+        comparison,
+        constant,
+        None,
+    )
+}
+
+pub fn offline_relation_path(
+    commitment: [u8; 32],
+    direction: &Direction,
+    ciphertext: &[u8],
+    iv: [u8; 12],
+    head: &Head,
+    signed_head: bool,
+    selection: &crate::json_circuit::Selection<'_>,
+    comparison: crate::predicates::Comparison,
+    constant: u64,
+    path: Option<(
+        &[crate::json::JsonPathSegment],
+        &[crate::json::PathAnchor],
+        bool,
+    )>,
+) -> Result<Circuit, String> {
     let size = body_len(direction, head)?;
     let mut c = Circuit::default();
     let refs: Vec<_> = (0..16).map(|_| c.commit_byte()).collect();
@@ -336,14 +386,28 @@ pub fn offline_relation(
         } else {
             Scope::Full
         },
-        selection.value.end.saturating_add(1).min(size),
+        if path.is_some_and(|(_, _, unique)| unique) {
+            size
+        } else {
+            selection.value.end.saturating_add(1).min(size)
+        },
     )?;
-    let selected = crate::json_algebra::top_level_member(&mut c, &body, selection, 4, true)
-        .map_err(|e| e.to_string())?;
+    let selected = if let Some((steps, anchors, unique)) = path {
+        crate::json_algebra::path_member(&mut c, &body, steps, anchors, unique)
+    } else {
+        crate::json_algebra::top_level_member(&mut c, &body, selection, 4, true)
+    }
+    .map_err(|e| e.to_string())?;
     let value = crate::predicates::ascii_u64(&mut c, &selected).map_err(|e| e.to_string())?;
     let constant = crate::predicates::U64::public(&mut c, constant);
     value.assert_compare(&mut c, constant, comparison);
-    c.register_profile(if signed_head {
+    c.register_profile(if path.is_some() {
+        if signed_head {
+            OFFLINE_PATH_BODY_PROFILE
+        } else {
+            OFFLINE_PATH_FULL_PROFILE
+        }
+    } else if signed_head {
         OFFLINE_BODY_PROFILE
     } else {
         OFFLINE_FULL_PROFILE
@@ -354,4 +418,7 @@ pub const OFFLINE_FULL_PROFILE: &str =
     "zkf/2/http-json/compact-aes/prefix/top-level/depth-4/full/v4";
 pub const OFFLINE_BODY_PROFILE: &str =
     "zkf/2/http-json/compact-aes/prefix/top-level/depth-4/signed-head/v4";
-pub const SESSION_PROFILE: &str = "zkf/2/session/standard-aes/top-level/depth-4/v4";
+pub const SESSION_PROFILE: &str = "zkf/2/session/standard-aes/prefix/top-level/depth-4/v5";
+pub const OFFLINE_PATH_FULL_PROFILE: &str = "zkf/2/http-json/compact-aes/path/depth-8/full/v5";
+pub const OFFLINE_PATH_BODY_PROFILE: &str =
+    "zkf/2/http-json/compact-aes/path/depth-8/signed-head/v5";

@@ -1,0 +1,69 @@
+{
+  "scope": "cgroup memory.current and host metrics sampled every 500 ms; peaks may be undersampled",
+  "levels": [
+    {
+      "parallel": 2,
+      "verified": 12,
+      "attempted": 12,
+      "warmMedianMs": 984.4528335,
+      "resumedWarm": 10,
+      "peakNotaryCgroupMiB": 284.83203125,
+      "minimumHostAvailableMiB": 1236.79296875,
+      "peakHostCpuPct": 50.96153846153846,
+      "peakSwapMiB": 18.5859375,
+      "peakIowaitPct": 6.796116504854369,
+      "serviceRestarts": 0,
+      "hostOomKillCounterStart": 4,
+      "hostOomKillCounterEnd": 4,
+      "diskUsedGiB": 1.2675018310546875
+    },
+    {
+      "parallel": 4,
+      "verified": 24,
+      "attempted": 24,
+      "warmMedianMs": 1430.1996875,
+      "resumedWarm": 20,
+      "peakNotaryCgroupMiB": 558.31640625,
+      "minimumHostAvailableMiB": 966.8125,
+      "peakHostCpuPct": 89.10891089108911,
+      "peakSwapMiB": 18.5859375,
+      "peakIowaitPct": 0.0,
+      "serviceRestarts": 0,
+      "hostOomKillCounterStart": 4,
+      "hostOomKillCounterEnd": 4,
+      "diskUsedGiB": 1.2675018310546875
+    },
+    {
+      "parallel": 8,
+      "verified": 48,
+      "attempted": 48,
+      "warmMedianMs": 2273.4919790000004,
+      "resumedWarm": 40,
+      "peakNotaryCgroupMiB": 1154.86328125,
+      "minimumHostAvailableMiB": 355.58984375,
+      "peakHostCpuPct": 92.72727272727273,
+      "peakSwapMiB": 18.5859375,
+      "peakIowaitPct": 0.0,
+      "serviceRestarts": 0,
+      "hostOomKillCounterStart": 4,
+      "hostOomKillCounterEnd": 4,
+      "diskUsedGiB": 1.2674827575683594
+    },
+    {
+      "parallel": 16,
+      "verified": 96,
+      "attempted": 96,
+      "warmMedianMs": 2835.3342495,
+      "resumedWarm": 80,
+      "peakNotaryCgroupMiB": 1417.55078125,
+      "minimumHostAvailableMiB": 128.83984375,
+      "peakHostCpuPct": 100.0,
+      "peakSwapMiB": 18.5859375,
+      "peakIowaitPct": 0.8264462809917356,
+      "serviceRestarts": 0,
+      "hostOomKillCounterStart": 4,
+      "hostOomKillCounterEnd": 4,
+      "diskUsedGiB": 1.2675056457519531
+    }
+  ]
+}

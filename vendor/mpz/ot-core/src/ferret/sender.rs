@@ -71,6 +71,26 @@ where
         Mutex::try_lock_owned(self.cot.clone()).unwrap()
     }
 
+    /// Burn unused output correlations and retain only the reserved bootstrap
+    /// prefix after a completed lease. Both peers must compact at this boundary.
+    pub fn compact_bootstrap(&mut self) -> Result<(), SenderError> {
+        if !matches!(self.state, State::Extend(_)) || self.alloc != 0 || !self.queue.is_empty() {
+            return Err(
+                ErrorRepr::State("cannot compact an active Ferret extension".into()).into(),
+            );
+        }
+        let keep = self.config.reserve_cost();
+        if self.keys.len() < keep {
+            return Err(
+                ErrorRepr::State("insufficient reserved bootstrap correlations".into()).into(),
+            );
+        }
+        super::truncate_secret(&mut self.keys, keep);
+        self.keys.shrink_to_fit();
+        self.spcot.release_scratch();
+        Ok(())
+    }
+
     /// Returns `true` if the sender wants to initialize.
     pub fn wants_init(&self) -> bool {
         matches!(self.state, State::Init)

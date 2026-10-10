@@ -6,7 +6,7 @@ fn integer(data: &[u8], minimum: u64) -> (ScalarClaim, Vec<u8>) {
     witness.extend_from_slice(&[9; 16]);
     let claim = ScalarClaim {
         idx: (0..data.len()).into(),
-        digest: crate::circuit::leaf_digest(&witness),
+        digest: *blake3::hash(&witness).as_bytes(),
         kind: ScalarKind::UnsignedInteger,
         predicate: Some(PredicateSpec {
             json_path: "streak".into(),
@@ -37,6 +37,7 @@ fn binary_envelope_preserves_public_claims() {
 }
 
 #[test]
+#[cfg(feature = "legacy-binius")]
 fn zk_integer_boundary_and_tampering() {
     let (claim, witness) = integer(b"365", 365);
     let proof = circuit::prove(std::slice::from_ref(&claim), &[witness], b"session A").unwrap();
@@ -54,6 +55,7 @@ fn zk_integer_boundary_and_tampering() {
 }
 
 #[test]
+#[cfg(feature = "legacy-binius")]
 fn malformed_or_false_integer_rejected() {
     for data in [
         b"364".as_slice(),
@@ -80,6 +82,7 @@ fn malformed_or_false_integer_rejected() {
 }
 
 #[test]
+#[cfg(feature = "legacy-binius")]
 fn hidden_scalars_cannot_contain_structure() {
     for (kind, good, bad) in [
         (ScalarKind::Atom, b"1.2e-3".as_slice(), b"1,2".as_slice()),
@@ -152,6 +155,7 @@ fn ambiguous_json_rejected() {
 /// Benchmark (run with `--ignored --nocapture`): Binius cost of hidden scalars.
 #[test]
 #[ignore]
+#[cfg(feature = "legacy-binius")]
 fn bench_leaf_hash() {
     let cases: [(&str, &[u8]); 3] = [
         ("3-digit integer", b"439"),

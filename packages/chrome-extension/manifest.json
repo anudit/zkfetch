@@ -12,7 +12,8 @@
   ],
   "host_permissions": [
     "https://*.duolingo.com/*",
-    "https://13-207-197-187.sslip.io/*"
+    "https://jsonplaceholder.typicode.com/*",
+    "https://13-206-75-44.sslip.io/*"
   ],
   "background": {
     "service_worker": "dist/background.js",
@@ -37,7 +38,7 @@
     "default_path": "dist/sidepanel.html"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.duolingo.com https://13-207-197-187.sslip.io wss://13-207-197-187.sslip.io; worker-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.duolingo.com https://jsonplaceholder.typicode.com https://13-206-75-44.sslip.io wss://13-206-75-44.sslip.io; worker-src 'self'"
   },
   "cross_origin_embedder_policy": {
     "value": "require-corp"

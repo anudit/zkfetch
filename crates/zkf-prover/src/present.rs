@@ -39,6 +39,7 @@ pub fn present(attestation_b64: &str, secrets_b64: &str, spec: &RevealSpec) -> R
     if !recv.is_empty() {
         builder.reveal_recv(&recv).context(UNCOMMITTED)?;
     }
+    #[cfg(feature = "legacy-binius")]
     let response = transcript
         .responses
         .first()
@@ -46,70 +47,72 @@ pub fn present(attestation_b64: &str, secrets_b64: &str, spec: &RevealSpec) -> R
 
     let transcript_proof = builder.build().context(UNCOMMITTED)?;
     let provider = CryptoProvider::default();
-    let predicate_data = if spec.prove.is_empty() {
-        None
-    } else {
-        let commitments = zkf_predicates::commitments(&attestation)?;
-        let mut partial = transcript_proof.clone().verify_with_provider(
-            &provider.hash,
-            &secrets.transcript().length(),
-            &commitments,
-        )?;
-        match spec.backend {
-            PredicateBackend::Quicksilver => {
-                // Predicates were proven to the notary at fetch time; the
-                // presentation only discloses the JSON skeleton.
-                let claims =
+    let predicate_data: Option<(Vec<zkf_predicates::ScalarClaim>, Vec<Vec<u8>>)> =
+        if spec.prove.is_empty() {
+            None
+        } else {
+            let commitments = zkf_predicates::commitments(&attestation)?;
+            let mut partial = transcript_proof.clone().verify_with_provider(
+                &provider.hash,
+                &secrets.transcript().length(),
+                &commitments,
+            )?;
+            match spec.backend {
+                PredicateBackend::Quicksilver => {
+                    // Predicates were proven to the notary at fetch time; the
+                    // presentation only discloses the JSON skeleton.
+                    let claims =
                     AttestedPredicates::from_attestation(&attestation)?.ok_or_else(|| {
                         anyhow!(
                             "attestation has no QuickSilver predicates; pass zkConfig.predicates \
                          when fetching, or use backend \"binius\""
                         )
                     })?;
-                partial.set_unauthed(b'X');
-                let proven = zkf_predicates::quicksilver::verify(&claims, &partial, true)?;
-                for wanted in &spec.prove {
-                    // Same rule as the Binius backend: a predicate is about a
-                    // hidden value, so its value must not also be disclosed.
-                    if let Some(path) = claims
-                        .paths
-                        .iter()
-                        .find(|p| p.json_path == wanted.json_path)
-                    {
-                        use tlsn::rangeset::ops::Set;
-                        let idx = RangeSet::from(path.start..path.end);
-                        if idx.intersection(partial.received_authed()).next().is_some() {
-                            bail!("predicate value `{}` must remain hidden", wanted.json_path);
+                    partial.set_unauthed(b'X');
+                    let proven = zkf_predicates::quicksilver::verify(&claims, &partial, true)?;
+                    for wanted in &spec.prove {
+                        // Same rule as the Binius backend: a predicate is about a
+                        // hidden value, so its value must not also be disclosed.
+                        if let Some(path) = claims
+                            .paths
+                            .iter()
+                            .find(|p| p.json_path == wanted.json_path)
+                        {
+                            use tlsn::rangeset::ops::Set;
+                            let idx = RangeSet::from(path.start..path.end);
+                            if idx.intersection(partial.received_authed()).next().is_some() {
+                                bail!("predicate value `{}` must remain hidden", wanted.json_path);
+                            }
+                        }
+                        let minimum = wanted.predicate.minimum().map_err(anyhow::Error::msg)?;
+                        let ok = proven.iter().any(|p| {
+                            p.json_path == wanted.json_path
+                                && p.predicate.minimum().is_ok_and(|m| m >= minimum)
+                        });
+                        if !ok {
+                            bail!(
+                                "predicate on `{}` (>= {minimum}) was not attested at fetch time",
+                                wanted.json_path
+                            );
                         }
                     }
-                    let minimum = wanted.predicate.minimum().map_err(anyhow::Error::msg)?;
-                    let ok = proven.iter().any(|p| {
-                        p.json_path == wanted.json_path
-                            && p.predicate.minimum().is_ok_and(|m| m >= minimum)
-                    });
-                    if !ok {
-                        bail!(
-                            "predicate on `{}` (>= {minimum}) was not attested at fetch time",
-                            wanted.json_path
-                        );
-                    }
+                    None
                 }
-                None
+                #[cfg(feature = "legacy-binius")]
+                PredicateBackend::Binius => {
+                    let BodyContent::Json(doc) = &response.body.as_ref().unwrap().content else {
+                        unreachable!()
+                    };
+                    Some(zkf_predicates::prepare(
+                        &attestation,
+                        &secrets,
+                        &partial,
+                        &doc.root,
+                        &spec.prove,
+                    )?)
+                }
             }
-            PredicateBackend::Binius => {
-                let BodyContent::Json(doc) = &response.body.as_ref().unwrap().content else {
-                    unreachable!()
-                };
-                Some(zkf_predicates::prepare(
-                    &attestation,
-                    &secrets,
-                    &partial,
-                    &doc.root,
-                    &spec.prove,
-                )?)
-            }
-        }
-    };
+        };
     let mut presentation = attestation.presentation_builder(&provider);
     presentation
         .identity_proof(secrets.identity_proof())

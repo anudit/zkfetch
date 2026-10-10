@@ -11,12 +11,12 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 /// Public allocation schedule. Each operation is an explicit single-output
 /// node; constraints run as soon as all their input edges exist.
 pub struct Plan<'a> {
-    circuit: &'a Circuit,
-    slots: Vec<usize>,
-    checks: Vec<Vec<usize>>,
-    release: Vec<Vec<usize>>,
+    pub(crate) circuit: &'a Circuit,
+    pub(crate) slots: Vec<usize>,
+    pub(crate) checks: Events,
+    pub(crate) release: Events,
     outputs: Vec<Wire>,
-    slot_count: usize,
+    pub(crate) slot_count: usize,
 }
 
 /// Only requested output values survive streaming evaluation. Outputs may
@@ -32,23 +32,81 @@ impl Output {
     }
 }
 
-fn op_inputs(op: &Op) -> Vec<Wire> {
-    match op {
-        Op::Input { .. } | Op::Public(_) => Vec::new(),
-        Op::Linear { terms, .. } => terms.iter().map(|(_, wire)| *wire).collect(),
-        Op::Product(a, b) | Op::BitProduct(a, b) => vec![*a, *b],
-        Op::InverseBit { input, .. } => input.0.to_vec(),
-        Op::PolynomialBit(terms) => terms.iter().flat_map(term_inputs).collect(),
-        Op::AesHint {input:terms,..} => terms.iter().flat_map(term_inputs).collect(),
+/// Compact CSR schedule: no per-operation heap allocation for event lists.
+pub(crate) struct Events {
+    offsets: Vec<usize>,
+    values: Vec<usize>,
+}
+impl Events {
+    fn new(steps: usize, assignments: impl Iterator<Item = (usize, usize)> + Clone) -> Self {
+        let mut offsets = vec![0; steps + 1];
+        for (step, _) in assignments.clone() {
+            offsets[step + 1] += 1;
+        }
+        for step in 1..=steps {
+            offsets[step] += offsets[step - 1];
+        }
+        let mut cursors = offsets[..steps].to_vec();
+        let mut values = vec![0; offsets[steps]];
+        for (step, value) in assignments {
+            values[cursors[step]] = value;
+            cursors[step] += 1;
+        }
+        Self { offsets, values }
+    }
+    pub(crate) fn steps(&self) -> usize {
+        self.offsets.len() - 1
+    }
+    pub(crate) fn at(&self, step: usize) -> &[usize] {
+        &self.values[self.offsets[step]..self.offsets[step + 1]]
+    }
+    fn allocated_bytes(&self) -> usize {
+        (self.offsets.capacity() + self.values.capacity()) * std::mem::size_of::<usize>()
     }
 }
 
-fn term_inputs(term: &Term) -> Vec<Wire> {
-    match term {
-        Term::Constant(_) => Vec::new(),
-        Term::Linear(_, a) => vec![*a],
-        Term::Quadratic(_, a, b) => vec![*a, *b],
-        Term::Cubic(_, a, b, c) => vec![*a, *b, *c],
+fn visit_term_inputs(term: &Term, consume: &mut impl FnMut(Wire)) {
+    match *term {
+        Term::Constant(_) => {}
+        Term::Linear(_, a) => consume(a),
+        Term::Quadratic(_, a, b) => {
+            consume(a);
+            consume(b);
+        }
+        Term::Cubic(_, a, b, c) => {
+            consume(a);
+            consume(b);
+            consume(c);
+        }
+    }
+}
+fn visit_op_inputs(op: &Op, consume: &mut impl FnMut(Wire)) {
+    match op {
+        Op::Input { .. } | Op::Public(_) => {}
+        Op::Linear { terms, .. } => {
+            for (_, wire) in terms {
+                consume(*wire);
+            }
+        }
+        Op::Product(a, b) | Op::BitProduct(a, b) => {
+            consume(*a);
+            consume(*b);
+        }
+        Op::InverseBit { input, .. } => {
+            for wire in input.0 {
+                consume(wire);
+            }
+        }
+        Op::PolynomialBit(terms) => {
+            for term in terms {
+                visit_term_inputs(term, consume);
+            }
+        }
+        Op::AesHint { input: terms, .. } => {
+            for term in terms.iter() {
+                visit_term_inputs(term, consume);
+            }
+        }
     }
 }
 
@@ -67,42 +125,46 @@ impl Circuit {
         let steps = n.max(1);
         let mut last: Vec<_> = (0..n).collect();
         for (step, op) in self.ops.iter().enumerate() {
-            for wire in op_inputs(op) {
-                last[wire.0] = last[wire.0].max(step);
-            }
+            visit_op_inputs(op, &mut |wire| last[wire.0] = last[wire.0].max(step));
         }
-        let mut checks = vec![Vec::new(); steps];
-        for (index, terms) in self.constraints.iter().enumerate() {
-            let inputs: Vec<_> = terms.iter().flat_map(term_inputs).collect();
-            let step = inputs.iter().map(|wire| wire.0).max().unwrap_or(0);
-            for wire in inputs {
-                last[wire.0] = last[wire.0].max(step);
+        let mut check_steps = Vec::with_capacity(self.constraints.len());
+        for terms in &self.constraints {
+            let mut step = 0;
+            for term in terms {
+                visit_term_inputs(term, &mut |wire| step = step.max(wire.0));
             }
-            checks[step].push(index);
+            for term in terms {
+                visit_term_inputs(term, &mut |wire| last[wire.0] = last[wire.0].max(step));
+            }
+            check_steps.push(step);
         }
+        let checks = Events::new(
+            steps,
+            check_steps
+                .iter()
+                .enumerate()
+                .map(|(index, step)| (*step, index)),
+        );
         for wire in outputs {
             last[wire.0] = steps - 1;
         }
-        let mut release = vec![Vec::new(); steps];
-        for (edge, step) in last.iter().enumerate() {
-            release[*step].push(edge);
-        }
+        let release = Events::new(
+            steps,
+            last.iter().enumerate().map(|(edge, step)| (*step, edge)),
+        );
         let mut slots = Vec::with_capacity(n);
         let mut free = Vec::new();
         let mut slot_count = 0;
-        for (step, edges) in release.iter().enumerate().take(n) {
-            // Allocate before freeing this step's inputs: outputs may depend
-            // on every live input, including the slot that dies at this step.
+        for step in 0..n {
+            // Allocate before freeing this step's inputs.
             let slot = free.pop().unwrap_or_else(|| {
                 let slot = slot_count;
                 slot_count += 1;
                 slot
             });
             slots.push(slot);
-            for edge in edges {
-                if last[*edge] == step {
-                    free.push(slots[*edge]);
-                }
+            for edge in release.at(step) {
+                free.push(slots[*edge]);
             }
         }
         Ok(Plan {
@@ -123,6 +185,14 @@ impl Plan<'_> {
         self.slot_count
     }
 
+    /// Allocated public schedule metadata, excluding the circuit graph.
+    pub fn allocated_bytes(&self) -> usize {
+        self.slots.capacity() * std::mem::size_of::<usize>()
+            + self.outputs.capacity() * std::mem::size_of::<Wire>()
+            + self.checks.allocated_bytes()
+            + self.release.allocated_bytes()
+    }
+
     /// Evaluate and enforce every constraint without keeping a full witness.
     /// Input buffers remain caller-owned, just as for `Circuit::eval`.
     pub fn eval(&self, inputs: &[Fe]) -> Result<Output, Error> {
@@ -133,7 +203,7 @@ impl Plan<'_> {
         let mut output = Output {
             values: Vec::with_capacity(self.outputs.len()),
         };
-        for step in 0..self.checks.len() {
+        for step in 0..self.checks.steps() {
             if let Some(op) = self.circuit.ops.get(step) {
                 let get = |wire: Wire| storage[self.slots[wire.0]];
                 let value = match op {
@@ -145,19 +215,26 @@ impl Plan<'_> {
                         .iter()
                         .fold(*constant, |acc, (c, wire)| acc ^ (*c * get(*wire))),
                     Op::Product(a, b) | Op::BitProduct(a, b) => get(*a) * get(*b),
-                    Op::PolynomialBit(terms) => terms.iter().fold(Fe::ZERO, |acc,term| acc ^ match *term {
-                        Term::Constant(c) => c,
-                        Term::Linear(c,x) => get(x).scale_public(c),
-                        Term::Quadratic(c,x,y) => (get(x)*get(y)).scale_public(c),
-                        Term::Cubic(c,x,y,z) => (get(x)*get(y)*get(z)).scale_public(c),
+                    Op::PolynomialBit(terms) => terms.iter().fold(Fe::ZERO, |acc, term| {
+                        acc ^ match *term {
+                            Term::Constant(c) => c,
+                            Term::Linear(c, x) => get(x).scale_public(c),
+                            Term::Quadratic(c, x, y) => (get(x) * get(y)).scale_public(c),
+                            Term::Cubic(c, x, y, z) => (get(x) * get(y) * get(z)).scale_public(c),
+                        }
                     }),
-                    Op::AesHint {input,bit,norm} => {
-                        let value = input.iter().fold(Fe::ZERO, |v,t|v ^ match *t {
-                            Term::Constant(c)=>c,Term::Linear(c,x)=>get(x).scale_public(c),
-                            Term::Quadratic(c,x,y)=>(get(x)*get(y)).scale_public(c),
-                            Term::Cubic(c,x,y,z)=>(get(x)*get(y)*get(z)).scale_public(c),
+                    Op::AesHint { input, bit, norm } => {
+                        let value = input.iter().fold(Fe::ZERO, |v, t| {
+                            v ^ match *t {
+                                Term::Constant(c) => c,
+                                Term::Linear(c, x) => get(x).scale_public(c),
+                                Term::Quadratic(c, x, y) => (get(x) * get(y)).scale_public(c),
+                                Term::Cubic(c, x, y, z) => {
+                                    (get(x) * get(y) * get(z)).scale_public(c)
+                                }
+                            }
                         });
-                        crate::aes::hint(value,*bit,*norm)
+                        crate::aes::hint(value, *bit, *norm)
                     }
                     Op::InverseBit { input, bit } => {
                         let byte = input
@@ -173,7 +250,8 @@ impl Plan<'_> {
                     Op::Input { bit: true, .. }
                         | Op::Linear { bit: true, .. }
                         | Op::BitProduct(..)
-                        | Op::PolynomialBit(..) | Op::AesHint { .. }
+                        | Op::PolynomialBit(..)
+                        | Op::AesHint { .. }
                         | Op::InverseBit { .. }
                 );
                 if is_bit && value != Fe::ZERO && value != Fe::ONE {
@@ -181,7 +259,7 @@ impl Plan<'_> {
                 }
                 storage[self.slots[step]] = value;
             }
-            for index in &self.checks[step] {
+            for index in self.checks.at(step) {
                 let get = |wire: Wire| storage[self.slots[wire.0]];
                 let value = self.circuit.constraints[*index]
                     .iter()
@@ -197,12 +275,12 @@ impl Plan<'_> {
                     return Err(Error::Constraint(*index));
                 }
             }
-            if step + 1 == self.checks.len() {
+            if step + 1 == self.checks.steps() {
                 output
                     .values
                     .extend(self.outputs.iter().map(|wire| storage[self.slots[wire.0]]));
             }
-            for edge in &self.release[step] {
+            for edge in self.release.at(step) {
                 storage[self.slots[*edge]].zeroize();
             }
         }

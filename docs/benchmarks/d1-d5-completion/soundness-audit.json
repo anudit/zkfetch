@@ -1,0 +1,101 @@
+{
+  "targetBits": 128,
+  "marginAnalysis": {
+    "currentSessionCheckUpperBoundIdeal": {
+      "numerator": "7",
+      "denominator": "340282366920938463463374607431768211456",
+      "boundBits": 125.1926450779424
+    },
+    "sessionDeltaGuessLowerBound": {
+      "numerator": "1",
+      "denominator": "170141183460469231731687303715884105728"
+    },
+    "sameDeltaCoefficientRepetitionsCloseGap": false,
+    "minimumIndependentDeltaLanesForRootTerm": 2,
+    "twoLaneRootOnlyConditionalBound": {
+      "numerator": "9",
+      "denominator": "28948022309329048855892746252171976963317496166410141009864396001978282409984"
+    },
+    "twoLaneBoundCertified": false,
+    "twoLaneConditions": [
+      "independent MAC deltas and OT correlations",
+      "same witness bound across lanes and all earlier TLS schedule checks",
+      "adaptive transcript and reset composition analysed"
+    ],
+    "offlineRootOnlyMinimumIndependentGrindingBits": 2,
+    "offlineRootWithTwoIndependentBits": {
+      "numerator": "3",
+      "denominator": "1361129467683753853853498429727072845824"
+    },
+    "offlineGrindingCertified": false,
+    "selection": "wider authentication or independent complete authentication lanes in session; no deployed margin certified"
+  },
+  "nominalLayout": {
+    "scope": "layout consistency, not a full security certificate",
+    "exact_total_error_le_2_to_minus_128_certified": false,
+    "generalized_relation_composition_review_required": true,
+    "profiles": [
+      {
+        "family": "FAEST-128f",
+        "protocol_label": 8,
+        "nominal_security_bits": 128,
+        "field_bits": 128,
+        "degree": 3,
+        "isolated_polynomial_bound_bits": 126.41503749927884,
+        "tau": 16,
+        "challenge_bits": 120,
+        "grinding_bits": 8,
+        "leaves": 3072,
+        "opening_bytes": 2528
+      },
+      {
+        "family": "FAEST-128s",
+        "protocol_label": 11,
+        "nominal_security_bits": 128,
+        "field_bits": 128,
+        "degree": 3,
+        "isolated_polynomial_bound_bits": 126.41503749927884,
+        "tau": 11,
+        "challenge_bits": 121,
+        "grinding_bits": 7,
+        "leaves": 22528,
+        "opening_bytes": 2160
+      }
+    ]
+  },
+  "checkTerms": [
+    {
+      "name": "session.degree3.root",
+      "numerator": "3",
+      "denominator": "170141183460469231731687303715884105728",
+      "boundBits": 125.41503749927884,
+      "source": "mpz memory-core correlated.rs: Delta::new fixes LSB to one"
+    },
+    {
+      "name": "offline.degree3.perOracleQuery.candidate",
+      "numerator": "3",
+      "denominator": "340282366920938463463374607431768211456",
+      "boundBits": 126.41503749927884,
+      "source": "experimental.rs degree-three check; candidate requiring FS reduction"
+    },
+    {
+      "name": "session.independentWeightCancellation.ideal",
+      "numerator": "1",
+      "denominator": "340282366920938463463374607431768211456",
+      "boundBits": 128.0,
+      "source": "one nonzero residual, conditioned on independent uniform coefficients"
+    }
+  ],
+  "unresolvedTerms": [
+    "session MAC/pointer-bit reduction and independent-delta repetition",
+    "Ferret regular-LPN concrete security and composed malicious OT terms",
+    "BAVC opening/grinding reduction for the generalized degree-three relation",
+    "Fiat-Shamir query accounting and independent margin-grinding reduction",
+    "ChaCha8 check-coefficient PRG advantage",
+    "BLAKE3/Bao, SHA-256 and TurboSHAKE128 collision/query budgets",
+    "split ECtF/MtA, malicious garbling and output-authentication composition",
+    "split GCM record/block-dependent authentication error"
+  ],
+  "releaseCertified": false,
+  "reason": "single 127-bit MAC delta admits a guessing attack above target; composition and the required protocol upgrade remain unresolved"
+}

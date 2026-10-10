@@ -62,8 +62,8 @@ pub(crate) async fn verify(
     let mut stream = handle.application_stream(d1::KEYS_STREAM)?;
     let frame = transport::read_frame(&mut stream).await?;
     ensure!(
-        (frame.len() == 97 && frame[96] == 8)
-            || (frame.len() > 97 && frame.len() <= 32768 && frame[96] == 7),
+        (frame.len() == 97 && frame[96] == 12)
+            || (frame.len() > 97 && frame.len() <= 32768 && frame[96] == 11),
         "malformed key commitments"
     );
     ensure!(
@@ -72,7 +72,7 @@ pub(crate) async fn verify(
     );
     let c_client: [u8; 32] = frame[32..64].try_into().unwrap();
     let c_server: [u8; 32] = frame[64..96].try_into().unwrap();
-    let metadata: Option<zkf_attestation::response::SessionMetadata> = if frame[96] == 7 {
+    let metadata: Option<zkf_attestation::response::SessionMetadata> = if frame[96] == 11 {
         Some(
             bincode::DefaultOptions::new()
                 .with_fixint_encoding()

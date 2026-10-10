@@ -31,9 +31,11 @@ const manifest = await Bun.file(join(root, "manifest.json")).json();
 // The notary host comes from infra/aws/deployment.json, which changes with the
 // instance's IP; manifest.json holds the host from the last deployment.
 const notaryHost = new URL(deployment.health).host;
-manifest.host_permissions = ["https://*.duolingo.com/*", `https://${notaryHost}/*`];
+manifest.host_permissions = ["https://*.duolingo.com/*", "https://jsonplaceholder.typicode.com/*", `https://${notaryHost}/*`];
 manifest.content_security_policy.extension_pages = manifest.content_security_policy.extension_pages
-  .replace(/connect-src [^;]*/, `connect-src 'self' https://*.duolingo.com https://${notaryHost} wss://${notaryHost}`);
+  .replace(/connect-src [^;]*/, `connect-src 'self' https://*.duolingo.com https://jsonplaceholder.typicode.com https://${notaryHost} wss://${notaryHost}`);
+// Keep loading the package root unpacked usable after a host change too.
+await Bun.write(join(root, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 manifest.background.service_worker = basename(manifest.background.service_worker);
 manifest.side_panel.default_path = basename(manifest.side_panel.default_path);
 await Bun.write(join(dist, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");

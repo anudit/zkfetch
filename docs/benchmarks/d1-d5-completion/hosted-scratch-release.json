@@ -1,0 +1,65 @@
+{
+  "startedAt": "2026-10-10T06:22:45.504Z",
+  "completedAt": "2026-10-10T06:23:55.549Z",
+  "complete": false,
+  "host": "wss://13-206-75-44.sslip.io/notarize",
+  "scope": "one observation per case; not medians",
+  "provenance": {
+    "scripts/hosted-v2-cases.js": "ccbd7bae1d0013086c5d17edaf83d2b9afde3e03b2c08c97be3a1863f7d4ad4f",
+    "scripts/bench-v2-hosted.ts": "e84a9f2935c7806527ab90978c53d2b0df4fadec75c46003b6d5f3c422783eda",
+    ".zkf/aws/completion-artifacts/zkf-notary": "c173b0360755f7cce1bf129f589edb9a1fd47c1066ffc0337a5c077cb4cb4b73",
+    "packages/native/zkf.node": "cbd7583d84ffb601fe752175a46e754637aac2e231f4259061876b8321baa3f2",
+    "packages/wasm/pkg/zkf_bg.wasm": "8239988b11e501a09ee9b0e42f07672ec8464825b190a5cff0379c8643bde669",
+    "packages/wasm/pkg-threads/zkf_bg.wasm": "4d820903b2cd44592da8f2eb92305bd28f64211db4778a1d41446b0b3b44cec0"
+  },
+  "samples": [
+    {
+      "client": "native",
+      "threads": 0,
+      "state": "fresh",
+      "profile": "signed-head-fast",
+      "verified": true,
+      "nonceRejected": true,
+      "preparedReuseRejected": null,
+      "notarizeWallMs": 47437.225416,
+      "presentMs": 62.73079200000211,
+      "verifyMs": 50.67383300000074,
+      "proofBytes": 23955,
+      "bodyBytes": 83,
+      "timings": {
+        "notaryConnectMs": 35125.453792,
+        "setupMs": 8991.807667,
+        "tlsMs": 85.795708,
+        "proveMs": 212.224834,
+        "attestMs": 3001.123875,
+        "totalMs": 47416.406042,
+        "prewarmed": false,
+        "voleResumed": false
+      }
+    },
+    {
+      "client": "native",
+      "threads": 0,
+      "state": "warm",
+      "profile": "signed-head-fast",
+      "verified": true,
+      "nonceRejected": true,
+      "preparedReuseRejected": null,
+      "notarizeWallMs": 6524.675458000005,
+      "presentMs": 68.85029199999553,
+      "verifyMs": 52.52233400000114,
+      "proofBytes": 25871,
+      "bodyBytes": 83,
+      "timings": {
+        "notaryConnectMs": 4560.576916999999,
+        "setupMs": 0.251,
+        "tlsMs": 564.540791,
+        "proveMs": 216.78441700000002,
+        "attestMs": 1167.549542,
+        "totalMs": 6509.702832999999,
+        "prewarmed": false,
+        "voleResumed": true
+      }
+    }
+  ]
+}

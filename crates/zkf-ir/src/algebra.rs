@@ -95,6 +95,20 @@ impl<'a> Algebra<'a> {
     pub fn public_bit(&mut self, bit: bool) -> Bit {
         self.push(if bit { vec![vec![]] } else { vec![] })
     }
+    /// Retain a circuit wire across compiler checkpoints, without retaining an
+    /// expression-table index that a checkpoint will invalidate.
+    pub fn export_bit(&mut self, bit: Bit) -> Wire {
+        let bit = self.commit(bit);
+        match self.expressions[bit.0].as_slice() {
+            [] => self.circuit.public_bit(false),
+            [term] if term.is_empty() => self.circuit.public_bit(true),
+            [term] if term.len() == 1 => term[0],
+            _ => unreachable!("committed bit is constant or a single wire"),
+        }
+    }
+    pub fn import_bit(&mut self, wire: Wire) -> Bit {
+        self.input(wire)
+    }
     pub fn xor_bit(&mut self, a: Bit, b: Bit) -> Bit {
         let mut terms = BTreeSet::new();
         for term in self.expressions[a.0].iter().chain(&self.expressions[b.0]) {

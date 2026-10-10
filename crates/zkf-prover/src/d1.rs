@@ -148,10 +148,15 @@ pub(crate) async fn prove(
             )?;
             let members = zkf_ir::json::members(&body)?;
             for predicate in &params.session_claims {
+                ensure!(
+                    predicate.path.is_empty() && !predicate.unique,
+                    "path and uniqueness claims currently require offline presentation"
+                );
                 let member = members
                     .iter()
                     .find(|m| {
-                        m.object_depth == 0 && m.key == predicate.key
+                        m.object_depth == 0
+                            && m.key == predicate.key
                             && !body[m.value_range.clone()].is_empty()
                             && body[m.value_range.clone()].iter().all(u8::is_ascii_digit)
                     })
@@ -192,7 +197,7 @@ pub(crate) async fn prove(
     let mut frame = Sha256::digest(&binding).to_vec();
     frame.extend_from_slice(&expected.c_client);
     frame.extend_from_slice(&expected.c_server);
-    frame.push(if expected.metadata.is_some() { 7 } else { 8 });
+    frame.push(if expected.metadata.is_some() { 11 } else { 12 });
     if let Some(metadata) = &expected.metadata {
         frame.extend_from_slice(&bincode::serialize(metadata)?);
     }
@@ -218,7 +223,7 @@ pub(crate) async fn prove(
     let witness = statement.eval(&zkf_ir::byte_inputs(&keys))?;
     let mut binding = binding;
     binding.extend_from_slice(&frame[32..96]);
-    binding.push(if expected.metadata.is_some() { 7 } else { 8 });
+    binding.push(if expected.metadata.is_some() { 11 } else { 12 });
     if let Some(metadata) = &expected.metadata {
         binding.extend_from_slice(&bincode::serialize(metadata)?);
     }
@@ -400,37 +405,12 @@ pub fn present_v2(
         );
     }
     let body = &application[head_len..];
-    let member = zkf_ir::json::members(body)?
-        .into_iter()
-        .find(|m| {
-            m.object_depth == 0 && m.key == request.predicate.key
-                && !body[m.value_range.clone()].is_empty()
-                && body[m.value_range.clone()].iter().all(u8::is_ascii_digit)
-        })
-        .ok_or_else(|| {
-            anyhow!(
-                "no top-level member {:?} with an unsigned integer value in the response",
-                request.predicate.key
-            )
-        })?;
-    let colon = member.key_range.end
-        + body[member.key_range.end..]
-            .iter()
-            .position(|&b| b == b':')
-            .ok_or_else(|| anyhow!("member without a colon"))?;
-    let statement = Statement {
-        headers: application[..head_len].to_vec(),
-        records,
-        encoded_key: body[member.key_range.clone()].to_vec(),
-        key: member.key_range,
-        colon,
-        value: member.value_range,
-    };
-
     let nonce = parse_nonce(&request.nonce)?;
     let query = Query {
         server_name: &a.server.name,
         key: &request.predicate.key,
+        path: &request.predicate.path,
+        unique: request.predicate.unique,
         comparison: presentation::parse_comparison(&request.predicate.op)?,
         constant: request
             .predicate
@@ -439,6 +419,30 @@ pub fn present_v2(
             .map_err(anyhow::Error::msg)?,
         nonce,
     };
+    let path = presentation::effective_path(&query)?;
+    let member = zkf_ir::json::values(body)?
+        .into_iter()
+        .find(|m| {
+            m.path == path
+                && !body[m.value_range.clone()].is_empty()
+                && body[m.value_range.clone()].iter().all(u8::is_ascii_digit)
+        })
+        .ok_or_else(|| anyhow!("no selected JSON path with an unsigned integer value"))?;
+    let leaf = member.anchors.last().unwrap();
+    let statement = Statement {
+        headers: application[..head_len].to_vec(),
+        records,
+        encoded_key: leaf.encoded_key.clone(),
+        key: leaf.key.clone(),
+        colon: leaf.colon,
+        value: leaf.value.clone(),
+        anchors: if request.predicate.path.is_empty() && !request.predicate.unique {
+            Vec::new()
+        } else {
+            member.anchors
+        },
+    };
+
     let params = match request.parameters.as_deref().unwrap_or("fast") {
         "fast" => Parameters::Fast,
         "small" => Parameters::Small,

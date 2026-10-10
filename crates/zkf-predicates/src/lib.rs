@@ -1,5 +1,9 @@
 //! Predicate presentations: authenticated JSON structure + hidden scalar proofs.
 //! The structure exposes keys, container shape and lengths, while values remain private.
+#[cfg(feature = "legacy-binius")]
+mod circuit;
+#[cfg(not(feature = "legacy-binius"))]
+#[path = "circuit_unavailable.rs"]
 mod circuit;
 pub mod quicksilver;
 

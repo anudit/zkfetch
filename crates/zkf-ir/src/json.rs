@@ -2,6 +2,7 @@
 //! A future circuit must authenticate the parser state used here; this plain
 //! parser is not a ZK gadget and must not be substituted for one by a verifier.
 use core::ops::Range;
+pub use zkf_attestation::response::{JsonPathSegment, PathAnchor};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Member {
@@ -11,6 +12,8 @@ pub struct Member {
     /// Includes both quotes around the key, retaining the actual escape form.
     pub key_range: Range<usize>,
     pub value_range: Range<usize>,
+    pub path: Vec<JsonPathSegment>,
+    pub anchors: Vec<PathAnchor>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -27,6 +30,14 @@ pub enum JsonError {
 /// T2 selects one authenticated member span; it does not assert a JSON path,
 /// uniqueness, root-object membership, or the absence of duplicate names.
 pub fn members(document: &[u8]) -> Result<Vec<Member>, JsonError> {
+    Ok(values(document)?
+        .into_iter()
+        .filter(|v| !v.key_range.is_empty())
+        .collect())
+}
+
+/// Object members and array elements, retaining exact typed paths and spans.
+pub fn values(document: &[u8]) -> Result<Vec<Member>, JsonError> {
     if document.len() > 8 << 20 {
         return Err(JsonError::Size);
     }
@@ -37,6 +48,8 @@ pub fn members(document: &[u8]) -> Result<Vec<Member>, JsonError> {
         data: document,
         at: 0,
         members: Vec::new(),
+        path: Vec::new(),
+        anchors: Vec::new(),
     };
     p.value(0)?;
     p.whitespace();
@@ -50,6 +63,8 @@ struct Parser<'a> {
     data: &'a [u8],
     at: usize,
     members: Vec<Member>,
+    path: Vec<JsonPathSegment>,
+    anchors: Vec<PathAnchor>,
 }
 impl Parser<'_> {
     fn whitespace(&mut self) {
@@ -101,16 +116,36 @@ impl Parser<'_> {
                 if self.data.get(self.at) != Some(&b'}') {
                     loop {
                         let key_range = self.string()?;
-                        let key = serde_json::from_slice(&self.data[key_range.clone()])
+                        let key: String = serde_json::from_slice(&self.data[key_range.clone()])
                             .map_err(|_| JsonError::Syntax)?;
+                        self.whitespace();
+                        let colon = self.at;
                         self.eat(b':')?;
+                        self.whitespace();
+                        let value_start = self.at;
+                        self.path.push(JsonPathSegment::Member(key.clone()));
+                        self.anchors.push(PathAnchor {
+                            encoded_key: self.data[key_range.clone()].to_vec(),
+                            key: key_range.clone(),
+                            colon,
+                            value: value_start..value_start,
+                        });
+                        let first_descendant = self.members.len();
                         let value_range = self.value(depth + 1)?;
+                        for member in &mut self.members[first_descendant..] {
+                            member.anchors[depth].value = value_range.clone();
+                        }
+                        self.anchors.last_mut().unwrap().value = value_range.clone();
                         self.members.push(Member {
                             key,
                             object_depth: depth,
                             key_range,
                             value_range,
+                            path: self.path.clone(),
+                            anchors: self.anchors.clone(),
                         });
+                        self.path.pop();
+                        self.anchors.pop();
                         self.whitespace();
                         if self.data.get(self.at) == Some(&b'}') {
                             break;
@@ -124,8 +159,34 @@ impl Parser<'_> {
                 self.at += 1;
                 self.whitespace();
                 if self.data.get(self.at) != Some(&b']') {
+                    let mut index = 0;
                     loop {
-                        self.value(depth + 1)?;
+                        self.whitespace();
+                        let start = self.at;
+                        self.path.push(JsonPathSegment::Index(index));
+                        self.anchors.push(PathAnchor {
+                            encoded_key: Vec::new(),
+                            key: 0..0,
+                            colon: 0,
+                            value: start..start,
+                        });
+                        let first_descendant = self.members.len();
+                        let value_range = self.value(depth + 1)?;
+                        for member in &mut self.members[first_descendant..] {
+                            member.anchors[depth].value = value_range.clone();
+                        }
+                        self.anchors.last_mut().unwrap().value = value_range.clone();
+                        self.members.push(Member {
+                            key: String::new(),
+                            object_depth: depth,
+                            key_range: 0..0,
+                            value_range,
+                            path: self.path.clone(),
+                            anchors: self.anchors.clone(),
+                        });
+                        self.path.pop();
+                        self.anchors.pop();
+                        index += 1;
                         self.whitespace();
                         if self.data.get(self.at) == Some(&b']') {
                             break;

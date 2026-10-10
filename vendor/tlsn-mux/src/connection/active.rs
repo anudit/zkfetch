@@ -428,7 +428,38 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Active<T> {
                 && self.pending_write_frame.is_none()
                 && self.pending_read_frame.is_none()
             {
-                let release = self.registry.lock().release.take();
+                // The registry lock also serializes publication of release.
+                // A caller can create/enqueue the attestation stream after the
+                // top-of-loop polls but before requesting release. Recheck
+                // BOTH queues under this lock before freezing the batch.
+                let mut registry = self.registry.lock();
+                if registry.release.is_some() {
+                    if let Poll::Ready(Some(receiver)) = self.new_receiver_rx.poll_next_unpin(cx) {
+                        self.stream_receivers.push(receiver);
+                        drop(registry);
+                        continue;
+                    }
+                    match self.stream_receivers.poll_next_unpin(cx) {
+                        Poll::Ready(Some((_, Some(StreamCommand::SendFrame(frame))))) => {
+                            self.pending_write_frame = Some(frame);
+                            drop(registry);
+                            continue;
+                        }
+                        Poll::Ready(Some((_, Some(StreamCommand::CloseStream { stream_id })))) => {
+                            self.pending_write_frame = Some(Frame::close_stream(stream_id).into());
+                            drop(registry);
+                            continue;
+                        }
+                        Poll::Ready(Some((id, None))) => {
+                            drop(registry);
+                            self.pending_write_frame = self.on_drop_stream(id);
+                            continue;
+                        }
+                        Poll::Ready(None) | Poll::Pending => {}
+                    }
+                }
+                let release = registry.release.take();
+                drop(registry);
                 if let Some(ack) = release {
                     self.registry.lock().batch_requested = false;
                     self.socket.get_mut().end_batch();
@@ -701,6 +732,93 @@ mod batch_tests {
             Poll::Ready(Ok(()))
         }
     }
+    #[test]
+    fn release_includes_stream_created_between_queue_poll_and_barrier() {
+        type Hook = Arc<Mutex<Option<Box<dyn FnOnce() + Send>>>>;
+        struct HookIo {
+            io: RecordingIo,
+            hook: Hook,
+        }
+        impl AsyncRead for HookIo {
+            fn poll_read(
+                self: Pin<&mut Self>,
+                _: &mut Context<'_>,
+                _: &mut [u8],
+            ) -> Poll<std::io::Result<usize>> {
+                if let Some(hook) = self.hook.lock().take() {
+                    hook();
+                }
+                Poll::Pending
+            }
+        }
+        impl AsyncWrite for HookIo {
+            fn poll_write(
+                mut self: Pin<&mut Self>,
+                cx: &mut Context<'_>,
+                bytes: &[u8],
+            ) -> Poll<std::io::Result<usize>> {
+                Pin::new(&mut self.io).poll_write(cx, bytes)
+            }
+            fn poll_flush(
+                mut self: Pin<&mut Self>,
+                cx: &mut Context<'_>,
+            ) -> Poll<std::io::Result<()>> {
+                Pin::new(&mut self.io).poll_flush(cx)
+            }
+            fn poll_close(
+                mut self: Pin<&mut Self>,
+                cx: &mut Context<'_>,
+            ) -> Poll<std::io::Result<()>> {
+                Pin::new(&mut self.io).poll_close(cx)
+            }
+        }
+        futures::executor::block_on(async {
+            let io = RecordingIo::default();
+            let writes = io.0.clone();
+            let hook: Hook = Default::default();
+            let mut active = Active::new(
+                HookIo {
+                    io,
+                    hook: hook.clone(),
+                },
+                Config::default(),
+            );
+            let handle = active.handle();
+            let mut proof = handle.new_stream(b"proof").unwrap();
+            handle.begin_batch();
+            proof.write_all(b"committed proof").await.unwrap();
+            proof.flush().await.unwrap();
+            let kept_request = Arc::new(Mutex::new(None));
+            let kept = kept_request.clone();
+            let (ack, mut released) = oneshot::channel();
+            *hook.lock() = Some(Box::new(move || {
+                // Deterministically publish a new stream after the driver has
+                // polled all queues, but before it considers releasing batch.
+                let mut request = handle.new_stream(b"request").unwrap();
+                {
+                    let mut queued = Box::pin(async {
+                        request.write_all(b"attestation request").await.unwrap();
+                        request.flush().await.unwrap();
+                    });
+                    let mut cx = Context::from_waker(futures::task::noop_waker_ref());
+                    assert!(queued.as_mut().poll(&mut cx).is_ready());
+                }
+                *kept.lock() = Some(request);
+                handle.registry.lock().release = Some(ack);
+            }));
+            futures::future::poll_fn(|cx| {
+                assert!(active.poll(cx).is_pending());
+                released.poll_unpin(cx)
+            })
+            .await
+            .unwrap();
+            let writes = writes.lock();
+            assert_eq!(writes.len(), 1, "request escaped the proof batch");
+            assert!(writes[0].windows(15).any(|x| x == b"committed proof"));
+            assert!(writes[0].windows(19).any(|x| x == b"attestation request"));
+        });
+    }
+
     #[test]
     fn release_drains_all_streams_into_one_underlying_write() {
         futures::executor::block_on(async {

@@ -3,6 +3,7 @@
 //! Use --mode mpc, --tls 1.2, --max-sent N, --max-recv N, --no-predicates, or
 //! --reveal (commit only what the presentation discloses) for controlled
 //! comparisons. Warmups are recorded but excluded from summaries.
+//! --attestation-v2 selects v2; add --signed-head or --session-claim.
 
 #[path = "profile_quicksilver/relay.rs"]
 mod relay;
@@ -14,7 +15,10 @@ use serde_json::json;
 use tlsn_server_fixture_certs::{CA_CERT_DER, SERVER_DOMAIN};
 use tokio::net::TcpListener;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-use zkf_core::{NotarizeParams, PredicateSpec, RevealSpec, VerifyOptions, b64};
+use zkf_core::{
+    Decimal, MemberPredicate, NotarizeParams, PredicateSpec, PresentV2Request, RevealSpec,
+    VerifyOptions, VerifyV2Options, b64,
+};
 
 struct Options {
     mode: String,
@@ -27,6 +31,9 @@ struct Options {
     reveal: bool,
     persistent_vole: bool,
     protocol_v2: bool,
+    attestation_v2: bool,
+    signed_head: bool,
+    session_claim: bool,
     delay_ms: u64,
     rtt_ms: u64,
     out: PathBuf,
@@ -48,6 +55,9 @@ impl Options {
             reveal: false,
             persistent_vole: true,
             protocol_v2: true,
+            attestation_v2: false,
+            signed_head: false,
+            session_claim: false,
             delay_ms: 0,
             rtt_ms: 0,
             out: "qs-baseline.json".into(),
@@ -57,6 +67,18 @@ impl Options {
         };
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
+            if arg == "--attestation-v2" {
+                opts.attestation_v2 = true;
+                continue;
+            }
+            if arg == "--signed-head" {
+                opts.signed_head = true;
+                continue;
+            }
+            if arg == "--session-claim" {
+                opts.session_claim = true;
+                continue;
+            }
             if arg == "--legacy-flow" {
                 opts.protocol_v2 = false;
                 continue;
@@ -99,6 +121,18 @@ impl Options {
             "invalid TLS version"
         );
         ensure!(opts.runs > 0, "runs must be positive");
+        ensure!(
+            !opts.attestation_v2 || (opts.mode == "proxy" && opts.tls == "1.3" && opts.protocol_v2),
+            "v2 requires proxy TLS 1.3 and FLOW3"
+        );
+        ensure!(
+            !(opts.signed_head || opts.session_claim) || opts.attestation_v2,
+            "signed head/claim requires --attestation-v2"
+        );
+        ensure!(
+            !opts.attestation_v2 || (!opts.reveal && opts.predicates),
+            "v2 benchmark uses its own member query; do not combine --reveal or --no-predicates"
+        );
         ensure!(
             [
                 opts.notary_url.is_some(),
@@ -202,11 +236,35 @@ async fn run(
     notary_url: String,
     notary_key: String,
 ) -> Result<()> {
-    let (notary_url, relay_metrics) = if opts.rtt_ms > 0 {
+    let (notary_url, relay_metrics) = if opts.notary_url.is_none() || opts.rtt_ms > 0 {
         let (url, counters) = relay::start(&notary_url, opts.rtt_ms).await?;
         (url, Some(counters))
     } else {
         (notary_url, None)
+    };
+    let member = MemberPredicate {
+        key: "id".into(),
+            path: Vec::new(),
+            unique: false,
+        op: "ge".into(),
+        value: Decimal::Number(1000),
+    };
+    // Public, deterministic verifier challenge for this synthetic benchmark only.
+    let nonce = "2a".repeat(32);
+    let v2_request = PresentV2Request {
+        predicate: member.clone(),
+        nonce: nonce.clone(),
+        parameters: None,
+        allow_set_cookie: false,
+    };
+    let v2_options = VerifyV2Options {
+        trusted_notary_keys: vec![notary_key.clone()],
+        expected_server_name: SERVER_DOMAIN.into(),
+        predicate: member.clone(),
+        nonce: nonce.clone(),
+        max_age_secs: Some(600),
+        expected_owner: None,
+        expected_context: None,
     };
     let ca = b64::encode(CA_CERT_DER);
     let predicates = if opts.predicates {
@@ -227,7 +285,7 @@ async fn run(
     let mut results = json!({
         "workload": "local TLS fixture /formats/json, hidden id >= 1000",
         "mode": opts.mode, "tls": opts.tls, "backend": "quicksilver", "binius": false,
-        "protocolV2": opts.protocol_v2, "reveal": opts.reveal, "persistentVole": opts.persistent_vole, "addedRttMs": opts.rtt_ms,
+        "attestationV2": opts.attestation_v2, "signedHead": opts.signed_head, "sessionClaim": opts.session_claim, "protocolV2": opts.protocol_v2, "reveal": opts.reveal, "persistentVole": opts.persistent_vole, "addedRttMs": opts.rtt_ms,
         "maxSent": opts.max_sent, "maxRecv": opts.max_recv,
         "predicates": opts.predicates, "warmup": opts.warmup, "requestedRuns": opts.runs,
         "processLayout": if opts.notary_url.is_some() { "separate processes" } else { "in process" },
@@ -236,6 +294,8 @@ async fn run(
     let epoch = Instant::now();
     tokio::time::sleep(std::time::Duration::from_millis(opts.delay_ms)).await;
     for index in 0..opts.warmup + opts.runs {
+        let frames_start = relay_metrics.as_ref().map(|m| m.frames().len());
+        let trace_start = relay_metrics.as_ref().map(|m| m.trace().len());
         let traffic_before = relay_metrics.as_ref().map(|m| m.snapshot());
         let started = Instant::now();
         let out = tokio::time::timeout(
@@ -255,16 +315,24 @@ async fn run(
                 max_recv: opts.max_recv,
                 owner: None,
                 context: None,
-                predicates: predicates.clone(),
+                predicates: if opts.attestation_v2 {
+                    vec![]
+                } else {
+                    predicates.clone()
+                },
                 binius: false,
                 reveal: opts.reveal.then(|| spec.clone()),
                 tls_version: Some(opts.tls.clone()),
                 mode: Some(opts.mode.clone()),
                 relay_url: None,
-                attestation_v2: false,
-        signed_response_head: false,
-        session_claims: vec![],
-        session_claim_nonce: None,
+                attestation_v2: opts.attestation_v2,
+                signed_response_head: opts.signed_head,
+                session_claims: if opts.session_claim {
+                    vec![member.clone()]
+                } else {
+                    vec![]
+                },
+                session_claim_nonce: opts.session_claim.then(|| nonce.clone()),
             }),
         )
         .await
@@ -273,38 +341,69 @@ async fn run(
             out.response.status == 200 && out.tls_version == opts.tls,
             "wrong response"
         );
+        // Snapshot before local presentation/verification and websocket teardown.
+        let trace = relay_metrics
+            .as_ref()
+            .zip(trace_start)
+            .map(|(m, start)| m.trace()[start..].to_vec());
+        let frames = relay_metrics
+            .as_ref()
+            .zip(frames_start)
+            .map(|(m, start)| m.frames()[start..].to_vec());
+        let traffic_after = relay_metrics.as_ref().map(|m| m.snapshot());
         let present_start = Instant::now();
-        let presentation = zkf_prover::present(&out.attestation, &out.secrets, &spec)?;
+        let presentation = if opts.attestation_v2 {
+            zkf_prover::present_v2(&out.attestation, &out.secrets, &v2_request)?
+        } else {
+            zkf_prover::present(&out.attestation, &out.secrets, &spec)?
+        };
         let present_ms = present_start.elapsed().as_secs_f64() * 1000.0;
         let verify_start = Instant::now();
-        let verified = zkf_verifier::verify(&presentation, &verify_opts)?;
-        let verify_ms = verify_start.elapsed().as_secs_f64() * 1000.0;
-        ensure!(
-            verified.notary_trusted && verified.server_name == SERVER_DOMAIN,
-            "wrong identity"
-        );
-        ensure!(
-            !verified.recv.contains("1234567890"),
-            "predicate value disclosed"
-        );
-        if opts.predicates && index == 0 {
-            let stronger = VerifyOptions {
-                expected_predicates: vec![predicate(2_000_000_000)],
-                ..verify_opts.clone()
-            };
+        if opts.attestation_v2 {
+            let verified = zkf_verifier::verify_v2(&presentation, &v2_options)?;
+            ensure!(verified.server_name == SERVER_DOMAIN, "wrong identity");
+            if index == 0 {
+                let stronger = VerifyV2Options {
+                    predicate: MemberPredicate {
+                        value: Decimal::Number(2_000_000_000),
+                        ..member.clone()
+                    },
+                    ..v2_options.clone()
+                };
+                ensure!(
+                    zkf_verifier::verify_v2(&presentation, &stronger).is_err(),
+                    "stronger claim accepted"
+                );
+            }
+        } else {
+            let verified = zkf_verifier::verify(&presentation, &verify_opts)?;
             ensure!(
-                zkf_verifier::verify(&presentation, &stronger).is_err(),
-                "stronger claim accepted"
+                verified.notary_trusted && verified.server_name == SERVER_DOMAIN,
+                "wrong identity"
             );
+            ensure!(
+                !verified.recv.contains("1234567890"),
+                "predicate value disclosed"
+            );
+            if opts.predicates && index == 0 {
+                let stronger = VerifyOptions {
+                    expected_predicates: vec![predicate(2_000_000_000)],
+                    ..verify_opts.clone()
+                };
+                ensure!(
+                    zkf_verifier::verify(&presentation, &stronger).is_err(),
+                    "stronger claim accepted"
+                );
+            }
         }
-        let traffic = relay_metrics.as_ref().zip(traffic_before).map(|(m, b)| {
-            let a = m.snapshot();
-            [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-        });
+        let verify_ms = verify_start.elapsed().as_secs_f64() * 1000.0;
+        let traffic = traffic_after
+            .zip(traffic_before)
+            .map(|(a, b)| [a[0] - b[0], a[1] - b[1], a[2] - b[2]]);
         let row = json!({
             "index": index, "warmup": index < opts.warmup,
             "startMs": started.duration_since(epoch).as_secs_f64() * 1000.0,
-            "trafficUpDownChanges": traffic,
+            "trafficUpDownChanges": traffic, "transportTrace": trace, "webSocketFrames": frames,
             "timings": out.timings, "presentMs": present_ms, "verifyMs": verify_ms,
             "fullMs": started.elapsed().as_secs_f64() * 1000.0,
             "bodyBytes": out.response.body.len(),

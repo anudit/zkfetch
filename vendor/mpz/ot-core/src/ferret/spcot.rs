@@ -122,6 +122,10 @@ mod tests {
             let lengths: Vec<usize> = (1..8).collect();
             let idxs: Vec<usize> = (1..8).map(|n| rng.random_range(0..1 << n)).collect();
             execute(&mut rng, &mut sender, &mut receiver, &lengths, &idxs);
+            // Parking may release scratch between extensions; subsequent
+            // correlations must still match with preserved tree counters.
+            sender.release_scratch();
+            receiver.release_scratch();
         }
     }
 

@@ -11,7 +11,8 @@ function element<T extends HTMLElement>(id: string): T {
 const prove = element<HTMLButtonElement>("prove");
 const verify = element<HTMLButtonElement>("verify");
 const proofVersion = element<HTMLSelectElement>("proof-version");
-const version = (): ProofVersion => proofVersion.value === "2" ? 2 : 1;
+const version = (): ProofVersion => proofVersion.value === "1" ? 1 : 2;
+const target = () => proofVersion.value === "2-example" ? "top-level" as const : "duolingo" as const;
 const progress = element("progress");
 const error = element("error");
 let status: Status = { tabOpen: false, hasToken: false };
@@ -58,17 +59,17 @@ function showError(text: string) {
 
 function render() {
   maybePrepare();
-  prove.disabled = busy || version() === 2 || !status.hasToken || !notaryLive || !relayLive;
+  prove.disabled = busy || (target() === "duolingo" && !status.hasToken) || !notaryLive || !relayLive;
   verify.disabled = busy || !proof;
   proofVersion.disabled = busy;
   element("format-note").textContent = version() === 2
-    ? 'V2 currently proves top-level JSON members only. Duolingo streaks require a nested-path proof; select v1 for this claim.'
+    ? target() === 'top-level' ? 'V2 proves top-level id = 1 from jsonplaceholder.typicode.com/todos/1. No login needed.' : 'V2 proves the exact streakData.longestStreak.length path and rejects duplicate keys along it.'
     : "V1 verifies your username and the full longest-streak path.";
   prove.textContent = busy && !proof ? "Generating proof…" : "Generate proof";
   prove.title = prepareState === "ready" ? "Notary session ready" : prepareState === "preparing" ? "Preparing notary session…" : "";
   indicator("tab", status.tabOpen ? "Open" : "Closed", status.tabOpen ? "live" : "checking");
   indicator("token", status.hasToken ? "Detected" : "Waiting", status.hasToken ? "live" : "checking");
-  element("hint").textContent = status.hasToken
+  element("hint").textContent = target() === "top-level" ? "Public example: no bearer token is needed." : status.hasToken
     ? `Token detected from ${status.source === "bearer" ? "a Duolingo request" : "your Duolingo session"}. Ready to prove.`
     : "Sign in to Duolingo. Your token is detected automatically.";
 }
@@ -146,16 +147,16 @@ async function refreshServices() {
 function showProof(reply: Proof) {
   proof = reply;
   element("result").hidden = false;
-  element("claim-label").textContent = proof.version === 2 ? 'JSON member "length"' : "Longest streak";
+  element("claim-label").textContent = proof.version === 2 ? `JSON ${proof.predicate.path?.join('.') || proof.predicate.key}` : "Longest streak";
   element("claim-unit").textContent = proof.version === 2 ? "" : "days";
   element("streak").textContent = String(proof.version === 2 ? proof.predicate.value : proof.longestStreak);
-  element("username").textContent = proof.version === 2 ? "Username and full JSON path are not proven." : `@${proof.username}`;
+  element("username").textContent = proof.version === 2 ? proof?.version === 2 && proof.target === "top-level" ? "JSONPlaceholder · top-level id = 1" : "Duolingo · exact nested streak path" : `@${proof.username}`;
   element("elapsed").textContent = duration(proof.elapsedMs);
   element("verify-time").textContent = "—";
   // Export the verifier challenge and claim with v2, not just an opaque proof.
   element("presentation-label").textContent = proof.version === 2 ? "Presentation + claim + challenge · JSON" : "Presentation · base64";
   element<HTMLTextAreaElement>("proof").value = proof.version === 2
-    ? JSON.stringify({ version: 2, presentation: proof.presentation, predicate: proof.predicate, nonce: proof.nonce })
+    ? JSON.stringify({ version: 2, target: proof.target, presentation: proof.presentation, predicate: proof.predicate, nonce: proof.nonce })
     : proof.presentation;
   const ahead = proof.timings.prewarmed ? " (ahead)" : "";
   const pool = proof.timings.voleResumed ? "warm VOLE pool" : "fresh OT";
@@ -181,7 +182,7 @@ function onReply(event: MessageEvent<ProverReply>) {
       maybePrepare();
       break;
     case "prepared":
-      if (reply.version !== version()) break;
+      if (reply.version !== version() || reply.target !== target()) break;
       prepareState = reply.ok ? "ready" : "idle";
       render();
       break;
@@ -198,7 +199,7 @@ function onReply(event: MessageEvent<ProverReply>) {
       operation?.finish(reply.error);
       break;
     case "proof":
-      if (reply.proof.version !== version() || (reply.proof.version === 2 && reply.proof.nonce !== challenge)) {
+      if (reply.proof.version !== version() || (reply.proof.version === 2 && (reply.proof.nonce !== challenge || reply.proof.target !== target()))) {
         operation?.finish("The proof does not match the requested format or verifier challenge.");
         break;
       }
@@ -208,8 +209,8 @@ function onReply(event: MessageEvent<ProverReply>) {
     case "verified":
       if (reply.version === 2) {
         element("streak").textContent = String(reply.verified.predicate.value);
-        element("username").textContent = "Username and full JSON path are not proven.";
-        element("transcript").textContent = `${reply.verified.serverName}\nAttestation v2 · proxy\n${new Date(reply.verified.time * 1000).toISOString()}\nTrusted notary: ${reply.verified.notaryKey.key}\nProven JSON member: ${reply.verified.predicate.key} ${reply.verified.predicate.op} ${reply.verified.predicate.value}\n\n${reply.verified.responseHeaders}`;
+        element("username").textContent = proof?.version === 2 && proof.target === "top-level" ? "JSONPlaceholder · top-level id = 1" : "Duolingo · exact nested streak path";
+        element("transcript").textContent = `${reply.verified.serverName}\nAttestation v2 · proxy\n${new Date(reply.verified.time * 1000).toISOString()}\nTrusted notary: ${reply.verified.notaryKey.key}\nProven JSON member: ${reply.verified.predicate.path?.join(".") || reply.verified.predicate.key} ${reply.verified.predicate.op} ${reply.verified.predicate.value}\n\n${reply.verified.responseHeaders}`;
       } else {
       element("streak").textContent = String(reply.longestStreak);
       element("username").textContent = `@${reply.username}`;
@@ -255,10 +256,10 @@ function resetWorker() {
 
 /** Starts a prepared session if one is useful now. */
 function maybePrepare() {
-  if (version() === 2 || prepareState !== "idle" || busy || !status.hasToken || !notaryLive) return;
+  if (prepareState !== "idle" || busy || (target() === "duolingo" && !status.hasToken) || !notaryLive) return;
   if (document.visibilityState !== "visible" || unusedPrepares >= MAX_UNUSED_PREPARES) return;
   prepareState = "preparing";
-  proverWorker().postMessage({ type: "prepare", version: version() } satisfies ProverRequest);
+  proverWorker().postMessage({ type: "prepare", version: version(), target: target() } satisfies ProverRequest);
 }
 
 function startOperation(message: ProverRequest) {
@@ -284,7 +285,7 @@ function startOperation(message: ProverRequest) {
   }
 
   operation = { finish };
-  if (message.type === "prove") {
+  if ((message.type === "prove" || message.type === "prove-example")) {
     // The worker hands its prepared session (if any) to this request.
     prepareState = "idle";
     unusedPrepares = 0;
@@ -298,8 +299,8 @@ prove.addEventListener("click", async () => {
   error.hidden = true;
   render();
   try {
-    const { auth } = await request({ type: "auth" });
-    if (!auth) throw new Error("No bearer token detected. Open Duolingo and sign in.");
+    const auth = target() === "duolingo" ? (await request({ type: "auth" })).auth : undefined;
+    if (target() === "duolingo" && !auth) throw new Error("No bearer token detected. Open Duolingo and sign in.");
     proof = undefined;
     element("result").hidden = true;
     element("verified-details").hidden = true;
@@ -307,10 +308,12 @@ prove.addEventListener("click", async () => {
     element("transcript").textContent = "";
     if (version() === 2) {
       challenge = verifierNonce();
-      startOperation({ type: "prove", auth, version: 2, nonce: challenge });
+      startOperation(target() === "top-level"
+        ? { type: "prove-example", version: 2, nonce: challenge }
+        : { type: "prove", auth: auth!, version: 2, nonce: challenge });
     } else {
       challenge = undefined;
-      startOperation({ type: "prove", auth, version: 1 });
+      startOperation({ type: "prove", auth: auth!, version: 1 });
     }
   } catch (cause) {
     busy = false;
@@ -328,7 +331,7 @@ verify.addEventListener("click", () => {
   element("verified-details").hidden = true;
   indicator("verification", "Verifying…", "checking");
   startOperation(proof.version === 2
-    ? { type: "verify", version: 2, presentation: proof.presentation, predicate: proof.predicate, nonce: proof.nonce }
+    ? { type: "verify", version: 2, target: proof.target, presentation: proof.presentation, predicate: proof.predicate, nonce: proof.nonce }
     : { type: "verify", version: 1, presentation: proof.presentation });
 });
 

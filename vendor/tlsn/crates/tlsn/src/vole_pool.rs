@@ -9,6 +9,12 @@ use futures::future::{BoxFuture, Shared};
 pub type PrefillReady = Shared<BoxFuture<'static, Result<(), String>>>;
 /// Maximum prefetched correlations for the three-flight protocol.
 pub const FLOW_BUDGET: usize = 3_500_000;
+/// Authenticated size classes; the largest preserves the legacy limit.
+pub const BUDGET_CLASSES: [usize; 3] = [1_000_000, 2_000_000, FLOW_BUDGET];
+/// Whether a setup declaration names an accepted size class.
+pub fn valid_budget(budget: usize) -> bool {
+    BUDGET_CLASSES.contains(&budget)
+}
 use mpz_common::{Context, Flush};
 use mpz_core::Block;
 use mpz_garble_core::Delta;
@@ -30,6 +36,7 @@ pub struct ProverVolePool {
     pub(crate) pipeline_tls: bool,
     pub(crate) ready: Option<PrefillReady>,
     strict: bool,
+    budget: usize,
     pub(crate) begin_proof: Option<Arc<dyn Fn() + Send + Sync>>,
     inner: Arc<Mutex<Receiver>>,
     active: Arc<std::sync::atomic::AtomicBool>,
@@ -42,6 +49,7 @@ pub struct VerifierVolePool {
     pub(crate) pipeline_tls: bool,
     pub(crate) ready: Option<PrefillReady>,
     strict: bool,
+    budget: usize,
     pub(crate) begin_proof: Option<Arc<dyn Fn() + Send + Sync>>,
     inner: Arc<Mutex<Sender>>,
     active: Arc<std::sync::atomic::AtomicBool>,
@@ -63,6 +71,7 @@ impl ProverVolePool {
             pipeline_tls: false,
             ready: None,
             strict: false,
+            budget: FLOW_BUDGET,
             begin_proof: None,
             active: Default::default(),
             inner: Arc::new(Mutex::new(Receiver::new(
@@ -78,6 +87,17 @@ impl ProverVolePool {
                 kos::Receiver::new(Default::default(), co::Sender::default()),
             ))),
         }
+    }
+    /// Select a size class before preprocessing. Changing a live lease is forbidden.
+    pub fn set_budget(&mut self, budget: usize) -> Result<(), &'static str> {
+        if !valid_budget(budget) {
+            return Err("unsupported VOLE budget class");
+        }
+        if self.active.load(std::sync::atomic::Ordering::Acquire) || self.ready.is_some() {
+            return Err("cannot resize a live VOLE lease");
+        }
+        self.budget = budget;
+        Ok(())
     }
     /// Use the proxy configuration authenticated in the first flight.
     pub fn set_opened_host(&mut self, host: Option<String>) {
@@ -98,7 +118,7 @@ impl ProverVolePool {
     /// Prepare the first warm Ferret flight, burning the checked-out lease.
     pub fn start_prefill(&mut self) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         let mut inner = self.inner.try_lock().expect("exclusive prefill");
-        inner.alloc(FLOW_BUDGET)?;
+        inner.alloc(self.budget)?;
         let core = inner.core_mut();
         if core.wants_init() || core.wants_bootstrap() {
             return Err("uninitialized warm pool".into());
@@ -134,8 +154,8 @@ impl ProverVolePool {
                 .core_mut()
                 .finish_extend(bincode::deserialize(reply)?)?;
         }
-        inner.core_mut().cancel_alloc(FLOW_BUDGET);
-        if inner.available() < FLOW_BUDGET {
+        inner.core_mut().cancel_alloc(self.budget);
+        if inner.available() < self.budget {
             return Err("prefill budget was not fulfilled".into());
         }
         Ok(())
@@ -146,18 +166,30 @@ impl ProverVolePool {
         ctx: &mut Context,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut inner = self.inner.lock().await;
-        inner.alloc(FLOW_BUDGET)?;
+        inner.alloc(self.budget)?;
         inner.flush(ctx).await?;
-        inner.core_mut().cancel_alloc(FLOW_BUDGET);
+        inner.core_mut().cancel_alloc(self.budget);
         Ok(())
     }
     /// Remove session callbacks before returning the exclusive state to its cache.
-    pub fn park(&mut self) {
+    pub fn park(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.opened_host = None;
         self.ready = None;
         self.begin_proof = None;
         self.pipeline_tls = false;
         self.strict = false;
+        if !self.low_latency {
+            return Ok(());
+        }
+        if self.active.load(std::sync::atomic::Ordering::Acquire) {
+            return Err("cannot park an active VOLE lease".into());
+        }
+        self.inner
+            .try_lock()
+            .map_err(|_| "active Ferret operation")?
+            .core_mut()
+            .compact_bootstrap()?;
+        Ok(())
     }
     /// A handle for completing only this exclusively checked-out prefill.
     pub fn prefill_handle(&self) -> Self {
@@ -177,6 +209,7 @@ impl ProverVolePool {
             pipeline_tls: self.pipeline_tls,
             ready: self.ready.clone(),
             strict: self.strict,
+            budget: self.budget,
             begin_proof: self.begin_proof.clone(),
             inner: self.inner.clone(),
             active: self.active.clone(),
@@ -188,6 +221,7 @@ impl ProverVolePool {
             Arc::new(Lease::new(self.active.clone())),
             self.strict,
             Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            self.budget,
         )
     }
 }
@@ -207,6 +241,7 @@ impl VerifierVolePool {
             pipeline_tls: false,
             ready: None,
             strict: false,
+            budget: FLOW_BUDGET,
             begin_proof: None,
             delta: zeroize::Zeroizing::new(delta.into_inner()),
             active: Default::default(),
@@ -227,6 +262,17 @@ impl VerifierVolePool {
                 ),
             ))),
         }
+    }
+    /// Select a size class before preprocessing. Changing a live lease is forbidden.
+    pub fn set_budget(&mut self, budget: usize) -> Result<(), &'static str> {
+        if !valid_budget(budget) {
+            return Err("unsupported VOLE budget class");
+        }
+        if self.active.load(std::sync::atomic::Ordering::Acquire) || self.ready.is_some() {
+            return Err("cannot resize a live VOLE lease");
+        }
+        self.budget = budget;
+        Ok(())
     }
     /// Use the proxy configuration authenticated in the first flight.
     pub fn set_opened_host(&mut self, host: Option<String>) {
@@ -250,7 +296,7 @@ impl VerifierVolePool {
         start: &[u8],
     ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         let mut inner = self.inner.try_lock().expect("exclusive prefill");
-        inner.alloc(FLOW_BUDGET)?;
+        inner.alloc(self.budget)?;
         let core = inner.core_mut();
         if start.is_empty() {
             if core.wants_extend() {
@@ -276,8 +322,8 @@ impl VerifierVolePool {
             inner.core_mut().finish_extend()?;
             bincode::serialize(&reply)?
         };
-        inner.core_mut().cancel_alloc(FLOW_BUDGET);
-        if inner.available() < FLOW_BUDGET {
+        inner.core_mut().cancel_alloc(self.budget);
+        if inner.available() < self.budget {
             return Err("prefill budget was not fulfilled".into());
         }
         Ok(reply)
@@ -288,18 +334,30 @@ impl VerifierVolePool {
         ctx: &mut Context,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut inner = self.inner.lock().await;
-        inner.alloc(FLOW_BUDGET)?;
+        inner.alloc(self.budget)?;
         inner.flush(ctx).await?;
-        inner.core_mut().cancel_alloc(FLOW_BUDGET);
+        inner.core_mut().cancel_alloc(self.budget);
         Ok(())
     }
     /// Remove session callbacks before returning the exclusive state to its cache.
-    pub fn park(&mut self) {
+    pub fn park(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.opened_host = None;
         self.ready = None;
         self.begin_proof = None;
         self.pipeline_tls = false;
         self.strict = false;
+        if !self.low_latency {
+            return Ok(());
+        }
+        if self.active.load(std::sync::atomic::Ordering::Acquire) {
+            return Err("cannot park an active VOLE lease".into());
+        }
+        self.inner
+            .try_lock()
+            .map_err(|_| "active Ferret operation")?
+            .core_mut()
+            .compact_bootstrap()?;
+        Ok(())
     }
     /// A handle for completing only this exclusively checked-out prefill.
     pub fn prefill_handle(&self) -> Self {
@@ -319,6 +377,7 @@ impl VerifierVolePool {
             pipeline_tls: self.pipeline_tls,
             ready: self.ready.clone(),
             strict: self.strict,
+            budget: self.budget,
             begin_proof: self.begin_proof.clone(),
             delta: zeroize::Zeroizing::new(*self.delta),
             inner: self.inner.clone(),
@@ -331,6 +390,7 @@ impl VerifierVolePool {
             Arc::new(Lease::new(self.active.clone())),
             self.strict,
             Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            self.budget,
         )
     }
     pub(crate) fn delta(&self) -> Delta {
@@ -345,6 +405,7 @@ pub(crate) struct PooledReceiver(
     #[allow(dead_code)] Arc<Lease>,
     bool,
     Arc<std::sync::atomic::AtomicUsize>,
+    usize,
 );
 #[derive(Clone)]
 pub(crate) struct PooledSender(
@@ -352,6 +413,7 @@ pub(crate) struct PooledSender(
     #[allow(dead_code)] Arc<Lease>,
     bool,
     Arc<std::sync::atomic::AtomicUsize>,
+    usize,
 );
 impl RCOTReceiver<bool, Block> for PooledReceiver {
     type Error = <Receiver as RCOTReceiver<bool, Block>>::Error;
@@ -363,7 +425,7 @@ impl RCOTReceiver<bool, Block> for PooledReceiver {
                 .fetch_add(count, std::sync::atomic::Ordering::Relaxed);
             if previous
                 .checked_add(count)
-                .is_none_or(|total| total > FLOW_BUDGET)
+                .is_none_or(|total| total > self.4)
             {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -406,7 +468,7 @@ impl RCOTSender<Block> for PooledSender {
                 .fetch_add(count, std::sync::atomic::Ordering::Relaxed);
             if previous
                 .checked_add(count)
-                .is_none_or(|total| total > FLOW_BUDGET)
+                .is_none_or(|total| total > self.4)
             {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -516,6 +578,77 @@ opaque_debug::implement!(PooledSender);
 mod tests {
     use super::*;
     use futures::FutureExt;
+    #[test]
+    fn size_class_cannot_change_a_live_or_ready_lease() {
+        let mut prover = ProverVolePool::new([1; 32]);
+        assert!(prover.set_budget(123).is_err());
+        prover.set_budget(BUDGET_CLASSES[0]).unwrap();
+        let receiver = prover.receiver();
+        assert!(prover.set_budget(BUDGET_CLASSES[1]).is_err());
+        drop(receiver);
+        prover.set_budget(BUDGET_CLASSES[1]).unwrap();
+        prover.set_ready(futures::future::ready(Ok(())).boxed().shared());
+        assert!(prover.set_budget(BUDGET_CLASSES[0]).is_err());
+        // This uninitialized unit-test pool cannot be parked; clear only
+        // its synthetic readiness barrier to test class selection.
+        prover.ready = None;
+        prover.set_budget(BUDGET_CLASSES[0]).unwrap();
+
+        let mut verifier = VerifierVolePool::new([1; 32]);
+        assert!(verifier.set_budget(0).is_err());
+        verifier.set_budget(BUDGET_CLASSES[0]).unwrap();
+        verifier.set_ready(futures::future::ready(Ok(())).boxed().shared());
+        let mut sender = verifier.sender();
+        sender.alloc(BUDGET_CLASSES[0]).unwrap();
+        assert!(sender.alloc(1).is_err());
+        assert!(verifier.set_budget(BUDGET_CLASSES[1]).is_err());
+    }
+
+    #[tokio::test]
+    async fn changing_classes_preserves_single_use_correlations() {
+        let mut prover = ProverVolePool::new([1; 32]);
+        let mut verifier = VerifierVolePool::new([1; 32]);
+        prover.set_low_latency(true);
+        verifier.set_low_latency(true);
+        let (mut a, mut b) = mpz_common::context::test_st_context(8);
+        let mut previous = None;
+        for (i, budget) in [1_000_000, 2_000_000, 1_000_000].into_iter().enumerate() {
+            prover.set_budget(budget).unwrap();
+            verifier.set_budget(budget).unwrap();
+            if i == 0 {
+                futures::try_join!(prover.cold_prefill(&mut a), verifier.cold_prefill(&mut b))
+                    .unwrap();
+            } else {
+                let start = prover.start_prefill().unwrap();
+                let reply = verifier.accept_prefill(&start).unwrap();
+                let check = prover.prefill_check(&reply).unwrap();
+                let reply = verifier.finish_prefill(&check).unwrap();
+                prover.finish_prefill(&reply).unwrap();
+            }
+            let recv = prover
+                .inner
+                .try_lock()
+                .unwrap()
+                .try_recv_rcot(640_000)
+                .unwrap();
+            let send = verifier
+                .inner
+                .try_lock()
+                .unwrap()
+                .try_send_rcot(640_000)
+                .unwrap();
+            assert_ne!(previous, Some(recv.msgs[0]));
+            previous = Some(recv.msgs[0]);
+            let delta = verifier.inner.try_lock().unwrap().delta();
+            for ((mac, choice), key) in recv.msgs.iter().zip(recv.choices).zip(send.keys) {
+                assert_eq!(*mac, key ^ if choice { delta } else { Block::ZERO });
+            }
+            prover.park().unwrap();
+            verifier.park().unwrap();
+            assert_eq!(prover.inner.try_lock().unwrap().available(), 0);
+            assert_eq!(verifier.inner.try_lock().unwrap().available(), 0);
+        }
+    }
     #[test]
     fn declared_budget_is_enforced_on_both_peers() {
         let mut prover = ProverVolePool::new([1; 32]);

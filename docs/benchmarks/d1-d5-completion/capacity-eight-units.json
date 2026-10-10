@@ -1,0 +1,3651 @@
+{
+  "startedAt": "2026-10-10T06:00:43.934753+00:00",
+  "profile": "ciphertext-only",
+  "waveCount": 6,
+  "scope": "native client processes; synchronized waves per level",
+  "levels": [
+    {
+      "parallel": 2,
+      "verified": 12,
+      "attempted": 12,
+      "warmMedianMs": 984.4528335,
+      "resumedWarm": 10
+    },
+    {
+      "parallel": 4,
+      "verified": 24,
+      "attempted": 24,
+      "warmMedianMs": 1430.1996875,
+      "resumedWarm": 20
+    },
+    {
+      "parallel": 8,
+      "verified": 48,
+      "attempted": 48,
+      "warmMedianMs": 2273.4919790000004,
+      "resumedWarm": 40
+    },
+    {
+      "parallel": 16,
+      "verified": 96,
+      "attempted": 96,
+      "warmMedianMs": 2835.3342495,
+      "resumedWarm": 80
+    }
+  ],
+  "waves": [
+    {
+      "level": 2,
+      "wave": 0,
+      "start": 1791612044.045399,
+      "end": 1791612046.2251709,
+      "rows": [
+        {
+          "level": 2,
+          "worker": 0,
+          "round": 0,
+          "start": 1791612044056,
+          "end": 1791612046136,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 119.637417,
+            "setupMs": 1078.708333,
+            "tlsMs": 74.312084,
+            "proveMs": 36.439708,
+            "attestMs": 125.80337499999999,
+            "totalMs": 1434.9009999999998,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 2,
+          "worker": 1,
+          "round": 0,
+          "start": 1791612044056,
+          "end": 1791612046080,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 118.88725,
+            "setupMs": 978.464667,
+            "tlsMs": 119.39304100000001,
+            "proveMs": 38.759667,
+            "attestMs": 130.415042,
+            "totalMs": 1385.919708,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198584
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "wave": 1,
+      "start": 1791612050.2310321,
+      "end": 1791612051.8830988,
+      "rows": [
+        {
+          "level": 2,
+          "worker": 0,
+          "round": 1,
+          "start": 1791612050249,
+          "end": 1791612051880,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 605.107,
+            "setupMs": 0.216833,
+            "tlsMs": 160.44,
+            "proveMs": 35.729334,
+            "attestMs": 164.970625,
+            "totalMs": 966.463792,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        },
+        {
+          "level": 2,
+          "worker": 1,
+          "round": 1,
+          "start": 1791612050250,
+          "end": 1791612051719,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 488.344375,
+            "setupMs": 0.48183299999999996,
+            "tlsMs": 166.639541,
+            "proveMs": 37.29325,
+            "attestMs": 165.29774999999998,
+            "totalMs": 858.056791,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 200514
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "wave": 2,
+      "start": 1791612055.886417,
+      "end": 1791612057.551212,
+      "rows": [
+        {
+          "level": 2,
+          "worker": 0,
+          "round": 2,
+          "start": 1791612055908,
+          "end": 1791612057496,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 613.173542,
+            "setupMs": 0.291458,
+            "tlsMs": 164.334666,
+            "proveMs": 35.462667,
+            "attestMs": 189.1795,
+            "totalMs": 1002.441875,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 2,
+          "worker": 1,
+          "round": 2,
+          "start": 1791612055891,
+          "end": 1791612057346,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 467.03054199999997,
+            "setupMs": 0.457042,
+            "tlsMs": 195.450542,
+            "proveMs": 34.886583,
+            "attestMs": 175.482583,
+            "totalMs": 873.307292,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198574
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "wave": 3,
+      "start": 1791612061.554275,
+      "end": 1791612063.214848,
+      "rows": [
+        {
+          "level": 2,
+          "worker": 0,
+          "round": 3,
+          "start": 1791612061568,
+          "end": 1791612063014,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 492.728292,
+            "setupMs": 0.24195799999999998,
+            "tlsMs": 164.715042,
+            "proveMs": 35.401792,
+            "attestMs": 169.42670800000002,
+            "totalMs": 862.513834,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 2,
+          "worker": 1,
+          "round": 3,
+          "start": 1791612061574,
+          "end": 1791612063192,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 591.918541,
+            "setupMs": 0.4425,
+            "tlsMs": 166.00220900000002,
+            "proveMs": 35.463458,
+            "attestMs": 171.636667,
+            "totalMs": 965.463375,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "wave": 4,
+      "start": 1791612067.220395,
+      "end": 1791612069.60801,
+      "rows": [
+        {
+          "level": 2,
+          "worker": 0,
+          "round": 4,
+          "start": 1791612067231,
+          "end": 1791612069514,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 894.701,
+            "setupMs": 0.256625,
+            "tlsMs": 197.165458,
+            "proveMs": 35.288374999999995,
+            "attestMs": 409.24012500000003,
+            "totalMs": 1536.65175,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        },
+        {
+          "level": 2,
+          "worker": 1,
+          "round": 4,
+          "start": 1791612067234,
+          "end": 1791612069427,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 958.596375,
+            "setupMs": 0.391333,
+            "tlsMs": 213.62225,
+            "proveMs": 35.983541,
+            "attestMs": 324.994542,
+            "totalMs": 1533.588291,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 200512
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "wave": 5,
+      "start": 1791612073.613533,
+      "end": 1791612076.63291,
+      "rows": [
+        {
+          "level": 2,
+          "worker": 0,
+          "round": 5,
+          "start": 1791612073633,
+          "end": 1791612076549,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1167.4855420000001,
+            "setupMs": 0.2165,
+            "tlsMs": 839.434625,
+            "proveMs": 35.713583,
+            "attestMs": 283.05370800000003,
+            "totalMs": 2325.9040000000005,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 2,
+          "worker": 1,
+          "round": 5,
+          "start": 1791612073619,
+          "end": 1791612076534,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 982.18425,
+            "setupMs": 0.388875,
+            "tlsMs": 209.580625,
+            "proveMs": 36.702708,
+            "attestMs": 1079.292,
+            "totalMs": 2308.1485000000002,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198566
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "wave": 0,
+      "start": 1791612085.767543,
+      "end": 1791612088.790499,
+      "rows": [
+        {
+          "level": 4,
+          "worker": 0,
+          "round": 0,
+          "start": 1791612085777,
+          "end": 1791612088528,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 137.260209,
+            "setupMs": 1559.4565409999998,
+            "tlsMs": 168.46375,
+            "proveMs": 41.090375,
+            "attestMs": 176.353917,
+            "totalMs": 2082.624833,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198584
+        },
+        {
+          "level": 4,
+          "worker": 1,
+          "round": 0,
+          "start": 1791612085777,
+          "end": 1791612088729,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 138.810792,
+            "setupMs": 1901.9862079999998,
+            "tlsMs": 76.491375,
+            "proveMs": 37.660292,
+            "attestMs": 132.204541,
+            "totalMs": 2287.1532079999997,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 4,
+          "worker": 2,
+          "round": 0,
+          "start": 1791612085783,
+          "end": 1791612088622,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 133.26533300000003,
+            "setupMs": 1716.5350419999997,
+            "tlsMs": 162.679708,
+            "proveMs": 37.055792,
+            "attestMs": 110.183958,
+            "totalMs": 2159.7198329999997,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 4,
+          "worker": 3,
+          "round": 0,
+          "start": 1791612085783,
+          "end": 1791612088776,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 133.030541,
+            "setupMs": 1919.73775,
+            "tlsMs": 86.655917,
+            "proveMs": 40.905083000000005,
+            "attestMs": 137.217209,
+            "totalMs": 2317.5465409999997,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198588
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "wave": 1,
+      "start": 1791612092.795348,
+      "end": 1791612094.989884,
+      "rows": [
+        {
+          "level": 4,
+          "worker": 0,
+          "round": 1,
+          "start": 1791612092799,
+          "end": 1791612094767,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 872.4289160000001,
+            "setupMs": 0.343208,
+            "tlsMs": 229.377833,
+            "proveMs": 36.894999999999996,
+            "attestMs": 202.451958,
+            "totalMs": 1341.496957,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 4,
+          "worker": 1,
+          "round": 1,
+          "start": 1791612092810,
+          "end": 1791612094741,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 883.589833,
+            "setupMs": 0.213291,
+            "tlsMs": 197.367916,
+            "proveMs": 36.82775,
+            "attestMs": 192.36387499999998,
+            "totalMs": 1310.362665,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198576
+        },
+        {
+          "level": 4,
+          "worker": 2,
+          "round": 1,
+          "start": 1791612092811,
+          "end": 1791612094923,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 978.120584,
+            "setupMs": 0.24899999999999997,
+            "tlsMs": 223.820833,
+            "proveMs": 36.616709,
+            "attestMs": 252.126,
+            "totalMs": 1490.933209,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198576
+        },
+        {
+          "level": 4,
+          "worker": 3,
+          "round": 1,
+          "start": 1791612092800,
+          "end": 1791612094632,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 543.605375,
+            "setupMs": 0.373833,
+            "tlsMs": 240.560625,
+            "proveMs": 36.911917,
+            "attestMs": 382.071833,
+            "totalMs": 1203.523583,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "wave": 2,
+      "start": 1791612098.992509,
+      "end": 1791612101.1648052,
+      "rows": [
+        {
+          "level": 4,
+          "worker": 0,
+          "round": 2,
+          "start": 1791612098998,
+          "end": 1791612101018,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 866.5925,
+            "setupMs": 0.174,
+            "tlsMs": 230.606375,
+            "proveMs": 38.020375,
+            "attestMs": 237.83641699999998,
+            "totalMs": 1373.2297079999998,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198590
+        },
+        {
+          "level": 4,
+          "worker": 1,
+          "round": 2,
+          "start": 1791612098998,
+          "end": 1791612101077,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 953.787583,
+            "setupMs": 0.16825,
+            "tlsMs": 220.0925,
+            "proveMs": 48.042542,
+            "attestMs": 204.571958,
+            "totalMs": 1426.662916,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 4,
+          "worker": 2,
+          "round": 2,
+          "start": 1791612099004,
+          "end": 1791612100985,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 860.668459,
+            "setupMs": 0.335708,
+            "tlsMs": 230.339875,
+            "proveMs": 36.917,
+            "attestMs": 198.71058299999999,
+            "totalMs": 1326.9716669999998,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 4,
+          "worker": 3,
+          "round": 2,
+          "start": 1791612099004,
+          "end": 1791612100853,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 542.985708,
+            "setupMs": 0.257459,
+            "tlsMs": 287.845959,
+            "proveMs": 37.950207999999996,
+            "attestMs": 307.16362499999997,
+            "totalMs": 1176.203001,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198576
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "wave": 3,
+      "start": 1791612105.167704,
+      "end": 1791612107.446837,
+      "rows": [
+        {
+          "level": 4,
+          "worker": 0,
+          "round": 3,
+          "start": 1791612105185,
+          "end": 1791612107246,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 828.021,
+            "setupMs": 0.453,
+            "tlsMs": 312.078042,
+            "proveMs": 38.969042,
+            "attestMs": 254.215333,
+            "totalMs": 1433.7364589999997,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 4,
+          "worker": 1,
+          "round": 3,
+          "start": 1791612105183,
+          "end": 1791612107278,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 966.8492910000001,
+            "setupMs": 0.17124999999999999,
+            "tlsMs": 218.287416,
+            "proveMs": 35.658,
+            "attestMs": 259.70425,
+            "totalMs": 1480.6702910000001,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198574
+        },
+        {
+          "level": 4,
+          "worker": 2,
+          "round": 3,
+          "start": 1791612105187,
+          "end": 1791612107216,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 845.8117090000001,
+            "setupMs": 0.253625,
+            "tlsMs": 293.075125,
+            "proveMs": 39.280415999999995,
+            "attestMs": 222.998625,
+            "totalMs": 1401.419542,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 4,
+          "worker": 3,
+          "round": 3,
+          "start": 1791612105185,
+          "end": 1791612107397,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 949.978125,
+            "setupMs": 0.209041,
+            "tlsMs": 279.800209,
+            "proveMs": 35.577958,
+            "attestMs": 251.916458,
+            "totalMs": 1517.4818329999998,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "wave": 4,
+      "start": 1791612111.450839,
+      "end": 1791612113.6376472,
+      "rows": [
+        {
+          "level": 4,
+          "worker": 0,
+          "round": 4,
+          "start": 1791612111455,
+          "end": 1791612113612,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 880.491917,
+            "setupMs": 0.180458,
+            "tlsMs": 263.188917,
+            "proveMs": 38.834208000000004,
+            "attestMs": 213.169625,
+            "totalMs": 1395.865167,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 4,
+          "worker": 1,
+          "round": 4,
+          "start": 1791612111472,
+          "end": 1791612113630,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 911.766209,
+            "setupMs": 0.165417,
+            "tlsMs": 327.79866699999997,
+            "proveMs": 38.30325,
+            "attestMs": 201.69375,
+            "totalMs": 1479.727335,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 4,
+          "worker": 2,
+          "round": 4,
+          "start": 1791612111452,
+          "end": 1791612113567,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 960.139917,
+            "setupMs": 0.25187499999999996,
+            "tlsMs": 233.382333,
+            "proveMs": 37.533375,
+            "attestMs": 208.317417,
+            "totalMs": 1439.624917,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 4,
+          "worker": 3,
+          "round": 4,
+          "start": 1791612111455,
+          "end": 1791612113397,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 531.48425,
+            "setupMs": 0.236375,
+            "tlsMs": 256.747416,
+            "proveMs": 36.682792,
+            "attestMs": 445.22145800000004,
+            "totalMs": 1270.3723329999998,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198566
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "wave": 5,
+      "start": 1791612117.644429,
+      "end": 1791612121.288696,
+      "rows": [
+        {
+          "level": 4,
+          "worker": 0,
+          "round": 5,
+          "start": 1791612117651,
+          "end": 1791612120847,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 780.288875,
+            "setupMs": 0.359875,
+            "tlsMs": 749.7285,
+            "proveMs": 36.318875,
+            "attestMs": 1018.0481669999999,
+            "totalMs": 2584.744334,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198574
+        },
+        {
+          "level": 4,
+          "worker": 1,
+          "round": 5,
+          "start": 1791612117645,
+          "end": 1791612121054,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1493.8955,
+            "setupMs": 0.238041,
+            "tlsMs": 1086.6166660000001,
+            "proveMs": 39.896292,
+            "attestMs": 184.79379200000002,
+            "totalMs": 2805.440332,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198570
+        },
+        {
+          "level": 4,
+          "worker": 2,
+          "round": 5,
+          "start": 1791612117658,
+          "end": 1791612120772,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 532.1137500000001,
+            "setupMs": 0.251125,
+            "tlsMs": 234.422792,
+            "proveMs": 36.999708,
+            "attestMs": 1677.698458,
+            "totalMs": 2481.4861250000004,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 4,
+          "worker": 3,
+          "round": 5,
+          "start": 1791612117645,
+          "end": 1791612121193,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 2525.310625,
+            "setupMs": 0.241292,
+            "tlsMs": 203.69579099999999,
+            "proveMs": 37.68475,
+            "attestMs": 171.68941700000002,
+            "totalMs": 2938.6219170000004,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198562
+        }
+      ]
+    },
+    {
+      "level": 8,
+      "wave": 0,
+      "start": 1791612130.428736,
+      "end": 1791612139.898381,
+      "rows": [
+        {
+          "level": 8,
+          "worker": 0,
+          "round": 0,
+          "start": 1791612130429,
+          "end": 1791612139195,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 180.29475,
+            "setupMs": 6604.0125,
+            "tlsMs": 212.01749999999998,
+            "proveMs": 36.089541000000004,
+            "attestMs": 1006.420292,
+            "totalMs": 8038.8346249999995,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198586
+        },
+        {
+          "level": 8,
+          "worker": 1,
+          "round": 0,
+          "start": 1791612130430,
+          "end": 1791612139115,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 173.69370800000002,
+            "setupMs": 6362.344292000001,
+            "tlsMs": 302.16837499999997,
+            "proveMs": 38.827291,
+            "attestMs": 1091.887417,
+            "totalMs": 7968.921083000001,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 8,
+          "worker": 2,
+          "round": 0,
+          "start": 1791612130432,
+          "end": 1791612139192,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 177.34812499999998,
+            "setupMs": 6354.617791,
+            "tlsMs": 310.613333,
+            "proveMs": 38.869458,
+            "attestMs": 1154.5517089999998,
+            "totalMs": 8036.000456999999,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198576
+        },
+        {
+          "level": 8,
+          "worker": 3,
+          "round": 0,
+          "start": 1791612130434,
+          "end": 1791612139471,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 217.23083300000002,
+            "setupMs": 6588.887417000001,
+            "tlsMs": 898.258375,
+            "proveMs": 43.335708000000004,
+            "attestMs": 579.812667,
+            "totalMs": 8327.525000000001,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198576
+        },
+        {
+          "level": 8,
+          "worker": 4,
+          "round": 0,
+          "start": 1791612130437,
+          "end": 1791612139341,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 222.568209,
+            "setupMs": 6677.23325,
+            "tlsMs": 949.712541,
+            "proveMs": 38.543375,
+            "attestMs": 309.868167,
+            "totalMs": 8197.925542,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 8,
+          "worker": 5,
+          "round": 0,
+          "start": 1791612130440,
+          "end": 1791612138877,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 208.961708,
+            "setupMs": 6564.992666,
+            "tlsMs": 170.75512500000002,
+            "proveMs": 37.210667,
+            "attestMs": 772.326625,
+            "totalMs": 7754.246832,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 8,
+          "worker": 6,
+          "round": 0,
+          "start": 1791612130442,
+          "end": 1791612137883,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 206.652042,
+            "setupMs": 5627.323292,
+            "tlsMs": 572.977583,
+            "proveMs": 46.182458000000004,
+            "attestMs": 366.75104200000004,
+            "totalMs": 6819.886417,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198590
+        },
+        {
+          "level": 8,
+          "worker": 7,
+          "round": 0,
+          "start": 1791612130444,
+          "end": 1791612139847,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 240.527583,
+            "setupMs": 8046.297083,
+            "tlsMs": 152.240209,
+            "proveMs": 44.640791,
+            "attestMs": 279.146,
+            "totalMs": 8762.851708,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198574
+        }
+      ]
+    },
+    {
+      "level": 8,
+      "wave": 1,
+      "start": 1791612143.9040132,
+      "end": 1791612147.339966,
+      "rows": [
+        {
+          "level": 8,
+          "worker": 0,
+          "round": 1,
+          "start": 1791612143908,
+          "end": 1791612147008,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1085.61675,
+            "setupMs": 0.2075,
+            "tlsMs": 565.5477500000001,
+            "proveMs": 55.541417,
+            "attestMs": 568.067291,
+            "totalMs": 2274.980708,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 8,
+          "worker": 1,
+          "round": 1,
+          "start": 1791612143917,
+          "end": 1791612147289,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1908.8517080000001,
+            "setupMs": 0.205084,
+            "tlsMs": 324.714042,
+            "proveMs": 38.822333,
+            "attestMs": 339.232625,
+            "totalMs": 2611.825792,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 8,
+          "worker": 2,
+          "round": 1,
+          "start": 1791612143917,
+          "end": 1791612147219,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1751.0806670000002,
+            "setupMs": 0.211416,
+            "tlsMs": 202.139083,
+            "proveMs": 40.957167000000005,
+            "attestMs": 460.85308299999997,
+            "totalMs": 2455.2414580000004,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 8,
+          "worker": 3,
+          "round": 1,
+          "start": 1791612143916,
+          "end": 1791612147276,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1903.475667,
+            "setupMs": 0.381417,
+            "tlsMs": 208.535042,
+            "proveMs": 37.994,
+            "attestMs": 419.759166,
+            "totalMs": 2570.145334,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198588
+        },
+        {
+          "level": 8,
+          "worker": 4,
+          "round": 1,
+          "start": 1791612143916,
+          "end": 1791612147137,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1598.709875,
+            "setupMs": 0.231542,
+            "tlsMs": 275.249625,
+            "proveMs": 48.004584,
+            "attestMs": 448.269833,
+            "totalMs": 2370.465542,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198590
+        },
+        {
+          "level": 8,
+          "worker": 5,
+          "round": 1,
+          "start": 1791612143921,
+          "end": 1791612147167,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1662.709666,
+            "setupMs": 0.360875,
+            "tlsMs": 287.858792,
+            "proveMs": 41.441625,
+            "attestMs": 394.996167,
+            "totalMs": 2387.367166,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198566
+        },
+        {
+          "level": 8,
+          "worker": 6,
+          "round": 1,
+          "start": 1791612143916,
+          "end": 1791612147074,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1051.593625,
+            "setupMs": 0.43062500000000004,
+            "tlsMs": 449.940792,
+            "proveMs": 163.29075,
+            "attestMs": 664.4549159999999,
+            "totalMs": 2329.71075,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198568
+        },
+        {
+          "level": 8,
+          "worker": 7,
+          "round": 1,
+          "start": 1791612143909,
+          "end": 1791612147334,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1826.131208,
+            "setupMs": 0.502625,
+            "tlsMs": 296.073875,
+            "proveMs": 39.017041,
+            "attestMs": 405.78779199999997,
+            "totalMs": 2567.512749,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        }
+      ]
+    },
+    {
+      "level": 8,
+      "wave": 2,
+      "start": 1791612151.345431,
+      "end": 1791612154.774784,
+      "rows": [
+        {
+          "level": 8,
+          "worker": 0,
+          "round": 2,
+          "start": 1791612151366,
+          "end": 1791612154634,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1715.360458,
+            "setupMs": 0.22262500000000002,
+            "tlsMs": 388.701125,
+            "proveMs": 38.444167,
+            "attestMs": 338.509083,
+            "totalMs": 2481.2375420000003,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 8,
+          "worker": 1,
+          "round": 2,
+          "start": 1791612151349,
+          "end": 1791612153297,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 501.59729200000004,
+            "setupMs": 0.220667,
+            "tlsMs": 300.201958,
+            "proveMs": 36.874458,
+            "attestMs": 502.08183399999996,
+            "totalMs": 1340.97625,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198570
+        },
+        {
+          "level": 8,
+          "worker": 2,
+          "round": 2,
+          "start": 1791612151366,
+          "end": 1791612154760,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1723.951333,
+            "setupMs": 0.20675000000000002,
+            "tlsMs": 380.10245799999996,
+            "proveMs": 39.501124999999995,
+            "attestMs": 407.428834,
+            "totalMs": 2551.190541,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 8,
+          "worker": 3,
+          "round": 2,
+          "start": 1791612151362,
+          "end": 1791612154689,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1698.076709,
+            "setupMs": 0.176875,
+            "tlsMs": 469.99433400000004,
+            "proveMs": 35.919708,
+            "attestMs": 354.050125,
+            "totalMs": 2558.217793,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198574
+        },
+        {
+          "level": 8,
+          "worker": 4,
+          "round": 2,
+          "start": 1791612151349,
+          "end": 1791612154420,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1127.3595830000002,
+            "setupMs": 0.340833,
+            "tlsMs": 286.36983399999997,
+            "proveMs": 36.525833,
+            "attestMs": 778.9262500000001,
+            "totalMs": 2229.5223750000005,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 8,
+          "worker": 5,
+          "round": 2,
+          "start": 1791612151362,
+          "end": 1791612154544,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1685.302709,
+            "setupMs": 0.28675,
+            "tlsMs": 376.307458,
+            "proveMs": 42.59925,
+            "attestMs": 297.038833,
+            "totalMs": 2401.535042,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198586
+        },
+        {
+          "level": 8,
+          "worker": 6,
+          "round": 2,
+          "start": 1791612151362,
+          "end": 1791612154436,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1668.537208,
+            "setupMs": 0.16975,
+            "tlsMs": 392.99879100000004,
+            "proveMs": 41.588042,
+            "attestMs": 208.273042,
+            "totalMs": 2311.566874,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198590
+        },
+        {
+          "level": 8,
+          "worker": 7,
+          "round": 2,
+          "start": 1791612151362,
+          "end": 1791612154336,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1183.593167,
+            "setupMs": 0.163958,
+            "tlsMs": 310.316041,
+            "proveMs": 38.222584,
+            "attestMs": 656.642291,
+            "totalMs": 2188.938083,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        }
+      ]
+    },
+    {
+      "level": 8,
+      "wave": 3,
+      "start": 1791612158.7803168,
+      "end": 1791612162.424959,
+      "rows": [
+        {
+          "level": 8,
+          "worker": 0,
+          "round": 3,
+          "start": 1791612158794,
+          "end": 1791612160861,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 544.37775,
+            "setupMs": 0.253583,
+            "tlsMs": 323.884875,
+            "proveMs": 37.721540999999995,
+            "attestMs": 518.819709,
+            "totalMs": 1425.057499,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 8,
+          "worker": 1,
+          "round": 3,
+          "start": 1791612158796,
+          "end": 1791612162317,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1788.28375,
+            "setupMs": 0.220334,
+            "tlsMs": 311.58750000000003,
+            "proveMs": 47.606834,
+            "attestMs": 380.44070800000003,
+            "totalMs": 2528.139168,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 8,
+          "worker": 2,
+          "round": 3,
+          "start": 1791612158793,
+          "end": 1791612161864,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1374.970458,
+            "setupMs": 0.178,
+            "tlsMs": 224.153625,
+            "proveMs": 40.533291999999996,
+            "attestMs": 478.956166,
+            "totalMs": 2118.791583,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 8,
+          "worker": 3,
+          "round": 3,
+          "start": 1791612158790,
+          "end": 1791612161221,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 891.541417,
+            "setupMs": 0.16595800000000002,
+            "tlsMs": 295.792416,
+            "proveMs": 38.49575,
+            "attestMs": 547.3460839999999,
+            "totalMs": 1773.341666,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198574
+        },
+        {
+          "level": 8,
+          "worker": 4,
+          "round": 3,
+          "start": 1791612158792,
+          "end": 1791612162329,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1799.066834,
+            "setupMs": 0.194291,
+            "tlsMs": 306.19437500000004,
+            "proveMs": 44.444792,
+            "attestMs": 413.96833300000003,
+            "totalMs": 2563.868667,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198606
+        },
+        {
+          "level": 8,
+          "worker": 5,
+          "round": 3,
+          "start": 1791612158790,
+          "end": 1791612162324,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1741.0997909999999,
+            "setupMs": 0.18312499999999998,
+            "tlsMs": 310.241958,
+            "proveMs": 44.281583,
+            "attestMs": 469.505792,
+            "totalMs": 2565.3122909999997,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 8,
+          "worker": 6,
+          "round": 3,
+          "start": 1791612158790,
+          "end": 1791612162060,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1556.526041,
+            "setupMs": 0.267166,
+            "tlsMs": 263.75874999999996,
+            "proveMs": 42.791708,
+            "attestMs": 544.402167,
+            "totalMs": 2407.7458730000003,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 8,
+          "worker": 7,
+          "round": 3,
+          "start": 1791612158785,
+          "end": 1791612161881,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1502.9423749999999,
+            "setupMs": 0.17908400000000002,
+            "tlsMs": 209.062959,
+            "proveMs": 41.04425,
+            "attestMs": 440.43520800000005,
+            "totalMs": 2193.663918,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        }
+      ]
+    },
+    {
+      "level": 8,
+      "wave": 4,
+      "start": 1791612166.431356,
+      "end": 1791612169.753931,
+      "rows": [
+        {
+          "level": 8,
+          "worker": 0,
+          "round": 4,
+          "start": 1791612166436,
+          "end": 1791612169131,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 926.8411669999999,
+            "setupMs": 0.242542,
+            "tlsMs": 282.228625,
+            "proveMs": 39.061416,
+            "attestMs": 436.78108399999996,
+            "totalMs": 1685.154875,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 8,
+          "worker": 1,
+          "round": 4,
+          "start": 1791612166437,
+          "end": 1791612169647,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1659.749667,
+            "setupMs": 0.192042,
+            "tlsMs": 251.973791,
+            "proveMs": 44.130250000000004,
+            "attestMs": 259.210917,
+            "totalMs": 2215.2567090000002,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 8,
+          "worker": 2,
+          "round": 4,
+          "start": 1791612166448,
+          "end": 1791612169478,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1372.727375,
+            "setupMs": 0.230041,
+            "tlsMs": 331.15774999999996,
+            "proveMs": 77.94612500000001,
+            "attestMs": 303.16949999999997,
+            "totalMs": 2085.230833,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198586
+        },
+        {
+          "level": 8,
+          "worker": 3,
+          "round": 4,
+          "start": 1791612166445,
+          "end": 1791612169287,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1350.798917,
+            "setupMs": 0.245916,
+            "tlsMs": 234.00241699999998,
+            "proveMs": 40.023875000000004,
+            "attestMs": 378.372167,
+            "totalMs": 2003.4433330000002,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198570
+        },
+        {
+          "level": 8,
+          "worker": 4,
+          "round": 4,
+          "start": 1791612166437,
+          "end": 1791612168480,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 535.871208,
+            "setupMs": 0.32316700000000004,
+            "tlsMs": 304.62433300000004,
+            "proveMs": 37.077833,
+            "attestMs": 480.254917,
+            "totalMs": 1358.1515,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198574
+        },
+        {
+          "level": 8,
+          "worker": 5,
+          "round": 4,
+          "start": 1791612166448,
+          "end": 1791612169656,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1725.0667079999998,
+            "setupMs": 0.9101670000000001,
+            "tlsMs": 278.03187499999996,
+            "proveMs": 46.056417,
+            "attestMs": 221.214583,
+            "totalMs": 2271.2798749999997,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 8,
+          "worker": 6,
+          "round": 4,
+          "start": 1791612166441,
+          "end": 1791612169543,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1530.629917,
+            "setupMs": 0.202625,
+            "tlsMs": 270.508375,
+            "proveMs": 45.704625,
+            "attestMs": 290.51175,
+            "totalMs": 2137.557292,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198570
+        },
+        {
+          "level": 8,
+          "worker": 7,
+          "round": 4,
+          "start": 1791612166449,
+          "end": 1791612169610,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1720.3064160000001,
+            "setupMs": 0.20725,
+            "tlsMs": 192.637167,
+            "proveMs": 45.018792000000005,
+            "attestMs": 250.737708,
+            "totalMs": 2208.907333,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198586
+        }
+      ]
+    },
+    {
+      "level": 8,
+      "wave": 5,
+      "start": 1791612173.7585359,
+      "end": 1791612176.970647,
+      "rows": [
+        {
+          "level": 8,
+          "worker": 0,
+          "round": 5,
+          "start": 1791612173772,
+          "end": 1791612176753,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 699.007417,
+            "setupMs": 0.274375,
+            "tlsMs": 424.11341699999997,
+            "proveMs": 40.636166,
+            "attestMs": 899.508125,
+            "totalMs": 2063.539542,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 8,
+          "worker": 1,
+          "round": 5,
+          "start": 1791612173772,
+          "end": 1791612176686,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 855.143041,
+            "setupMs": 0.26079199999999997,
+            "tlsMs": 363.676375,
+            "proveMs": 37.974459,
+            "attestMs": 773.7545,
+            "totalMs": 2030.8092080000001,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198574
+        },
+        {
+          "level": 8,
+          "worker": 2,
+          "round": 5,
+          "start": 1791612173764,
+          "end": 1791612176960,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1815.644666,
+            "setupMs": 0.185958,
+            "tlsMs": 266.437916,
+            "proveMs": 75.654084,
+            "attestMs": 221.396916,
+            "totalMs": 2379.319582,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198588
+        },
+        {
+          "level": 8,
+          "worker": 3,
+          "round": 5,
+          "start": 1791612173779,
+          "end": 1791612176955,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1602.489542,
+            "setupMs": 0.238584,
+            "tlsMs": 221.96237499999998,
+            "proveMs": 40.339,
+            "attestMs": 435.129708,
+            "totalMs": 2300.159209,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 8,
+          "worker": 4,
+          "round": 5,
+          "start": 1791612173779,
+          "end": 1791612176952,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1677.808459,
+            "setupMs": 0.202042,
+            "tlsMs": 246.76108299999999,
+            "proveMs": 36.631709,
+            "attestMs": 336.993625,
+            "totalMs": 2298.397001,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198586
+        },
+        {
+          "level": 8,
+          "worker": 5,
+          "round": 5,
+          "start": 1791612173780,
+          "end": 1791612176853,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1485.308458,
+            "setupMs": 0.326166,
+            "tlsMs": 293.364208,
+            "proveMs": 39.495000000000005,
+            "attestMs": 314.027375,
+            "totalMs": 2132.52129,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 8,
+          "worker": 6,
+          "round": 5,
+          "start": 1791612173772,
+          "end": 1791612176775,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1410.2224999999999,
+            "setupMs": 0.215334,
+            "tlsMs": 248.044459,
+            "proveMs": 38.742041,
+            "attestMs": 485.767667,
+            "totalMs": 2182.9920009999996,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198606
+        },
+        {
+          "level": 8,
+          "worker": 7,
+          "round": 5,
+          "start": 1791612173772,
+          "end": 1791612176906,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1597.9017500000002,
+            "setupMs": 0.19325,
+            "tlsMs": 237.99579200000002,
+            "proveMs": 39.557916,
+            "attestMs": 396.3545,
+            "totalMs": 2272.00325,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198590
+        }
+      ]
+    },
+    {
+      "level": 16,
+      "wave": 0,
+      "start": 1791612186.137322,
+      "end": 1791612204.8139179,
+      "rows": [
+        {
+          "level": 16,
+          "worker": 0,
+          "round": 0,
+          "start": 1791612186157,
+          "end": 1791612200672,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 235.56091600000002,
+            "setupMs": 13091.420042,
+            "tlsMs": 201.701458,
+            "proveMs": 36.44245900000001,
+            "attestMs": 208.662041,
+            "totalMs": 13773.786958,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 222002
+        },
+        {
+          "level": 16,
+          "worker": 1,
+          "round": 0,
+          "start": 1791612186137,
+          "end": 1791612201375,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 166.523167,
+            "setupMs": 13811.560458,
+            "tlsMs": 223.80075,
+            "proveMs": 48.563125,
+            "attestMs": 335.728,
+            "totalMs": 14586.175540999999,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 2,
+          "round": 0,
+          "start": 1791612186157,
+          "end": 1791612204495,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 14182.5865,
+            "setupMs": 3039.127417,
+            "tlsMs": 184.73708299999998,
+            "proveMs": 43.870709,
+            "attestMs": 195.074791,
+            "totalMs": 17645.396542000002,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198576
+        },
+        {
+          "level": 16,
+          "worker": 3,
+          "round": 0,
+          "start": 1791612186139,
+          "end": 1791612201323,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 164.79054100000002,
+            "setupMs": 13856.69425,
+            "tlsMs": 189.62358300000002,
+            "proveMs": 51.842375000000004,
+            "attestMs": 276.847125,
+            "totalMs": 14539.797916000001,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198574
+        },
+        {
+          "level": 16,
+          "worker": 4,
+          "round": 0,
+          "start": 1791612186142,
+          "end": 1791612201037,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 156.087917,
+            "setupMs": 13403.055042,
+            "tlsMs": 229.79945800000002,
+            "proveMs": 38.445292,
+            "attestMs": 368.78775,
+            "totalMs": 14196.175584,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 16,
+          "worker": 5,
+          "round": 0,
+          "start": 1791612186145,
+          "end": 1791612203831,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 13681.695333,
+            "setupMs": 2634.532208,
+            "tlsMs": 269.130292,
+            "proveMs": 36.77675,
+            "attestMs": 347.10316600000004,
+            "totalMs": 16969.237749,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 6,
+          "round": 0,
+          "start": 1791612186147,
+          "end": 1791612204714,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 14533.136209,
+            "setupMs": 2998.6281249999997,
+            "tlsMs": 124.98724999999999,
+            "proveMs": 40.541708,
+            "attestMs": 180.211375,
+            "totalMs": 17877.504709,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198566
+        },
+        {
+          "level": 16,
+          "worker": 7,
+          "round": 0,
+          "start": 1791612186150,
+          "end": 1791612201016,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 242.464666,
+            "setupMs": 13338.505333000001,
+            "tlsMs": 227.21408300000002,
+            "proveMs": 38.028917,
+            "attestMs": 317.825042,
+            "totalMs": 14164.038082000001,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198586
+        },
+        {
+          "level": 16,
+          "worker": 8,
+          "round": 0,
+          "start": 1791612186154,
+          "end": 1791612200940,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 238.508667,
+            "setupMs": 12952.097416999999,
+            "tlsMs": 298.37091599999997,
+            "proveMs": 37.134292,
+            "attestMs": 550.368292,
+            "totalMs": 14076.479583999999,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 200516
+        },
+        {
+          "level": 16,
+          "worker": 9,
+          "round": 0,
+          "start": 1791612186155,
+          "end": 1791612203661,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 13776.645625000001,
+            "setupMs": 2555.9206249999997,
+            "tlsMs": 227.63125,
+            "proveMs": 39.182792,
+            "attestMs": 262.12287499999996,
+            "totalMs": 16861.503208,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198590
+        },
+        {
+          "level": 16,
+          "worker": 10,
+          "round": 0,
+          "start": 1791612186157,
+          "end": 1791612204610,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 14566.935958,
+            "setupMs": 2875.758958,
+            "tlsMs": 144.12483400000002,
+            "proveMs": 38.888458,
+            "attestMs": 137.624208,
+            "totalMs": 17763.332583,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198586
+        },
+        {
+          "level": 16,
+          "worker": 11,
+          "round": 0,
+          "start": 1791612186139,
+          "end": 1791612200477,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 164.53075,
+            "setupMs": 12888.979625,
+            "tlsMs": 366.23254199999997,
+            "proveMs": 38.063167,
+            "attestMs": 229.361041,
+            "totalMs": 13687.167167,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198570
+        },
+        {
+          "level": 16,
+          "worker": 12,
+          "round": 0,
+          "start": 1791612186141,
+          "end": 1791612200795,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 157.29579199999998,
+            "setupMs": 13305.982833,
+            "tlsMs": 180.447333,
+            "proveMs": 36.188625,
+            "attestMs": 272.371375,
+            "totalMs": 13952.285958,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198594
+        },
+        {
+          "level": 16,
+          "worker": 13,
+          "round": 0,
+          "start": 1791612186143,
+          "end": 1791612203846,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 14088.501,
+            "setupMs": 2400.143083,
+            "tlsMs": 222.548875,
+            "proveMs": 36.706041,
+            "attestMs": 303.671709,
+            "totalMs": 17051.570749,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198594
+        },
+        {
+          "level": 16,
+          "worker": 14,
+          "round": 0,
+          "start": 1791612186144,
+          "end": 1791612204739,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 14170.397209,
+            "setupMs": 3428.438875,
+            "tlsMs": 110.706334,
+            "proveMs": 37.343666,
+            "attestMs": 167.900709,
+            "totalMs": 17914.786834000002,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 16,
+          "worker": 15,
+          "round": 0,
+          "start": 1791612186147,
+          "end": 1791612204514,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 13945.876792,
+            "setupMs": 3230.25425,
+            "tlsMs": 213.83725,
+            "proveMs": 40.541708,
+            "attestMs": 247.718334,
+            "totalMs": 17678.228459,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "proofBytes": 198572
+        }
+      ]
+    },
+    {
+      "level": 16,
+      "wave": 1,
+      "start": 1791612208.817444,
+      "end": 1791612214.007767,
+      "rows": [
+        {
+          "level": 16,
+          "worker": 0,
+          "round": 1,
+          "start": 1791612208825,
+          "end": 1791612212331,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1743.543791,
+            "setupMs": 0.21504099999999998,
+            "tlsMs": 377.617417,
+            "proveMs": 40.478624999999994,
+            "attestMs": 666.691292,
+            "totalMs": 2828.546166,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198564
+        },
+        {
+          "level": 16,
+          "worker": 1,
+          "round": 1,
+          "start": 1791612208836,
+          "end": 1791612213922,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3725.823541,
+            "setupMs": 0.210584,
+            "tlsMs": 379.195792,
+            "proveMs": 40.506416,
+            "attestMs": 208.70170900000002,
+            "totalMs": 4354.438083,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        },
+        {
+          "level": 16,
+          "worker": 2,
+          "round": 1,
+          "start": 1791612208835,
+          "end": 1791612212111,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1714.25275,
+            "setupMs": 0.266833,
+            "tlsMs": 316.4045,
+            "proveMs": 40.399958,
+            "attestMs": 516.132292,
+            "totalMs": 2587.4563749999998,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 200518
+        },
+        {
+          "level": 16,
+          "worker": 3,
+          "round": 1,
+          "start": 1791612208828,
+          "end": 1791612213024,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 2839.8512079999996,
+            "setupMs": 0.189042,
+            "tlsMs": 258.10116700000003,
+            "proveMs": 45.427083,
+            "attestMs": 421.840125,
+            "totalMs": 3565.4086669999997,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198570
+        },
+        {
+          "level": 16,
+          "worker": 4,
+          "round": 1,
+          "start": 1791612208819,
+          "end": 1791612210837,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 550.683,
+            "setupMs": 0.366416,
+            "tlsMs": 276.881709,
+            "proveMs": 36.53775,
+            "attestMs": 545.5159160000001,
+            "totalMs": 1409.984875,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198584
+        },
+        {
+          "level": 16,
+          "worker": 5,
+          "round": 1,
+          "start": 1791612208831,
+          "end": 1791612212218,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1726.0786249999999,
+            "setupMs": 0.195833,
+            "tlsMs": 423.4615,
+            "proveMs": 37.179291000000006,
+            "attestMs": 444.584875,
+            "totalMs": 2631.5001239999997,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 6,
+          "round": 1,
+          "start": 1791612208833,
+          "end": 1791612213803,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3695.6867500000003,
+            "setupMs": 0.198458,
+            "tlsMs": 323.804,
+            "proveMs": 38.95375,
+            "attestMs": 239.580375,
+            "totalMs": 4298.2233750000005,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198570
+        },
+        {
+          "level": 16,
+          "worker": 7,
+          "round": 1,
+          "start": 1791612208835,
+          "end": 1791612213790,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3693.781875,
+            "setupMs": 0.366958,
+            "tlsMs": 278.775542,
+            "proveMs": 40.077166,
+            "attestMs": 210.180875,
+            "totalMs": 4223.182458,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        },
+        {
+          "level": 16,
+          "worker": 8,
+          "round": 1,
+          "start": 1791612208821,
+          "end": 1791612211936,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1676.870291,
+            "setupMs": 0.1885,
+            "tlsMs": 368.75958399999996,
+            "proveMs": 39.441958,
+            "attestMs": 352.721875,
+            "totalMs": 2437.98225,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198570
+        },
+        {
+          "level": 16,
+          "worker": 9,
+          "round": 1,
+          "start": 1791612208831,
+          "end": 1791612211735,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1158.8460839999998,
+            "setupMs": 0.586875,
+            "tlsMs": 296.307208,
+            "proveMs": 35.649375,
+            "attestMs": 755.976708,
+            "totalMs": 2247.3662919999997,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198564
+        },
+        {
+          "level": 16,
+          "worker": 10,
+          "round": 1,
+          "start": 1791612208828,
+          "end": 1791612212984,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 2738.082125,
+            "setupMs": 0.20666700000000002,
+            "tlsMs": 302.62983399999996,
+            "proveMs": 52.254833,
+            "attestMs": 445.973083,
+            "totalMs": 3539.1465839999996,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 11,
+          "round": 1,
+          "start": 1791612208825,
+          "end": 1791612212283,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1920.71575,
+            "setupMs": 0.313458,
+            "tlsMs": 285.020042,
+            "proveMs": 37.571541,
+            "attestMs": 512.886125,
+            "totalMs": 2756.5070830000004,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198576
+        },
+        {
+          "level": 16,
+          "worker": 12,
+          "round": 1,
+          "start": 1791612208831,
+          "end": 1791612213832,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3597.045708,
+            "setupMs": 0.34675,
+            "tlsMs": 388.523375,
+            "proveMs": 40.474542,
+            "attestMs": 250.04729199999997,
+            "totalMs": 4276.437708,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        },
+        {
+          "level": 16,
+          "worker": 13,
+          "round": 1,
+          "start": 1791612208830,
+          "end": 1791612213604,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3547.212084,
+            "setupMs": 0.304625,
+            "tlsMs": 191.02474999999998,
+            "proveMs": 38.488917,
+            "attestMs": 338.349583,
+            "totalMs": 4115.380043,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198584
+        },
+        {
+          "level": 16,
+          "worker": 14,
+          "round": 1,
+          "start": 1791612208836,
+          "end": 1791612212277,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1750.53625,
+            "setupMs": 0.313583,
+            "tlsMs": 359.39770799999997,
+            "proveMs": 39.449709,
+            "attestMs": 604.282,
+            "totalMs": 2753.9792910000006,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 16,
+          "worker": 15,
+          "round": 1,
+          "start": 1791612208833,
+          "end": 1791612211796,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1262.6425000000002,
+            "setupMs": 0.21412499999999998,
+            "tlsMs": 275.01750000000004,
+            "proveMs": 35.858208000000005,
+            "attestMs": 717.7205829999999,
+            "totalMs": 2291.4529580000003,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198568
+        }
+      ]
+    },
+    {
+      "level": 16,
+      "wave": 2,
+      "start": 1791612218.0130508,
+      "end": 1791612222.901741,
+      "rows": [
+        {
+          "level": 16,
+          "worker": 0,
+          "round": 2,
+          "start": 1791612218019,
+          "end": 1791612221674,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1653.006041,
+            "setupMs": 0.176292,
+            "tlsMs": 341.233375,
+            "proveMs": 38.281875,
+            "attestMs": 516.6566660000001,
+            "totalMs": 2549.354333,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198568
+        },
+        {
+          "level": 16,
+          "worker": 1,
+          "round": 2,
+          "start": 1791612218014,
+          "end": 1791612221828,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1742.399125,
+            "setupMs": 0.169666,
+            "tlsMs": 286.254375,
+            "proveMs": 37.516583,
+            "attestMs": 532.899084,
+            "totalMs": 2599.238833,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 2,
+          "round": 2,
+          "start": 1791612218034,
+          "end": 1791612221414,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1302.311625,
+            "setupMs": 0.218375,
+            "tlsMs": 247.46075000000002,
+            "proveMs": 35.04525,
+            "attestMs": 622.668667,
+            "totalMs": 2207.704708,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 3,
+          "round": 2,
+          "start": 1791612218016,
+          "end": 1791612221872,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1668.210375,
+            "setupMs": 0.17308300000000001,
+            "tlsMs": 326.85875,
+            "proveMs": 41.746916,
+            "attestMs": 515.229792,
+            "totalMs": 2552.218958,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 4,
+          "round": 2,
+          "start": 1791612218024,
+          "end": 1791612222013,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 2221.2854169999996,
+            "setupMs": 0.238333,
+            "tlsMs": 251.46933399999998,
+            "proveMs": 42.818000000000005,
+            "attestMs": 347.482916,
+            "totalMs": 2863.2940419999995,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 5,
+          "round": 2,
+          "start": 1791612218026,
+          "end": 1791612221250,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1511.807583,
+            "setupMs": 0.239417,
+            "tlsMs": 209.804292,
+            "proveMs": 35.168,
+            "attestMs": 497.732542,
+            "totalMs": 2254.751875,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 200520
+        },
+        {
+          "level": 16,
+          "worker": 6,
+          "round": 2,
+          "start": 1791612218013,
+          "end": 1791612220037,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 536.751042,
+            "setupMs": 0.31195799999999996,
+            "tlsMs": 308.00766699999997,
+            "proveMs": 35.565542,
+            "attestMs": 555.3650409999999,
+            "totalMs": 1436.001292,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198588
+        },
+        {
+          "level": 16,
+          "worker": 7,
+          "round": 2,
+          "start": 1791612218017,
+          "end": 1791612222845,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3514.9563329999996,
+            "setupMs": 0.324792,
+            "tlsMs": 304.222209,
+            "proveMs": 74.023416,
+            "attestMs": 172.31875,
+            "totalMs": 4065.8455419999996,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        },
+        {
+          "level": 16,
+          "worker": 8,
+          "round": 2,
+          "start": 1791612218024,
+          "end": 1791612222152,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 2526.6370829999996,
+            "setupMs": 0.17891700000000002,
+            "tlsMs": 238.712166,
+            "proveMs": 76.506084,
+            "attestMs": 341.517166,
+            "totalMs": 3183.551541,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198590
+        },
+        {
+          "level": 16,
+          "worker": 9,
+          "round": 2,
+          "start": 1791612218021,
+          "end": 1791612222724,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3474.97925,
+            "setupMs": 0.32337499999999997,
+            "tlsMs": 218.170333,
+            "proveMs": 96.028208,
+            "attestMs": 159.15875,
+            "totalMs": 3948.66,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 16,
+          "worker": 10,
+          "round": 2,
+          "start": 1791612218023,
+          "end": 1791612222653,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3165.06875,
+            "setupMs": 0.19816699999999998,
+            "tlsMs": 254.06675,
+            "proveMs": 108.736917,
+            "attestMs": 250.190666,
+            "totalMs": 3778.261459,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        },
+        {
+          "level": 16,
+          "worker": 11,
+          "round": 2,
+          "start": 1791612218024,
+          "end": 1791612220679,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1117.864125,
+            "setupMs": 0.597792,
+            "tlsMs": 255.94795799999997,
+            "proveMs": 35.331959000000005,
+            "attestMs": 469.906791,
+            "totalMs": 1879.648625,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198588
+        },
+        {
+          "level": 16,
+          "worker": 12,
+          "round": 2,
+          "start": 1791612218017,
+          "end": 1791612222038,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1979.6592500000002,
+            "setupMs": 0.3145,
+            "tlsMs": 269.083958,
+            "proveMs": 70.30175,
+            "attestMs": 553.009542,
+            "totalMs": 2872.369041,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198574
+        },
+        {
+          "level": 16,
+          "worker": 13,
+          "round": 2,
+          "start": 1791612218033,
+          "end": 1791612222635,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3182.070875,
+            "setupMs": 0.2235,
+            "tlsMs": 300.236625,
+            "proveMs": 118.43195800000001,
+            "attestMs": 220.409292,
+            "totalMs": 3821.372458,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198584
+        },
+        {
+          "level": 16,
+          "worker": 14,
+          "round": 2,
+          "start": 1791612218016,
+          "end": 1791612222536,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 2924.405333,
+            "setupMs": 0.405958,
+            "tlsMs": 294.346167,
+            "proveMs": 86.719167,
+            "attestMs": 196.58520800000002,
+            "totalMs": 3502.461875,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 15,
+          "round": 2,
+          "start": 1791612218014,
+          "end": 1791612222040,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1751.995333,
+            "setupMs": 0.27754100000000004,
+            "tlsMs": 501.981,
+            "proveMs": 102.654375,
+            "attestMs": 602.597459,
+            "totalMs": 2959.5059579999997,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        }
+      ]
+    },
+    {
+      "level": 16,
+      "wave": 3,
+      "start": 1791612226.90763,
+      "end": 1791612232.5007749,
+      "rows": [
+        {
+          "level": 16,
+          "worker": 0,
+          "round": 3,
+          "start": 1791612226912,
+          "end": 1791612230452,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1930.2772080000002,
+            "setupMs": 0.19683299999999998,
+            "tlsMs": 228.340083,
+            "proveMs": 41.871875,
+            "attestMs": 582.318333,
+            "totalMs": 2783.004374,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 16,
+          "worker": 1,
+          "round": 3,
+          "start": 1791612226920,
+          "end": 1791612229929,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1356.5865,
+            "setupMs": 0.298667,
+            "tlsMs": 267.95662500000003,
+            "proveMs": 39.995166999999995,
+            "attestMs": 585.286333,
+            "totalMs": 2250.123334,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 2,
+          "round": 3,
+          "start": 1791612226917,
+          "end": 1791612230127,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1611.7231250000002,
+            "setupMs": 0.182792,
+            "tlsMs": 335.227916,
+            "proveMs": 48.562917,
+            "attestMs": 398.288292,
+            "totalMs": 2393.9850830000005,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 3,
+          "round": 3,
+          "start": 1791612226912,
+          "end": 1791612230273,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1615.2519160000002,
+            "setupMs": 0.196667,
+            "tlsMs": 336.356,
+            "proveMs": 46.823707999999996,
+            "attestMs": 537.266292,
+            "totalMs": 2535.894625,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198568
+        },
+        {
+          "level": 16,
+          "worker": 4,
+          "round": 3,
+          "start": 1791612226918,
+          "end": 1791612230345,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1788.498083,
+            "setupMs": 0.181416,
+            "tlsMs": 355.57358300000004,
+            "proveMs": 44.614000000000004,
+            "attestMs": 422.456709,
+            "totalMs": 2611.323832,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 5,
+          "round": 3,
+          "start": 1791612226921,
+          "end": 1791612230027,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1145.646583,
+            "setupMs": 0.20274999999999999,
+            "tlsMs": 261.501375,
+            "proveMs": 36.590292000000005,
+            "attestMs": 788.198041,
+            "totalMs": 2232.139083,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 6,
+          "round": 3,
+          "start": 1791612226922,
+          "end": 1791612232493,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3830.773458,
+            "setupMs": 0.271584,
+            "tlsMs": 350.412,
+            "proveMs": 59.984750000000005,
+            "attestMs": 354.131958,
+            "totalMs": 4595.573792,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 7,
+          "round": 3,
+          "start": 1791612226923,
+          "end": 1791612232393,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3891.608584,
+            "setupMs": 0.201208,
+            "tlsMs": 417.91425,
+            "proveMs": 42.714083,
+            "attestMs": 233.32983299999998,
+            "totalMs": 4585.768,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198590
+        },
+        {
+          "level": 16,
+          "worker": 8,
+          "round": 3,
+          "start": 1791612226918,
+          "end": 1791612230343,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1725.4684579999998,
+            "setupMs": 0.51925,
+            "tlsMs": 382.01354100000003,
+            "proveMs": 44.602667,
+            "attestMs": 493.669917,
+            "totalMs": 2646.273874,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198584
+        },
+        {
+          "level": 16,
+          "worker": 9,
+          "round": 3,
+          "start": 1791612226923,
+          "end": 1791612231958,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3075.8085419999998,
+            "setupMs": 0.937,
+            "tlsMs": 342.072583,
+            "proveMs": 43.694209,
+            "attestMs": 754.9117910000001,
+            "totalMs": 4217.424166999999,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 10,
+          "round": 3,
+          "start": 1791612226916,
+          "end": 1791612232061,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3170.2164169999996,
+            "setupMs": 0.552417,
+            "tlsMs": 302.75562499999995,
+            "proveMs": 43.288708,
+            "attestMs": 790.070959,
+            "totalMs": 4306.884166999999,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 16,
+          "worker": 11,
+          "round": 3,
+          "start": 1791612226916,
+          "end": 1791612228999,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 535.4210830000001,
+            "setupMs": 0.5077499999999999,
+            "tlsMs": 295.282917,
+            "proveMs": 38.292667,
+            "attestMs": 572.087291,
+            "totalMs": 1441.59175,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 16,
+          "worker": 12,
+          "round": 3,
+          "start": 1791612226912,
+          "end": 1791612230496,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1740.8225000000002,
+            "setupMs": 0.412708,
+            "tlsMs": 370.478042,
+            "proveMs": 39.1945,
+            "attestMs": 685.561958,
+            "totalMs": 2836.4697080000005,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 200516
+        },
+        {
+          "level": 16,
+          "worker": 13,
+          "round": 3,
+          "start": 1791612226917,
+          "end": 1791612232187,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3815.042166,
+            "setupMs": 0.23558300000000001,
+            "tlsMs": 344.715875,
+            "proveMs": 50.778499999999994,
+            "attestMs": 213.01179100000002,
+            "totalMs": 4423.783957000001,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 16,
+          "worker": 14,
+          "round": 3,
+          "start": 1791612226916,
+          "end": 1791612232242,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3787.119583,
+            "setupMs": 0.34008299999999997,
+            "tlsMs": 373.003041,
+            "proveMs": 53.720167,
+            "attestMs": 253.615583,
+            "totalMs": 4467.798499,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 16,
+          "worker": 15,
+          "round": 3,
+          "start": 1791612226921,
+          "end": 1791612232373,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3947.660292,
+            "setupMs": 0.236958,
+            "tlsMs": 257.329458,
+            "proveMs": 48.768041999999994,
+            "attestMs": 301.155541,
+            "totalMs": 4555.150333,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        }
+      ]
+    },
+    {
+      "level": 16,
+      "wave": 4,
+      "start": 1791612236.506482,
+      "end": 1791612241.60129,
+      "rows": [
+        {
+          "level": 16,
+          "worker": 0,
+          "round": 4,
+          "start": 1791612236521,
+          "end": 1791612241012,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 2960.269542,
+            "setupMs": 0.425167,
+            "tlsMs": 272.98375000000004,
+            "proveMs": 54.497334,
+            "attestMs": 343.482458,
+            "totalMs": 3631.658293,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 1,
+          "round": 4,
+          "start": 1791612236526,
+          "end": 1791612241526,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3555.887625,
+            "setupMs": 0.48916699999999996,
+            "tlsMs": 319.41920899999997,
+            "proveMs": 51.009083,
+            "attestMs": 220.49433299999998,
+            "totalMs": 4147.299459,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198566
+        },
+        {
+          "level": 16,
+          "worker": 2,
+          "round": 4,
+          "start": 1791612236521,
+          "end": 1791612241243,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3208.0711659999997,
+            "setupMs": 0.28875,
+            "tlsMs": 255.16366699999998,
+            "proveMs": 47.250541,
+            "attestMs": 459.872375,
+            "totalMs": 3970.646541,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198570
+        },
+        {
+          "level": 16,
+          "worker": 3,
+          "round": 4,
+          "start": 1791612236524,
+          "end": 1791612239600,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1436.155916,
+            "setupMs": 0.259833,
+            "tlsMs": 237.624625,
+            "proveMs": 49.412708,
+            "attestMs": 434.339375,
+            "totalMs": 2157.79254,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 4,
+          "round": 4,
+          "start": 1791612236521,
+          "end": 1791612241465,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3559.730792,
+            "setupMs": 0.521416,
+            "tlsMs": 273.488792,
+            "proveMs": 52.436083,
+            "attestMs": 179.91987500000002,
+            "totalMs": 4066.0969999999998,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222002
+        },
+        {
+          "level": 16,
+          "worker": 5,
+          "round": 4,
+          "start": 1791612236527,
+          "end": 1791612241457,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3646.100292,
+            "setupMs": 0.347,
+            "tlsMs": 224.20875,
+            "proveMs": 51.707207999999994,
+            "attestMs": 230.708,
+            "totalMs": 4153.0712920000005,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 16,
+          "worker": 6,
+          "round": 4,
+          "start": 1791612236523,
+          "end": 1791612240522,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 2534.7765,
+            "setupMs": 0.204708,
+            "tlsMs": 290.176125,
+            "proveMs": 74.61116700000001,
+            "attestMs": 393.712625,
+            "totalMs": 3293.481166,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198584
+        },
+        {
+          "level": 16,
+          "worker": 7,
+          "round": 4,
+          "start": 1791612236526,
+          "end": 1791612239973,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1699.5290830000001,
+            "setupMs": 0.370083,
+            "tlsMs": 330.52491699999996,
+            "proveMs": 41.512792,
+            "attestMs": 534.325708,
+            "totalMs": 2606.2630830000003,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 16,
+          "worker": 8,
+          "round": 4,
+          "start": 1791612236522,
+          "end": 1791612239682,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1214.398041,
+            "setupMs": 0.398,
+            "tlsMs": 364.92025,
+            "proveMs": 69.508875,
+            "attestMs": 558.2287500000001,
+            "totalMs": 2207.4541249999997,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198576
+        },
+        {
+          "level": 16,
+          "worker": 9,
+          "round": 4,
+          "start": 1791612236508,
+          "end": 1791612238787,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 532.4757079999999,
+            "setupMs": 0.47812499999999997,
+            "tlsMs": 346.938625,
+            "proveMs": 41.666583,
+            "attestMs": 643.2665840000001,
+            "totalMs": 1564.8256660000002,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198584
+        },
+        {
+          "level": 16,
+          "worker": 10,
+          "round": 4,
+          "start": 1791612236508,
+          "end": 1791612239945,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1706.210042,
+            "setupMs": 0.334917,
+            "tlsMs": 207.017208,
+            "proveMs": 44.984916999999996,
+            "attestMs": 613.4914580000001,
+            "totalMs": 2572.038584,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 11,
+          "round": 4,
+          "start": 1791612236521,
+          "end": 1791612241545,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3656.440084,
+            "setupMs": 0.589708,
+            "tlsMs": 342.56325,
+            "proveMs": 48.577000000000005,
+            "attestMs": 181.257958,
+            "totalMs": 4229.428042,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198568
+        },
+        {
+          "level": 16,
+          "worker": 12,
+          "round": 4,
+          "start": 1791612236511,
+          "end": 1791612239831,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1469.5683749999998,
+            "setupMs": 1.1777090000000001,
+            "tlsMs": 304.488292,
+            "proveMs": 46.960457999999996,
+            "attestMs": 601.8213340000001,
+            "totalMs": 2424.016209,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198568
+        },
+        {
+          "level": 16,
+          "worker": 13,
+          "round": 4,
+          "start": 1791612236513,
+          "end": 1791612239921,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1599.696125,
+            "setupMs": 0.313,
+            "tlsMs": 308.55424999999997,
+            "proveMs": 48.367625,
+            "attestMs": 616.575333,
+            "totalMs": 2573.506375,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 14,
+          "round": 4,
+          "start": 1791612236525,
+          "end": 1791612240126,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1957.300916,
+            "setupMs": 0.329875,
+            "tlsMs": 356.66325,
+            "proveMs": 71.046333,
+            "attestMs": 448.85837499999997,
+            "totalMs": 2834.198791,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198568
+        },
+        {
+          "level": 16,
+          "worker": 15,
+          "round": 4,
+          "start": 1791612236523,
+          "end": 1791612239616,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1255.965917,
+            "setupMs": 0.22808299999999998,
+            "tlsMs": 303.83675,
+            "proveMs": 77.2165,
+            "attestMs": 628.766667,
+            "totalMs": 2266.013959,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198588
+        }
+      ]
+    },
+    {
+      "level": 16,
+      "wave": 5,
+      "start": 1791612245.607286,
+      "end": 1791612250.581727,
+      "rows": [
+        {
+          "level": 16,
+          "worker": 0,
+          "round": 5,
+          "start": 1791612245626,
+          "end": 1791612250354,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3352.369,
+            "setupMs": 0.239584,
+            "tlsMs": 265.745667,
+            "proveMs": 50.046416,
+            "attestMs": 347.04033400000003,
+            "totalMs": 4015.441042,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198590
+        },
+        {
+          "level": 16,
+          "worker": 1,
+          "round": 5,
+          "start": 1791612245615,
+          "end": 1791612250498,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3681.290542,
+            "setupMs": 0.35141700000000003,
+            "tlsMs": 227.864,
+            "proveMs": 70.58975000000001,
+            "attestMs": 190.612125,
+            "totalMs": 4170.707876,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198590
+        },
+        {
+          "level": 16,
+          "worker": 2,
+          "round": 5,
+          "start": 1791612245614,
+          "end": 1791612250384,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3350.708459,
+            "setupMs": 0.360375,
+            "tlsMs": 273.37875,
+            "proveMs": 51.392458000000005,
+            "attestMs": 335.855333,
+            "totalMs": 4011.695417,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 16,
+          "worker": 3,
+          "round": 5,
+          "start": 1791612245624,
+          "end": 1791612249374,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1955.458208,
+            "setupMs": 0.19075,
+            "tlsMs": 315.537791,
+            "proveMs": 37.225417,
+            "attestMs": 615.9182079999999,
+            "totalMs": 2924.330416,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198564
+        },
+        {
+          "level": 16,
+          "worker": 4,
+          "round": 5,
+          "start": 1791612245624,
+          "end": 1791612250130,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3132.5160410000003,
+            "setupMs": 0.5282079999999999,
+            "tlsMs": 243.85916699999999,
+            "proveMs": 73.31174999999999,
+            "attestMs": 242.123583,
+            "totalMs": 3692.3388330000007,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198574
+        },
+        {
+          "level": 16,
+          "worker": 5,
+          "round": 5,
+          "start": 1791612245615,
+          "end": 1791612248996,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1575.821,
+            "setupMs": 0.24570800000000004,
+            "tlsMs": 299.990834,
+            "proveMs": 44.007416,
+            "attestMs": 602.539917,
+            "totalMs": 2522.6049169999997,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198572
+        },
+        {
+          "level": 16,
+          "worker": 6,
+          "round": 5,
+          "start": 1791612245613,
+          "end": 1791612248733,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1492.329125,
+            "setupMs": 0.22620800000000002,
+            "tlsMs": 326.43850000000003,
+            "proveMs": 49.674666,
+            "attestMs": 481.267292,
+            "totalMs": 2349.935833,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198582
+        },
+        {
+          "level": 16,
+          "worker": 7,
+          "round": 5,
+          "start": 1791612245614,
+          "end": 1791612249925,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 2614.772,
+            "setupMs": 0.41554199999999997,
+            "tlsMs": 316.554167,
+            "proveMs": 74.769041,
+            "attestMs": 368.48445899999996,
+            "totalMs": 3374.995417,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 8,
+          "round": 5,
+          "start": 1791612245616,
+          "end": 1791612249064,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1630.177833,
+            "setupMs": 0.190583,
+            "tlsMs": 237.840666,
+            "proveMs": 42.606709,
+            "attestMs": 671.9260830000001,
+            "totalMs": 2582.741916,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 200512
+        },
+        {
+          "level": 16,
+          "worker": 9,
+          "round": 5,
+          "start": 1791612245619,
+          "end": 1791612249098,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1756.7908340000001,
+            "setupMs": 0.311584,
+            "tlsMs": 242.32137500000002,
+            "proveMs": 41.111709000000005,
+            "attestMs": 589.583666,
+            "totalMs": 2630.119168,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198568
+        },
+        {
+          "level": 16,
+          "worker": 10,
+          "round": 5,
+          "start": 1791612245613,
+          "end": 1791612249346,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1837.32625,
+            "setupMs": 0.197917,
+            "tlsMs": 354.636667,
+            "proveMs": 37.822500000000005,
+            "attestMs": 671.8335410000001,
+            "totalMs": 2901.816917,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        },
+        {
+          "level": 16,
+          "worker": 11,
+          "round": 5,
+          "start": 1791612245619,
+          "end": 1791612250530,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3624.073958,
+            "setupMs": 0.394958,
+            "tlsMs": 279.582375,
+            "proveMs": 81.12870799999999,
+            "attestMs": 209.67866700000002,
+            "totalMs": 4194.858706999999,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198578
+        },
+        {
+          "level": 16,
+          "worker": 12,
+          "round": 5,
+          "start": 1791612245613,
+          "end": 1791612247682,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 479.945458,
+            "setupMs": 0.348958,
+            "tlsMs": 295.118625,
+            "proveMs": 41.10725,
+            "attestMs": 548.3050830000001,
+            "totalMs": 1364.825707,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198576
+        },
+        {
+          "level": 16,
+          "worker": 13,
+          "round": 5,
+          "start": 1791612245626,
+          "end": 1791612248704,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1419.687042,
+            "setupMs": 0.277417,
+            "tlsMs": 251.07975,
+            "proveMs": 41.56025,
+            "attestMs": 529.923,
+            "totalMs": 2242.527501,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 222004
+        },
+        {
+          "level": 16,
+          "worker": 14,
+          "round": 5,
+          "start": 1791612245619,
+          "end": 1791612249002,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 1794.1538750000002,
+            "setupMs": 0.411583,
+            "tlsMs": 247.75275,
+            "proveMs": 39.055792,
+            "attestMs": 473.934458,
+            "totalMs": 2555.3085,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198568
+        },
+        {
+          "level": 16,
+          "worker": 15,
+          "round": 5,
+          "start": 1791612245615,
+          "end": 1791612250558,
+          "ok": true,
+          "timings": {
+            "notaryConnectMs": 3705.308458,
+            "setupMs": 0.19025,
+            "tlsMs": 312.636875,
+            "proveMs": 51.575375,
+            "attestMs": 183.15816700000002,
+            "totalMs": 4252.869333000001,
+            "prewarmed": false,
+            "voleResumed": true
+          },
+          "proofBytes": 198580
+        }
+      ]
+    }
+  ],
+  "completedAt": "2026-10-10T06:04:19.619602+00:00"
+}

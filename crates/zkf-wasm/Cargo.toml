@@ -10,6 +10,7 @@ publish.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
+legacy-binius = ["zkf-prover/legacy-binius", "zkf-verifier/legacy-binius"]
 # Multi-threaded build: needs nightly `-Z build-std` with atomics and a
 # cross-origin isolated page (see packages/wasm/package.json `build:threads`).
 threads = ["dep:wasm-bindgen-rayon", "zkf-prover/parallel", "zkf-verifier/parallel"]

@@ -78,21 +78,41 @@ async fn every_revealed_intermediate_mutation_changes_or_rejects_statement() {
     let handshake = [9u8; 32];
     let (claim, witness) = OrigoClaim::preprocess(&secret, hello, handshake);
     let expected = evaluate(&claim, handshake, witness).await.unwrap();
-    for i in 0..7 {
-        let mut encoded = bincode::serialize(&claim).unwrap();
-        assert_eq!(encoded.len(), 7 * 32);
-        encoded[i * 32] ^= 1;
-        let bad: OrigoClaim = bincode::deserialize(&encoded).unwrap();
-        let result = evaluate(&bad, handshake, witness).await;
-        // Handshake-only intermediates are authenticated by server/client
-        // Finished, outside this application-key circuit. Keep that
-        // distinction explicit rather than pretending verify() checks them.
-        assert!(
-            result.is_err()
-                || result.unwrap() != expected
-                || bad.handshake_secrets() != claim.handshake_secrets(),
-            "mutation {i}"
-        );
+    // Pin the serialized field order and check every byte of every class.
+    // A handshake-only mutation MUST change the Finished authentication key;
+    // application-pad mutations MUST fail the in-circuit consistency checks.
+    let classes = [
+        "hs_outer",
+        "client_hs_inner",
+        "server_hs_inner",
+        "derived_inner",
+        "master_inner",
+        "client_inner",
+        "server_inner",
+    ];
+    let encoded = bincode::serialize(&claim).unwrap();
+    assert_eq!(encoded.len(), classes.len() * 32);
+    for (class, name) in classes.iter().enumerate() {
+        for byte in 0..32 {
+            let mut mutated = encoded.clone();
+            mutated[class * 32 + byte] ^= 1;
+            let bad: OrigoClaim = bincode::deserialize(&mutated).unwrap();
+            if class == 1 || class == 2 {
+                // These values are used exclusively by Finished authentication,
+                // not by the application-key relation.
+                assert_ne!(
+                    bad.handshake_secrets(),
+                    claim.handshake_secrets(),
+                    "{name}[{byte}]"
+                );
+                assert_eq!(evaluate(&bad, handshake, witness).await.unwrap(), expected);
+            } else {
+                assert!(
+                    evaluate(&bad, handshake, witness).await.is_err(),
+                    "{name}[{byte}]"
+                );
+            }
+        }
     }
     let mut bad_witness = witness;
     bad_witness[0] ^= 1;
