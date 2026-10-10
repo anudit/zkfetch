@@ -1,0 +1,105 @@
+{
+  "stage": "diagnostic-before-required-soundness-margin",
+  "platform": "native aarch64-apple-darwin",
+  "bodyBytes": 192,
+  "samplesPerCase": 1,
+  "complete": true,
+  "samples": [
+    {
+      "signed": false,
+      "unique": false,
+      "params": "Fast",
+      "depth": 3,
+      "bits": 19132,
+      "constraints": 11363,
+      "proof_bytes": 41653,
+      "presentation_bytes": 43331,
+      "prove_ms": 143.802,
+      "verify_ms": 112.327
+    },
+    {
+      "signed": false,
+      "unique": false,
+      "params": "Small",
+      "depth": 3,
+      "bits": 19132,
+      "constraints": 11363,
+      "proof_bytes": 29075,
+      "presentation_bytes": 30753,
+      "prove_ms": 153.807,
+      "verify_ms": 161.602
+    },
+    {
+      "signed": false,
+      "unique": true,
+      "params": "Fast",
+      "depth": 8,
+      "bits": 81985,
+      "constraints": 68842,
+      "proof_bytes": 167365,
+      "presentation_bytes": 169043,
+      "prove_ms": 726.938,
+      "verify_ms": 636.566
+    },
+    {
+      "signed": false,
+      "unique": true,
+      "params": "Small",
+      "depth": 8,
+      "bits": 81985,
+      "constraints": 68842,
+      "proof_bytes": 115502,
+      "presentation_bytes": 117180,
+      "prove_ms": 716.477,
+      "verify_ms": 663.845
+    },
+    {
+      "signed": true,
+      "unique": false,
+      "params": "Fast",
+      "depth": 3,
+      "bits": 12412,
+      "constraints": 9042,
+      "proof_bytes": 28213,
+      "presentation_bytes": 29986,
+      "prove_ms": 101.535,
+      "verify_ms": 91.897
+    },
+    {
+      "signed": true,
+      "unique": false,
+      "params": "Small",
+      "depth": 3,
+      "bits": 12412,
+      "constraints": 9042,
+      "proof_bytes": 19835,
+      "presentation_bytes": 21608,
+      "prove_ms": 129.147,
+      "verify_ms": 124.395
+    },
+    {
+      "signed": true,
+      "unique": true,
+      "params": "Fast",
+      "depth": 8,
+      "bits": 75265,
+      "constraints": 66521,
+      "proof_bytes": 153925,
+      "presentation_bytes": 155698,
+      "prove_ms": 645.361,
+      "verify_ms": 627.568
+    },
+    {
+      "signed": true,
+      "unique": true,
+      "params": "Small",
+      "depth": 8,
+      "bits": 75265,
+      "constraints": 66521,
+      "proof_bytes": 106262,
+      "presentation_bytes": 108035,
+      "prove_ms": 685.272,
+      "verify_ms": 664.13
+    }
+  ]
+}

@@ -11,7 +11,7 @@
     "./pkg-threads/*": "./pkg-threads/*"
   },
   "scripts": {
-    "build": "wasm-pack build ../../crates/zkf-wasm --release --target web --out-dir ../../packages/wasm/pkg --out-name zkf --no-pack",
+    "build": "wasm-pack build ../../crates/zkf-wasm --release --target web --out-dir ../../packages/wasm/pkg --out-name zkf --no-pack -- --locked",
     "build:threads": "bun scripts/build-threads.ts"
   },
   "dependencies": {

@@ -22,7 +22,7 @@ async function stringPoolAligned(): Promise<boolean> {
 }
 
 const cargo = (extra: string[] = []) =>
-  $`cargo rustc --release -p zkf-napi --lib --crate-type cdylib -- ${extra}`.cwd(root);
+  $`cargo rustc --locked --release -p zkf-napi --lib --crate-type cdylib -- ${extra}`.cwd(root);
 
 await cargo();
 if (process.platform === "darwin" && !(await stringPoolAligned())) {

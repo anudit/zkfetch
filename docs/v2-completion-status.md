@@ -1,5 +1,10 @@
 # D1–D5 completion progress
 
+The Option A follow-up is tracked in [v2-option-a-progress.md](v2-option-a-progress.md).
+The new dual-lane kernel, VM, bridge and paired Ferret preprocessing are locally
+tested but are not yet selected by the production session driver. D1 and D3-2
+remain incomplete. The prior source is checkpointed as `fa9b761`.
+
 Started 10 October 2026 from `00c9be5`, following
 `comptest/zkfetch-d1-d5-completion-plan.md`. Status describes evidence gathered
 in this milestone, not revised percentage guesses.

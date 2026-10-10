@@ -136,3 +136,19 @@ The release checker still fails deliberately. Presentation parameter/size
 optimizations remain paused while the authentication margin and generalized
 reduction are unresolved. Neither nominal upstream labels nor an unreviewed
 repetition argument are recorded as exact 128-bit security.
+
+## Option A implementation boundary
+
+The experimental full-entropy dual-lane kernel, VM, degree-three bridge and
+paired Ferret pool now pass functional and mutation tests. Production TLS
+sessions still select the legacy single lane. See `v2-option-a-progress.md`.
+
+With full 128-bit deltas, an isolated lane's ideal root/cancellation union is
+`(3 + 1)/2^128`. Squaring would give `16/2^256` **only after** proving the
+necessary independence under a malicious prover and the joint adaptive
+transcript. Shared honest witness structs and two passing tests do not prove
+that premise. A malicious prover controls both correction vectors. Every lane
+must independently enforce the same complete public TLS relation, and the
+reduction must address cross-lane witness consistency and adaptive leakage.
+This candidate is not added to a certified total. OT, LPN, PRG/hash advantages
+and offline extraction remain unresolved; `--require-release` still fails.

@@ -17,7 +17,7 @@ const rustflags = [
     .map(arg => `-C link-arg=${arg}`),
 ].join(" ");
 
-await $`rustup run ${toolchain} wasm-pack build crates/zkf-wasm --release --target web --out-dir ${out} --out-name zkf --no-pack -- --features threads -Z build-std=panic_abort,std`
+await $`rustup run ${toolchain} wasm-pack build crates/zkf-wasm --release --target web --out-dir ${out} --out-name zkf --no-pack -- --locked --features threads -Z build-std=panic_abort,std`
   .cwd(root)
   .env({ ...process.env, RUSTFLAGS: rustflags, CARGO_TARGET_DIR: join(root, "target/wasm-threads") });
 
