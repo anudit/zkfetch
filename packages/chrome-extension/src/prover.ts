@@ -18,6 +18,10 @@ const exampleConfig = (nonce: string) => ({
   sessionClaims: [{ ...TOP_LEVEL_PREDICATE }], sessionClaimNonce: nonce,
 });
 const PREPARE_NONCE = "0".repeat(64);
+/** Duolingo v2: the notary verifies the response head and signs JSON parser
+ * checkpoints, so the later streak proof parses only a small window. */
+const duolingoConfig = (version: ProofVersion) =>
+  version === 2 ? { ...config(2), signedResponseHead: true, maxRecv: 8192 } : config(version);
 const DISCLOSURE = { response: { jsonPaths: DISCLOSURES } };
 
 let loading: Promise<void> | undefined;
@@ -48,7 +52,7 @@ async function startPrepare(version: ProofVersion, target: "duolingo" | "top-lev
   const started = performance.now();
   const session = target === "top-level"
     ? prepare(TOP_LEVEL_URL, exampleConfig(PREPARE_NONCE))
-    : prepare(`${API}/users`, config(version));
+    : prepare(`${API}/users`, duolingoConfig(version));
   prepared = session;
   preparedVersion = version;
   preparedTarget = target;
@@ -92,11 +96,11 @@ async function prove(message: Extract<ProverRequest, { type: "prove" }>) {
   const fields = v2 ? "streakData%7BlongestStreak%7Blength%7D%7D" : "username,streakData%7BlongestStreak%7D";
   const response = await zkFetch(`${API}/users/${userId}?fields=${fields}`, {
     headers: { Authorization: `Bearer ${token}` },
-    zkConfig: { ...config(message.version), prepared: session, ...(v2 ? {} : { reveal: DISCLOSURE }) },
+    zkConfig: { ...duolingoConfig(message.version), prepared: session, ...(v2 ? {} : { reveal: DISCLOSURE }) },
   });
   if (!response.ok) throw new Error(`Duolingo returned HTTP ${response.status}. Sign in again and retry.`);
   const body = await response.text();
-  send({ type: "progress", text: v2 ? "Proving the numeric claim offline…" : "Building the proof…" });
+  send({ type: "progress", text: v2 ? "Proving the streak from a signed checkpoint window…" : "Building the proof…" });
   const presentStarted = performance.now();
   if (message.version === 2) {
     if (response.zk.attestationVersion !== 2) throw new Error("The notary did not return a v2 attestation.");

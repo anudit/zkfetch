@@ -83,6 +83,9 @@ export interface ZkConfig {
   signedResponseHead?: boolean;
   sessionClaims?: MemberPredicate[];
   sessionClaimNonce?: string;
+  /** Sign JSON parser checkpoints so later claims prove small windows.
+   * Defaults to `signedResponseHead`. */
+  jsonCheckpoints?: boolean;
   /** A session from `prepare()` for this request; falls back to a fresh
    * session if it expired or failed before the request was sent. */
   prepared?: ZkPrepared;
@@ -284,6 +287,7 @@ function notarizeParams(
     signedResponseHead: zkConfig.signedResponseHead,
     sessionClaims: zkConfig.sessionClaims,
     sessionClaimNonce: zkConfig.sessionClaimNonce,
+    jsonCheckpoints: zkConfig.jsonCheckpoints,
   };
 }
 

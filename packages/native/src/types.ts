@@ -58,6 +58,8 @@ export interface NotarizeParams {
   sessionClaims?: MemberPredicate[];
   /** Independent verifier nonce (32 bytes, hex), required with sessionClaims. */
   sessionClaimNonce?: string;
+  /** Sign JSON parser checkpoints (defaults to signedResponseHead). */
+  jsonCheckpoints?: boolean;
 }
 
 export interface KeyView {
