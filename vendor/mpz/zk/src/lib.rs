@@ -1,3 +1,4 @@
+pub mod strict;
 mod callstack;
 mod config;
 mod prover;

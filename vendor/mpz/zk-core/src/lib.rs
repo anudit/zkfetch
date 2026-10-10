@@ -1,5 +1,6 @@
 //! QuickSilver zk protocol https://eprint.iacr.org/2021/076
 
+pub mod auth;
 pub(crate) mod check;
 mod prover;
 pub mod store;

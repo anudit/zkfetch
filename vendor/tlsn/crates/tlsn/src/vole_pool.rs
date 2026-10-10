@@ -233,6 +233,9 @@ impl VerifierVolePool {
         Self::with_delta(binding, delta)
     }
     pub(crate) fn with_delta(binding: [u8; 32], delta: Delta) -> Self {
+        Self::with_block(binding, delta.into_inner())
+    }
+    fn with_block(binding: [u8; 32], delta: Block) -> Self {
         let mut rng = rand::rng();
         Self {
             binding,
@@ -243,7 +246,7 @@ impl VerifierVolePool {
             strict: false,
             budget: FLOW_BUDGET,
             begin_proof: None,
-            delta: zeroize::Zeroizing::new(delta.into_inner()),
+            delta: zeroize::Zeroizing::new(delta),
             active: Default::default(),
             inner: Arc::new(Mutex::new(Sender::new(
                 ferret::FerretConfig::builder()
@@ -257,7 +260,7 @@ impl VerifierVolePool {
                 Block::random(&mut rng),
                 kos::Sender::new(
                     Default::default(),
-                    delta.into_inner(),
+                    delta,
                     co::Receiver::default(),
                 ),
             ))),
@@ -722,3 +725,6 @@ mod tests {
         }
     }
 }
+
+/// Independent full-entropy pools for the strict two-lane protocol.
+pub mod strict;

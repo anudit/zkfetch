@@ -6,6 +6,7 @@
 //! bridge supports an interactive reference flow and a negotiated combined
 //! Fiat--Shamir flow. See docs/v2-presentation-optimizations.md for the binding
 //! and soundness conditions.
+pub mod strict;
 use super::check::Polynomial;
 use crate::{CheckedWitness, Circuit, Witness, field::Fe};
 use anyhow::{Result, ensure};
