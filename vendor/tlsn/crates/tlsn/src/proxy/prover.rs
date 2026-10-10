@@ -164,6 +164,10 @@ impl ProxyProver {
 
         tracing::info!("Proxy TLS done");
         let output = TlsOutput {
+            #[cfg(feature = "d1-experimental")]
+            epoch_ciphertext: None,
+            #[cfg(feature = "d1-experimental")]
+            native_keys: None,
             deferred_schedule: None,
             keys: refs.keys,
             tls_transcript,

@@ -223,3 +223,31 @@ bytes, all preprocessing/public-key claims, and the complete proof request.
 The mpz runtime also absorbs each canonical commitment flush before deriving
 its subsequent check challenge. Independent ChaCha coefficients remain in use;
 no powers-of-one-seed optimization changes the error bound.
+
+## Experimental D1/D3 application-key bridge
+
+The opt-in `d1-experimental` Cargo feature retains native TLS 1.3 application
+keys locally in a zeroizing type without serialization/Debug/Clone, and captures
+all raw application-epoch records before suffix filtering. Public capture data
+includes complete wire headers/control records/alerts, full IVs and both
+handshake hashes. The default protocol and disclosure/tag paths are unchanged.
+
+Prover/verifier methods run `zkf-ir` degree-three relations on the original
+authenticated application-key VM references. They require completed session
+and identity verification, not merely an allocated key. The bridge allocates
+fresh MACs for auxiliary values and two masks and uses a verifier challenge
+after commitment. Its caller must reconstruct the public circuit from policy.
+A live TLS 1.3 test checks both directions, ciphertext-root/IV/hash agreement,
+premature-call rejection and a commitment to the wrong key. This is not the
+completed `zkf/2` fetch/signing protocol or a claim of reduced session cost.
+
+
+### Combined v2 key/framing proof
+
+The optimized D1 caller can borrow both original application-key references
+in one degree-three relation. Its Fiat–Shamir seed is domain-separated from
+the VM transcript after canonical statement and commitment flush absorption.
+The relation covers both key OWFs and optional public HTTP framing/member
+claims, including independent claim nonces. The verifier signs only after
+acceptance. The interactive single-key reference bridge remains available.
+See [binding and soundness conditions](../../docs/v2-presentation-optimizations.md).

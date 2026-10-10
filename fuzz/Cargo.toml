@@ -1,0 +1,46 @@
+[package]
+name = "zkfetch-v2-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+zkf-ir = { path = "../crates/zkf-ir" }
+zkf-attestation = { path = "../crates/zkf-attestation" }
+zkf-voleith = { path = "../crates/zkf-voleith" }
+ciborium = "0.2"
+
+[[bin]]
+name = "attestation_cbor"
+path = "fuzz_targets/attestation_cbor.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "record_table_bao"
+path = "fuzz_targets/record_table_bao.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "json_anchors"
+path = "fuzz_targets/json_anchors.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "voleith_proof"
+path = "fuzz_targets/voleith_proof.rs"
+test = false
+doc = false
+bench = false

@@ -47,6 +47,17 @@ export interface NotarizeParams {
    * Presentations can then disclose this spec, or less by whole headers,
    * fields, target or body, never more. Default: commit everything. */
   reveal?: RevealSpec;
+  /** Experimental v2 (D1) attestation: proxy mode, TLS 1.3, AES-128-GCM only.
+   * The notary signs ciphertext roots and commitments to the session keys
+   * instead of plaintext commitments; claims are proven later, offline, with
+   * `presentV2`. Not combinable with `predicates`, `reveal` or `binius`. */
+  attestationV2?: boolean;
+  /** Sign response framing during fetch; default false. Trades session work for smaller later proofs. */
+  signedResponseHead?: boolean;
+  /** Structural member claims known before fetching, signed by the notary. */
+  sessionClaims?: MemberPredicate[];
+  /** Independent verifier nonce (32 bytes, hex), required with sessionClaims. */
+  sessionClaimNonce?: string;
 }
 
 export interface KeyView {
@@ -89,6 +100,53 @@ export interface NotarizeOutput {
   response: HttpResponseView;
   notaryKey: KeyView;
   timings: NotarizeTimings;
+  /** 2 for `attestationV2` sessions, whose `secrets` hold the session keys. */
+  attestationVersion?: 1 | 2;
+}
+
+/** A comparison over the unsigned integer value of a JSON object member.
+ * `key` names a member of the response root object: it is not a path and does
+ * not assert uniqueness. Use decimal strings above Number.MAX_SAFE_INTEGER. */
+export interface MemberPredicate {
+  key: string;
+  op: "eq" | "ne" | "lt" | "le" | "gt" | "ge";
+  value: string | number;
+}
+
+export interface PresentV2Request {
+  predicate: MemberPredicate;
+  /** 32 bytes of hex chosen by the verifier; binds the presentation to it. */
+  nonce: string;
+  /** "fast" (default, larger proof) or "small" (more proving work). */
+  parameters?: "fast" | "small";
+  /** v2 presentations disclose every response header. Responses that set
+   * cookies are refused unless this is true. */
+  allowSetCookie?: boolean;
+}
+
+export interface VerifyV2Options {
+  /** Accepted notary keys, compressed SEC1 hex. */
+  trustedNotaryKeys: string[];
+  expectedServerName: string;
+  /** The claim the verifier requires. */
+  predicate: MemberPredicate;
+  /** The nonce this verifier issued for the presentation. */
+  nonce: string;
+  maxAgeSecs?: number;
+  expectedOwner?: string;
+  expectedContext?: string;
+}
+
+export interface VerifyV2Output {
+  serverName: string;
+  time: number;
+  notaryKey: KeyView;
+  mode: "proxy";
+  /** Disclosed response head: status line and headers. */
+  responseHeaders: string;
+  predicate: MemberPredicate;
+  owner: string | null;
+  context: string | null;
 }
 
 export interface RevealSpec {
@@ -152,6 +210,13 @@ export interface VerifyOutput {
   owner: string | null;
   context: string | null;
   predicates: PredicateSpec[];
+}
+
+export function validateMemberPredicate(predicate?: MemberPredicate) {
+  const value = predicate?.value;
+  if (typeof value === "number" && (!Number.isSafeInteger(value) || value < 0)) {
+    throw new TypeError("predicate value must be a nonnegative safe integer; use a decimal string for larger values");
+  }
 }
 
 export function validatePredicates(predicates?: PredicateSpec[]) {

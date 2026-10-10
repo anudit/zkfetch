@@ -1,9 +1,9 @@
 // Runtime-independent SDK. Entry points (`index.ts` for Node/Bun, `browser.ts`
 // for pages, workers and extensions) install the prover backend.
 import type * as types from "@zkfetch/native/types";
-import type { HttpResponseView, NotarizeMode, KeyView, NotarizeOutput, NotarizeParams, NotarizeTimings, PredicateSpec, TlsVersion, TlsVersionPreference, VerifyOptions, VerifyOutput } from "@zkfetch/native/types";
+import type { MemberPredicate, HttpResponseView, NotarizeMode, KeyView, NotarizeOutput, NotarizeParams, NotarizeTimings, PredicateSpec, PresentV2Request, TlsVersion, TlsVersionPreference, VerifyOptions, VerifyOutput, VerifyV2Options, VerifyV2Output } from "@zkfetch/native/types";
 
-export type { NotarizeMode, PredicateSpec, VerifyOptions, VerifyOutput, HttpResponseView, KeyView, NotarizeTimings, TlsVersion, TlsVersionPreference } from "@zkfetch/native/types";
+export type { NotarizeMode, PredicateSpec, VerifyOptions, VerifyOutput, HttpResponseView, KeyView, NotarizeTimings, TlsVersion, TlsVersionPreference, MemberPredicate, PresentV2Request, VerifyV2Options, VerifyV2Output } from "@zkfetch/native/types";
 export type PredicateBackend = "quicksilver" | "binius";
 /** Backend selection belongs to the fetched session, including after restoration. */
 export type RevealSpec = Omit<types.RevealSpec, "backend">;
@@ -13,6 +13,9 @@ export interface Backend {
   notarize(params: NotarizeParams): Promise<NotarizeOutput>;
   present(attestation: string, secrets: string, spec: types.RevealSpec): string;
   verify(presentation: string, options?: VerifyOptions): VerifyOutput;
+  /** Experimental v2 (D1) presentations. */
+  presentV2(attestation: string, secrets: string, request: PresentV2Request): Promise<string>;
+  verifyV2(presentation: string, options: VerifyV2Options): Promise<VerifyV2Output>;
   /** Optional: request-independent setup ahead of a request (wasm builds). */
   prepare?(params: NotarizeParams): Promise<{
     notarize(params: NotarizeParams): Promise<NotarizeOutput>;
@@ -71,6 +74,15 @@ export interface ZkConfig {
   /** Browser builds, MPC mode only: WebSocket-to-TCP relay used to reach the
    * server (browsers cannot open TCP). Proxy mode needs no relay. */
   relayUrl?: string;
+  /** Experimental v2 (D1) attestation; needs `mode: "proxy"` and TLS 1.3.
+   * The notary signs the ciphertext and commitments to the session keys;
+   * prove claims later with `response.zk.presentV2()`. Not combinable with
+   * `predicates`, `reveal` or the Binius backend. */
+  attestationV2?: boolean;
+  /** Sign response framing during fetch; default false. Trades session work for smaller later proofs. */
+  signedResponseHead?: boolean;
+  sessionClaims?: MemberPredicate[];
+  sessionClaimNonce?: string;
   /** A session from `prepare()` for this request; falls back to a fresh
    * session if it expired or failed before the request was sent. */
   prepared?: ZkPrepared;
@@ -155,6 +167,8 @@ export interface ZkSessionData {
   tlsVersion?: TlsVersion;
   /** Absent in older sessions, which default to QuickSilver. */
   backend?: PredicateBackend;
+  /** 2 for `attestationV2` sessions; absent (1) otherwise. */
+  attestationVersion?: 1 | 2;
 }
 
 /** The attested session behind a `zkFetch` response. */
@@ -182,9 +196,22 @@ export class ZkSession {
     return this.data.timings;
   }
 
+  /** 1, or 2 for `attestationV2` sessions. */
+  get attestationVersion(): 1 | 2 {
+    return this.data.attestationVersion ?? 1;
+  }
+
   /** Builds a base64 presentation disclosing only what `spec` selects. */
   present(spec: RevealSpec = {}): string {
+    if (this.attestationVersion === 2) throw new Error("zkfetch: v2 sessions are presented with presentV2()");
     return backendOrThrow().present(this.data.attestation, this.data.secrets, { ...spec, backend: this.backend });
+  }
+
+  /** Experimental, v2 sessions: proves `request.predicate` offline, bound to
+   * the verifier's `request.nonce` (see `newNonce`). Takes seconds of CPU. */
+  presentV2(request: PresentV2Request): Promise<string> {
+    if (this.attestationVersion !== 2) throw new Error("zkfetch: presentV2 needs a session fetched with zkConfig.attestationV2");
+    return backendOrThrow().presentV2(this.data.attestation, this.data.secrets, request);
   }
 
   toJSON(): ZkSessionData {
@@ -253,6 +280,10 @@ function notarizeParams(
     protocolV2: zkConfig.protocolV2,
     mode: zkConfig.mode,
     relayUrl: zkConfig.relayUrl,
+    attestationV2: zkConfig.attestationV2,
+    signedResponseHead: zkConfig.signedResponseHead,
+    sessionClaims: zkConfig.sessionClaims,
+    sessionClaimNonce: zkConfig.sessionClaimNonce,
   };
 }
 
@@ -283,4 +314,16 @@ function toResponse(view: HttpResponseView, session: ZkSession): ZkResponse {
 /** Verifies a presentation. Throws if invalid or if a policy option fails. */
 export function verify(presentation: string, options: VerifyOptions = {}): VerifyOutput {
   return backendOrThrow().verify(presentation, options);
+}
+
+/** Experimental: verifies a v2 presentation against the verifier's policy,
+ * including the nonce it issued. Throws if invalid. */
+export function verifyV2(presentation: string, options: VerifyV2Options): Promise<VerifyV2Output> {
+  return backendOrThrow().verifyV2(presentation, options);
+}
+
+/** A fresh 32-byte hex nonce for a verifier to send with a v2 request. */
+export function newNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
 }

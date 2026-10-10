@@ -18,6 +18,123 @@ fn gte(path: &str, minimum: u64) -> zkf_core::PredicateSpec {
     }
 }
 
+/// Reproducible W0 native baseline. Kept out of normal test runs because it
+/// creates measured files and intentionally exercises the slower offline path.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "run explicitly to record the D1/D3 fixture baseline"]
+async fn d1_d3_native_baseline() {
+    let scenario = std::env::var("ZKF_D1_D3_SCENARIO").unwrap_or_else(|_| "binius".into());
+    assert!(matches!(
+        scenario.as_str(),
+        "binius" | "quicksilver" | "reveal"
+    ));
+    let fixture = spawn_fixture_version(true).await;
+    let (notary_url, notary_key) = spawn_proxy_notary(&fixture).await;
+    let mut p = params(notary_url, String::new(), vec![]);
+    p.connect_addr = None;
+    p.mode = Some("proxy".into());
+    p.tls_version = Some("1.3".into());
+    p.protocol_v2 = Some(true); // Existing D4 wire flow; not D1 attestation v2.
+    p.persistent_vole = Some(true);
+    p.expected_notary_key = Some(notary_key.clone());
+    p.binius = scenario == "binius";
+    if !p.binius {
+        p.predicates = vec![gte("id", 1000)];
+    }
+    let opts = VerifyOptions {
+        trusted_notary_keys: vec![notary_key],
+        extra_root_certs: vec![b64::encode(CA_CERT_DER)],
+        expected_predicates: vec![gte("id", 1000)],
+        ..Default::default()
+    };
+    let spec = RevealSpec {
+        response: ResponseReveal {
+            json_paths: vec!["information.name".into()],
+            ..Default::default()
+        },
+        prove: vec![gte("id", 1000)],
+        backend: if p.binius {
+            zkf_core::PredicateBackend::Binius
+        } else {
+            zkf_core::PredicateBackend::Quicksilver
+        },
+        ..Default::default()
+    };
+    if scenario == "reveal" {
+        p.reveal = Some(spec.clone());
+    }
+    let mut samples = Vec::new();
+    for i in 0..3 {
+        #[cfg(feature = "circuit-metrics")]
+        tlsn::circuit_metrics::reset();
+        let out = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            zkf_prover::notarize(p.clone()),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(out.timings.vole_resumed, i != 0);
+        let start = std::time::Instant::now();
+        let presentation = zkf_prover::present(&out.attestation, &out.secrets, &spec).unwrap();
+        let present_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let bytes = b64::decode(&presentation).unwrap();
+        let offline_proof_bytes = zkf_predicates::decode(&bytes)
+            .unwrap()
+            .map_or(0, |e| e.proof.len());
+        let start = std::time::Instant::now();
+        let verified = zkf_verifier::verify(&presentation, &opts).unwrap();
+        let verify_ms = start.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!(verified.predicates.len(), spec.prove.len());
+        for (actual, expected) in verified.predicates.iter().zip(&spec.prove) {
+            assert_eq!(actual.json_path, expected.json_path);
+            assert_eq!(
+                actual.predicate.gte.as_ref().map(|v| v.value().unwrap()),
+                expected.predicate.gte.as_ref().map(|v| v.value().unwrap())
+            );
+            assert_eq!(
+                actual.predicate.gt.as_ref().map(|v| v.value().unwrap()),
+                expected.predicate.gt.as_ref().map(|v| v.value().unwrap())
+            );
+        }
+        #[cfg(feature = "circuit-metrics")]
+        let allocations = serde_json::to_value(tlsn::circuit_metrics::snapshot()).unwrap();
+        #[cfg(not(feature = "circuit-metrics"))]
+        let allocations = serde_json::Value::Null;
+        let sample = serde_json::json!({
+            "session_index": i, "timings": out.timings,
+            "presentation_prove_ms": present_ms, "presentation_verify_ms": verify_ms,
+            "presentation_bytes": bytes.len(), "offline_proof_bytes": offline_proof_bytes,
+            "attestation_bytes": b64::decode(&out.attestation).unwrap().len(),
+            "circuit_allocations": allocations,
+        });
+        samples.push(sample);
+    }
+    let dir = std::env::var_os("ZKF_D1_D3_BASELINE_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/benchmarks/d1-d3-baseline")
+        });
+    std::fs::create_dir_all(&dir).unwrap();
+    let report = serde_json::json!({
+        "backend": if p.binius { "binius64" } else { "quicksilver" },
+        "offline_security_bits": if p.binius { Some(96) } else { None },
+        "scenario": scenario, "tls": "1.3", "mode": "proxy",
+        "fixture": "/formats/json", "flow": "D4 existing protocol_v2",
+        "latency_ms": 0, "architecture": std::env::consts::ARCH,
+        "os": std::env::consts::OS, "samples": samples,
+        "measurement_scope": "Presentation timings include parsing and transcript proof building, not just Binius.",
+    });
+    let path = dir.join(if scenario == "binius" {
+        "native.json".into()
+    } else {
+        format!("native-{scenario}.json")
+    });
+    std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+    eprintln!("D1/D3 baseline written to {}", path.display());
+}
+
 fn params(
     notary_url: String,
     fixture: String,
@@ -44,6 +161,10 @@ fn params(
         tls_version: Some("1.2".into()),
         mode: None,
         relay_url: None,
+        attestation_v2: false,
+        signed_response_head: false,
+        session_claims: vec![],
+        session_claim_nonce: None,
     }
 }
 
@@ -111,6 +232,10 @@ async fn notarize_present_verify() {
         tls_version: Some("1.2".into()),
         mode: None,
         relay_url: None,
+        attestation_v2: false,
+        signed_response_head: false,
+        session_claims: vec![],
+        session_claim_nonce: None,
     })
     .await
     .expect("notarize");
@@ -1191,4 +1316,192 @@ async fn d4_budget_overflow_fails_without_interactive_proof_extension() {
         .await
         .expect("fresh fallback after overflow");
     assert!(!next.timings.vole_resumed);
+}
+
+#[cfg(feature = "d1-experimental")]
+mod attestation_v2 {
+    use super::*;
+    use zkf_core::{Decimal, MemberPredicate, PresentV2Request, VerifyV2Options};
+
+    fn member(op: &str, value: u64) -> MemberPredicate {
+        MemberPredicate {
+            key: "id".into(),
+            op: op.into(),
+            value: Decimal::Number(value),
+        }
+    }
+
+    fn request(predicate: MemberPredicate, nonce: &str) -> PresentV2Request {
+        PresentV2Request {
+            predicate,
+            nonce: nonce.into(),
+            parameters: None,
+            allow_set_cookie: false,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn attestation_v2_notarize_present_verify() {
+        let fixture = spawn_fixture_version(true).await;
+        // Its own signing key gives this notary its own pool scope, so tests
+        // running in parallel cannot take its warm lease.
+        let config = Arc::new(zkf_notary::NotaryConfig {
+            signing_key: [11u8; 32],
+            extra_roots: vec![CA_CERT_DER.to_vec()],
+        });
+        let notary_key = config.public_key_hex().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let notary_url = format!("ws://{}", listener.local_addr().unwrap());
+        let connector = Arc::new(zkf_notary::TcpConnector {
+            resolve: vec![(SERVER_DOMAIN.to_string(), fixture.clone())],
+        });
+        tokio::spawn(zkf_notary::serve(listener, config, connector));
+        let mut p = params(notary_url, String::new(), vec![]);
+        p.connect_addr = None;
+        p.mode = Some("proxy".into());
+        p.tls_version = Some("1.3".into());
+        p.expected_notary_key = Some(notary_key.clone());
+        p.attestation_v2 = true;
+        p.context = Some("challenge-1".into());
+        p.headers = vec![("Authorization".into(), "Bearer v2-secret".into())];
+
+        // Requests that cannot be served by a v2 session fail before any I/O.
+        let mut mpc = p.clone();
+        mpc.mode = None;
+        assert!(zkf_prover::notarize(mpc).await.is_err());
+        let mut with_predicates = p.clone();
+        with_predicates.predicates = vec![gte("id", 1)];
+        assert!(zkf_prover::notarize(with_predicates).await.is_err());
+
+        // Cold (fresh OT) and then warm (resumed pool, batched flight). Fetch
+        // both first: the in-process lease cache is shared with other tests.
+        let mut sessions = Vec::new();
+        for _ in 0..2 {
+            sessions.push(
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(60),
+                    zkf_prover::notarize(p.clone()),
+                )
+                .await
+                .expect("v2 session timeout")
+                .expect("v2 notarize"),
+            );
+        }
+        for (round, out) in (0u8..).zip(sessions) {
+            assert_eq!(out.attestation_version, 2);
+            assert_eq!(out.response.status, 200);
+            assert_eq!(out.timings.vole_resumed, round == 1);
+            assert_eq!(out.notary_key.key, notary_key);
+            eprintln!("v2 round {round}: {:?}", out.timings);
+
+            let nonce = hex::encode([round + 1; 32]);
+            let started = std::time::Instant::now();
+            let presentation =
+                zkf_prover::present_v2(&out.attestation, &out.secrets, &request(member("ge", 1000), &nonce))
+                    .expect("present v2");
+            let proved = started.elapsed();
+            let opts = VerifyV2Options {
+                trusted_notary_keys: vec![notary_key.clone()],
+                expected_server_name: SERVER_DOMAIN.into(),
+                predicate: member("ge", 1000),
+                nonce: nonce.clone(),
+                max_age_secs: Some(600),
+                expected_owner: None,
+                expected_context: Some("challenge-1".into()),
+            };
+            let started = std::time::Instant::now();
+            let v = zkf_verifier::verify_v2(&presentation, &opts).expect("verify v2");
+            if round == 0 {
+                if let Ok(path) = std::env::var("ZKF_V2_PROFILE_FIXTURE") {
+                    // Explicit opt-in export of this local test session only.
+                    std::fs::write(path, serde_json::to_vec(&serde_json::json!({
+                        "attestation":out.attestation, "secrets":out.secrets,
+                        "request":request(member("ge",1000), &nonce), "options":opts,
+                    })).unwrap()).unwrap();
+                }
+            }
+            eprintln!(
+                "v2 presentation: {} bytes base64, prove {:?}, verify {:?}",
+                presentation.len(),
+                proved,
+                started.elapsed()
+            );
+            assert!(zkf_verifier::is_v2(&presentation));
+            assert_eq!(v.server_name, SERVER_DOMAIN);
+            assert_eq!(v.mode, "proxy");
+            assert_eq!(v.context.as_deref(), Some("challenge-1"));
+            assert!(v.response_headers.starts_with("HTTP/1.1 200"), "{}", v.response_headers);
+            assert!(!v.response_headers.contains("1234567890"));
+            assert!(!presentation.contains("v2-secret"));
+
+            // Bound to the verifier's nonce, claim, trust and policy.
+            let other_nonce = VerifyV2Options {
+                nonce: hex::encode([9; 32]),
+                ..opts.clone()
+            };
+            assert!(zkf_verifier::verify_v2(&presentation, &other_nonce).is_err());
+            let stronger = VerifyV2Options {
+                predicate: member("ge", 2_000_000_000),
+                ..opts.clone()
+            };
+            assert!(zkf_verifier::verify_v2(&presentation, &stronger).is_err());
+            let untrusted = VerifyV2Options {
+                trusted_notary_keys: vec![
+                    zkf_notary::NotaryConfig {
+                        signing_key: [8; 32],
+                        extra_roots: vec![],
+                    }
+                    .public_key_hex()
+                    .unwrap(),
+                ],
+                ..opts.clone()
+            };
+            assert!(zkf_verifier::verify_v2(&presentation, &untrusted).is_err());
+            let other_server = VerifyV2Options {
+                expected_server_name: "example.com".into(),
+                ..opts.clone()
+            };
+            assert!(zkf_verifier::verify_v2(&presentation, &other_server).is_err());
+            let other_context = VerifyV2Options {
+                expected_context: Some("challenge-2".into()),
+                ..opts.clone()
+            };
+            assert!(zkf_verifier::verify_v2(&presentation, &other_context).is_err());
+            // A v2 presentation is not a v1 one.
+            assert!(zkf_verifier::verify(&presentation, &VerifyOptions::default()).is_err());
+
+            // A false claim cannot be proven, and secrets do not transfer.
+            assert!(
+                zkf_prover::present_v2(
+                    &out.attestation,
+                    &out.secrets,
+                    &request(member("gt", 1234567890), &nonce)
+                )
+                .is_err()
+            );
+        }
+        let nonce=hex::encode([42;32]);
+        let mut known=p.clone();known.session_claims=vec![member("ge",1000)];known.session_claim_nonce=Some(nonce.clone());
+        let out=tokio::time::timeout(std::time::Duration::from_secs(60),zkf_prover::notarize(known)).await.unwrap().unwrap();
+        let start=std::time::Instant::now();
+        let fast=zkf_prover::present_v2(&out.attestation,&out.secrets,&request(member("ge",1000),&nonce)).unwrap();
+        eprintln!("signed session claim presentation: {} bytes, {:?}",b64::decode(&fast).unwrap().len(),start.elapsed());
+        let opts=VerifyV2Options {trusted_notary_keys:vec![notary_key],expected_server_name:SERVER_DOMAIN.into(),
+            predicate:member("ge",1000),nonce:nonce.clone(),max_age_secs:Some(600),expected_owner:None,expected_context:Some("challenge-1".into())};
+        zkf_verifier::verify_v2(&fast,&opts).unwrap();
+        if let Ok(path)=std::env::var("ZKF_V2_PROFILE_FIXTURE") {
+            let fresh_nonce=hex::encode([99;32]);
+            let offline_opts=VerifyV2Options {nonce:fresh_nonce.clone(),..opts.clone()};
+            std::fs::write(format!("{path}.signed-head"),serde_json::to_vec(&serde_json::json!({
+                "attestation":out.attestation,"secrets":out.secrets,
+                "request":request(member("ge",1000),&fresh_nonce),"options":offline_opts,
+            })).unwrap()).unwrap();
+        }
+
+        assert!(zkf_verifier::verify_v2(&fast,&VerifyV2Options {nonce:hex::encode([43;32]),..opts.clone()}).is_err());
+        let later=zkf_prover::present_v2(&out.attestation,&out.secrets,&request(member("gt",999),&nonce)).unwrap();
+        zkf_verifier::verify_v2(&later,&VerifyV2Options {predicate:member("gt",999),..opts}).unwrap();
+        let mut false_claim=p;false_claim.session_claims=vec![member("gt",1234567890)];false_claim.session_claim_nonce=Some(nonce);
+        assert!(zkf_prover::notarize(false_claim).await.is_err());
+    }
 }

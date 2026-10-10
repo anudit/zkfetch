@@ -10,3 +10,6 @@ pub use zkf_tls13_schedule::{ApplicationKeys, HandshakeKeys, Mode, Role, Tls13Ke
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod origo_validation;

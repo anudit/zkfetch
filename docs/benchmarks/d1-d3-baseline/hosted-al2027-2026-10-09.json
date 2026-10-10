@@ -1,0 +1,130 @@
+{
+  "legacy": [
+    {
+      "level": 1,
+      "success": 2,
+      "total": 2,
+      "warmCount": 1,
+      "warmMedianMs": 1417.5011670000001,
+      "medianMs": 1710.3242500000001,
+      "peakServiceMiB": 784.1953125,
+      "peakCgroupRecordedMiB": 834.78515625,
+      "peakHostCpuPct": 33.333333333333336,
+      "minAvailableMiB": 695.37109375,
+      "peakSwapMiB": 0.0,
+      "peakIowaitPct": 0.0,
+      "peakStealPct": 0.0,
+      "newOomKills": 0,
+      "restarts": 0.0,
+      "diskUsedGiB": 1.2670478820800781,
+      "offlineMedianMs": 1.0095625000001291,
+      "medianPresentationBytes": 11652.0,
+      "errors": [],
+      "waves": [
+        {
+          "round": 0,
+          "verified": 1,
+          "attempts": 1
+        },
+        {
+          "round": 1,
+          "verified": 1,
+          "attempts": 1
+        }
+      ]
+    }
+  ],
+  "d1": [
+    {
+      "level": 4,
+      "success": 12,
+      "total": 12,
+      "warmCount": 8,
+      "warmMedianMs": 1296.6670835,
+      "medianMs": 1362.4188125,
+      "peakServiceMiB": 669.0859375,
+      "peakCgroupRecordedMiB": 679.0859375,
+      "peakHostCpuPct": 80.12048192771084,
+      "minAvailableMiB": 816.1953125,
+      "peakSwapMiB": 0.0,
+      "peakIowaitPct": 0.0,
+      "peakStealPct": 0.970873786407767,
+      "newOomKills": 0,
+      "restarts": 0.0,
+      "diskUsedGiB": 1.2670669555664062,
+      "offlineMedianMs": 3791.1080624999995,
+      "medianPresentationBytes": 513782.0,
+      "errors": [],
+      "waves": [
+        {
+          "round": 0,
+          "verified": 4,
+          "attempts": 4
+        },
+        {
+          "round": 1,
+          "verified": 4,
+          "attempts": 4
+        },
+        {
+          "round": 2,
+          "verified": 4,
+          "attempts": 4
+        }
+      ]
+    }
+  ],
+  "instance": {
+    "Instance": "i-039ee9e9bf600f380",
+    "State": "running",
+    "IP": "13.207.197.187",
+    "AMI": "ami-0425fc8370220fea8"
+  },
+  "configuration": {
+    "os": "Amazon Linux 2027 Preview Minimal 2027.0.20260928",
+    "kernel": "7.2.4-4.107.amzn2027.aarch64",
+    "instanceType": "t4g.small",
+    "rootGiB": 4,
+    "hostSwapMiB": 512,
+    "serviceMemoryMaxMiB": 1536,
+    "serviceSwapMaxMiB": 0,
+    "selinux": "Enforcing",
+    "notarySha256": "ed1fc1a340e33b804a10ff1ea5a81a0a3d0c7a486fa5ca60bccb8348800beffb"
+  },
+  "method": "Three synchronized four-session D1 waves with offline verification; fresh/warm legacy smoke; 0.5-second sampling. Fetch/notarization latency excludes offline proving/verification. Same application binary as AL2023. Different host history; not a controlled OS performance comparison.",
+  "postRebootVerification": [
+    {
+      "level": 1,
+      "round": 0,
+      "start": 1791563792.670938,
+      "end": 1791563798.1701992,
+      "rows": [
+        {
+          "profile": "d1",
+          "level": 1,
+          "worker": 0,
+          "round": 0,
+          "start": 1791563792686,
+          "end": 1791563798139,
+          "ok": true,
+          "fetchEnd": 1791563794482,
+          "timings": {
+            "notaryConnectMs": 138.39058400000002,
+            "setupMs": 1158.23475,
+            "tlsMs": 113.434916,
+            "proveMs": 348.698167,
+            "attestMs": 35.0455,
+            "totalMs": 1793.803959,
+            "prewarmed": false,
+            "voleResumed": false
+          },
+          "attestationVersion": 2,
+          "offlineMs": 3657.4873749999997,
+          "presentationBytes": 513784
+        }
+      ]
+    }
+  ],
+  "postRebootStatus": "Notary, Caddy and egress active; IPv4/IPv6 egress rules present; SELinux enforcing; no boot AVC events found.",
+  "oldInstance": "i-067a15034cfcb0d95; termination requires explicit approval"
+}

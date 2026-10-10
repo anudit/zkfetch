@@ -1,0 +1,53 @@
+{
+  "host": "wss://13-207-197-187.sslip.io/notarize",
+  "notarySha256": "f2a598bc374a10cdc8bfd78c5997400e5bef7c32ad53260c5cd81e429c251372",
+  "samples": [
+    {
+      "version": 1,
+      "verified": true,
+      "elapsed": "1.04 s",
+      "verification": "18.9 ms",
+      "timings": "TLS 1.3 \u00b7 v1 \u00b7 QuickSilver \u00b7 proxy \u00b7 8 threads \u00b7 fresh OT\n\nNotary connect (ahead)124.4 ms\nSetup (ahead)      1.82 s\nTLS request        805.7 ms\nCommitment proofs  87.4 ms\nAttestation        135.3 ms\nNotarize total     1.03 s\nPresentation       5.0 ms",
+      "claimLabel": "Longest streak",
+      "presentationCharacters": 16348,
+      "noHorizontalOverflow": true,
+      "tokenHidden": true
+    },
+    {
+      "version": 2,
+      "verified": true,
+      "elapsed": "1.81 s",
+      "verification": "738.7 ms",
+      "timings": "TLS 1.3 \u00b7 v2 \u00b7 QuickSilver session \u00b7 VOLEitH presentation \u00b7 proxy \u00b7 8 threads \u00b7 fresh OT\n\nNotary connect (ahead)123.1 ms\nSetup (ahead)      1.85 s\nTLS request        637.8 ms\nCommitment proofs  101.6 ms\nAttestation        136.4 ms\nNotarize total     875.9 ms\nPresentation       934.9 ms",
+      "claimLabel": "JSON member \"length\"",
+      "presentationCharacters": 246015,
+      "noHorizontalOverflow": true,
+      "policyExport": true,
+      "tokenHidden": true
+    },
+    {
+      "version": 2,
+      "verified": true,
+      "elapsed": "1.84 s",
+      "verification": "742.9 ms",
+      "timings": "TLS 1.3 \u00b7 v2 \u00b7 QuickSilver session \u00b7 VOLEitH presentation \u00b7 proxy \u00b7 8 threads \u00b7 warm VOLE pool\n\nNotary connect (ahead)777.9 ms\nSetup (ahead)      30.8 ms\nTLS request        637.0 ms\nCommitment proofs  97.4 ms\nAttestation        194.4 ms\nNotarize total     928.9 ms\nPresentation       911.0 ms",
+      "claimLabel": "JSON member \"length\"",
+      "presentationCharacters": 246015,
+      "noHorizontalOverflow": true,
+      "policyExport": true,
+      "tokenHidden": true
+    },
+    {
+      "version": 2,
+      "verified": true,
+      "elapsed": "1.54 s",
+      "verification": "741.3 ms",
+      "timings": "TLS 1.3 \u00b7 v2 \u00b7 QuickSilver session \u00b7 VOLEitH presentation \u00b7 proxy \u00b7 8 threads \u00b7 warm VOLE pool\n\nNotary connect (ahead)1.16 s\nSetup (ahead)      104.5 ms\nTLS request        306.4 ms\nCommitment proofs  81.2 ms\nAttestation        234.4 ms\nNotarize total     621.9 ms\nPresentation       913.4 ms",
+      "claimLabel": "JSON member \"length\"",
+      "presentationCharacters": 246019,
+      "noHorizontalOverflow": true,
+      "policyExport": true,
+      "tokenHidden": true
+    }
+  ]
+}

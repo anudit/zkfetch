@@ -1,0 +1,33 @@
+{
+  "scope": "layout consistency, not a full security certificate",
+  "exact_total_error_le_2_to_minus_128_certified": false,
+  "generalized_relation_composition_review_required": true,
+  "profiles": [
+    {
+      "family": "FAEST-128f",
+      "protocol_label": 8,
+      "nominal_security_bits": 128,
+      "field_bits": 128,
+      "degree": 3,
+      "isolated_polynomial_bound_bits": 126.41503749927884,
+      "tau": 16,
+      "challenge_bits": 120,
+      "grinding_bits": 8,
+      "leaves": 3072,
+      "opening_bytes": 2528
+    },
+    {
+      "family": "FAEST-128s",
+      "protocol_label": 11,
+      "nominal_security_bits": 128,
+      "field_bits": 128,
+      "degree": 3,
+      "isolated_polynomial_bound_bits": 126.41503749927884,
+      "tau": 11,
+      "challenge_bits": 121,
+      "grinding_bits": 7,
+      "leaves": 22528,
+      "opening_bytes": 2160
+    }
+  ]
+}

@@ -1,0 +1,469 @@
+//! Implementation of internal representation of secret and public keys
+//!
+//! This module also handles serialization and deserialization of any keys.
+
+use core::fmt::{self, Debug};
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
+use hybrid_array::{Array, typenum::Unsigned};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "zeroize")]
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::{
+    ByteEncoding, Error, classify, declassify,
+    parameter::{OWFParameters, Witness},
+};
+
+/// Internal representation of a secret key.
+pub(crate) struct SecretKey<O>
+where
+    O: OWFParameters,
+{
+    pub(crate) owf_key: Array<u8, O::LambdaBytes>,
+    pub(crate) pk: PublicKey<O>,
+}
+
+#[cfg(feature = "zeroize")]
+impl<O> Zeroize for SecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn zeroize(&mut self) {
+        self.owf_key.zeroize();
+    }
+}
+
+#[cfg(feature = "zeroize")]
+impl<O> Drop for SecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl<O> Clone for SecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn clone(&self) -> Self {
+        Self {
+            owf_key: self.owf_key.clone(),
+            pk: self.pk.clone(),
+        }
+    }
+}
+
+impl<O> TryFrom<&[u8]> for SecretKey<O>
+where
+    O: OWFParameters,
+{
+    type Error = Error;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.len() == O::SK::USIZE {
+            let (owf_input, owf_key) = bytes.split_at(O::InputSize::USIZE);
+            let Ok(owf_input) = Array::try_from(owf_input) else {
+                return Err(Error::new());
+            };
+            let Ok(owf_key) = Array::try_from(owf_key) else {
+                return Err(Error::new());
+            };
+
+            if owf_key[0] & 0b11 == 0b11 {
+                return Err(Error::new());
+            }
+
+            let owf_output = O::evaluate_owf(&owf_key, &owf_input);
+
+            classify!(&owf_key);
+            declassify!(&owf_output);
+            declassify!(&owf_input);
+
+            Ok(Self {
+                owf_key,
+                pk: PublicKey {
+                    owf_input,
+                    owf_output,
+                },
+            })
+        } else {
+            Err(Error::new())
+        }
+    }
+}
+
+impl<O> From<SecretKey<O>> for Array<u8, O::SK>
+where
+    O: OWFParameters,
+{
+    fn from(value: SecretKey<O>) -> Self {
+        value.to_bytes()
+    }
+}
+
+impl<O> ByteEncoding for SecretKey<O>
+where
+    O: OWFParameters,
+{
+    type Repr = Array<u8, O::SK>;
+
+    fn to_bytes(&self) -> Self::Repr {
+        let mut buf = Array::default();
+        buf[..O::InputSize::USIZE].copy_from_slice(&self.pk.owf_input);
+        buf[O::InputSize::USIZE..].copy_from_slice(&self.owf_key);
+        classify!(&buf);
+        buf
+    }
+
+    fn to_vec(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(O::SK::USIZE);
+        buf.extend_from_slice(&self.pk.owf_input);
+        buf.extend_from_slice(&self.owf_key);
+        classify!(&buf);
+        buf
+    }
+
+    fn encoded_len(&self) -> usize {
+        O::SK::USIZE
+    }
+}
+
+impl<O> SecretKey<O>
+where
+    O: OWFParameters,
+{
+    pub(crate) fn as_public_key(&self) -> PublicKey<O> {
+        self.pk.clone()
+    }
+}
+
+impl<O> Debug for SecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretKey")
+            .field("owf_key", &"redacted")
+            .field("owf_input", &self.pk.owf_input.as_slice())
+            .field("owf_output", &self.pk.owf_output.as_slice())
+            .finish()
+    }
+}
+
+impl<O> PartialEq for SecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn eq(&self, rhs: &Self) -> bool {
+        self.owf_key == rhs.owf_key && self.pk == rhs.pk
+    }
+}
+
+impl<O> Eq for SecretKey<O> where O: OWFParameters {}
+
+#[cfg(feature = "serde")]
+impl<O> Serialize for SecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_bytes().serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, O> Deserialize<'de> for SecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Array::<u8, O::SK>::deserialize(deserializer).and_then(|bytes| {
+            Self::try_from(bytes.as_slice())
+                .map_err(|_| serde::de::Error::custom("expected a valid secret key"))
+        })
+    }
+}
+
+/// Internal representation of a secret key, including the zk witness.
+#[cfg_attr(feature = "zeroize", derive(Zeroize, ZeroizeOnDrop))]
+pub(crate) struct UnpackedSecretKey<O>
+where
+    O: OWFParameters,
+{
+    pub(crate) sk: SecretKey<O>,
+    pub(crate) wit: Witness<O>,
+}
+
+impl<O> Clone for UnpackedSecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn clone(&self) -> Self {
+        Self {
+            sk: self.sk.clone(),
+            wit: self.wit.clone(),
+        }
+    }
+}
+
+impl<O> From<SecretKey<O>> for UnpackedSecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn from(value: SecretKey<O>) -> Self {
+        Self {
+            wit: O::witness(&value),
+            sk: value,
+        }
+    }
+}
+
+impl<O> TryFrom<&[u8]> for UnpackedSecretKey<O>
+where
+    O: OWFParameters,
+{
+    type Error = Error;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        SecretKey::try_from(value).map(|sk| Self {
+            wit: O::witness(&sk),
+            sk,
+        })
+    }
+}
+
+impl<O> From<UnpackedSecretKey<O>> for Array<u8, O::SK>
+where
+    O: OWFParameters,
+{
+    fn from(value: UnpackedSecretKey<O>) -> Self {
+        value.to_bytes()
+    }
+}
+
+impl<O> ByteEncoding for UnpackedSecretKey<O>
+where
+    O: OWFParameters,
+{
+    type Repr = Array<u8, O::SK>;
+
+    fn to_bytes(&self) -> Self::Repr {
+        self.sk.to_bytes()
+    }
+
+    fn to_vec(&self) -> Vec<u8> {
+        self.sk.to_vec()
+    }
+
+    fn encoded_len(&self) -> usize {
+        O::SK::USIZE
+    }
+}
+
+impl<O> UnpackedSecretKey<O>
+where
+    O: OWFParameters,
+{
+    pub(crate) fn as_public_key(&self) -> PublicKey<O> {
+        self.sk.pk.clone()
+    }
+}
+
+impl<O> Debug for UnpackedSecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretKeyUnpacked")
+            .field("owf_key", &"redacted")
+            .field("owf_input", &self.sk.pk.owf_input.as_slice())
+            .field("owf_output", &self.sk.pk.owf_output.as_slice())
+            .field("owf_key_witness", &"redacted")
+            .finish()
+    }
+}
+
+impl<O> PartialEq for UnpackedSecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn eq(&self, rhs: &Self) -> bool {
+        self.sk == rhs.sk
+    }
+}
+
+impl<O> Eq for UnpackedSecretKey<O> where O: OWFParameters {}
+
+#[cfg(feature = "serde")]
+impl<O> Serialize for UnpackedSecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_bytes().serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, O> Deserialize<'de> for UnpackedSecretKey<O>
+where
+    O: OWFParameters,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Array::<u8, O::SK>::deserialize(deserializer).and_then(|bytes| {
+            Self::try_from(bytes.as_slice())
+                .map_err(|_| serde::de::Error::custom("expected a valid secret key"))
+        })
+    }
+}
+
+/// Internal representation of a public key
+pub(crate) struct PublicKey<O>
+where
+    O: OWFParameters,
+{
+    pub(crate) owf_input: Array<u8, O::InputSize>,
+    pub(crate) owf_output: Array<u8, O::OutputSize>,
+}
+
+impl<O> Clone for PublicKey<O>
+where
+    O: OWFParameters,
+{
+    fn clone(&self) -> Self {
+        Self {
+            owf_input: self.owf_input.clone(),
+            owf_output: self.owf_output.clone(),
+        }
+    }
+}
+
+impl<O> TryFrom<&[u8]> for PublicKey<O>
+where
+    O: OWFParameters,
+{
+    type Error = Error;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.len() == O::PK::USIZE {
+            let (owf_input, owf_output) = bytes.split_at(O::InputSize::USIZE);
+            let Ok(owf_input) = Array::try_from(owf_input) else {
+                return Err(Error::new());
+            };
+            let Ok(owf_output) = Array::try_from(owf_output) else {
+                return Err(Error::new());
+            };
+
+            Ok(Self {
+                owf_input,
+                owf_output,
+            })
+        } else {
+            Err(Error::new())
+        }
+    }
+}
+
+impl<O> From<PublicKey<O>> for Array<u8, O::PK>
+where
+    O: OWFParameters,
+{
+    fn from(value: PublicKey<O>) -> Self {
+        value.to_bytes()
+    }
+}
+
+impl<O> ByteEncoding for PublicKey<O>
+where
+    O: OWFParameters,
+{
+    type Repr = Array<u8, O::PK>;
+
+    fn to_bytes(&self) -> Self::Repr {
+        let mut buf = Array::default();
+        buf[..O::InputSize::USIZE].copy_from_slice(&self.owf_input);
+        buf[O::InputSize::USIZE..].copy_from_slice(&self.owf_output);
+        buf
+    }
+
+    fn to_vec(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(O::PK::USIZE);
+        buf.extend_from_slice(&self.owf_input);
+        buf.extend_from_slice(&self.owf_output);
+        buf
+    }
+
+    fn encoded_len(&self) -> usize {
+        O::PK::USIZE
+    }
+}
+
+impl<O> Debug for PublicKey<O>
+where
+    O: OWFParameters,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PublicKey")
+            .field("owf_input", &self.owf_input.as_slice())
+            .field("owf_output", &self.owf_output.as_slice())
+            .finish()
+    }
+}
+
+impl<O> PartialEq for PublicKey<O>
+where
+    O: OWFParameters,
+{
+    fn eq(&self, rhs: &Self) -> bool {
+        self.owf_input == rhs.owf_input && self.owf_output == rhs.owf_output
+    }
+}
+
+impl<O> Eq for PublicKey<O> where O: OWFParameters {}
+
+#[cfg(feature = "serde")]
+impl<O> Serialize for PublicKey<O>
+where
+    O: OWFParameters,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_bytes().serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, O> Deserialize<'de> for PublicKey<O>
+where
+    O: OWFParameters,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Array::<u8, O::PK>::deserialize(deserializer).and_then(|bytes| {
+            Self::try_from(bytes.as_slice())
+                .map_err(|_| serde::de::Error::custom("expected a valid public key"))
+        })
+    }
+}

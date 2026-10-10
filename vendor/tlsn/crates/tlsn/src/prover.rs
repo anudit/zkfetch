@@ -410,6 +410,10 @@ where
             mut ctx,
             mut vm,
             TlsOutput {
+                #[cfg(feature = "d1-experimental")]
+                epoch_ciphertext,
+                #[cfg(feature = "d1-experimental")]
+                native_keys,
                 keys,
                 tls_transcript,
                 deferred_schedule,
@@ -457,6 +461,12 @@ where
             mux_handle: self.mux_handle,
             low_latency: self.low_latency,
             state: state::Committed {
+                #[cfg(feature = "d1-experimental")]
+                field_ready: false,
+                #[cfg(feature = "d1-experimental")]
+                epoch_ciphertext,
+                #[cfg(feature = "d1-experimental")]
+                native_keys,
                 vm,
                 deferred_schedule,
                 server_name: self.state.server_name,
@@ -572,6 +582,61 @@ where
 }
 
 impl Prover<state::Committed> {
+    /// Borrow the unfiltered application-epoch ciphertext captured by the proxy.
+    #[cfg(feature = "d1-experimental")]
+    pub fn application_epoch_ciphertext(&self) -> Option<&crate::ApplicationEpochCiphertext> {
+        self.state.epoch_ciphertext.as_ref()
+    }
+
+    /// Borrow locally retained keys for an experimental presentation. Keys are
+    /// available only for native TLS 1.3 proxy sessions, never from VM decoding.
+    #[cfg(feature = "d1-experimental")]
+    pub fn application_key_secrets(&self) -> Option<&crate::ApplicationKeySecrets> {
+        self.state.native_keys.as_ref()
+    }
+
+    /// Prove an experimental field relation borrowing the existing TLS
+    /// application key. Both parties must explicitly negotiate this operation.
+    /// The public circuit and binding must be reconstructed from notary policy.
+    /// This operation currently follows the existing session proof; it does
+    /// not remove its tag/hash work or constitute the completed D1 protocol.
+    #[cfg(all(feature = "d1-experimental", not(tlsn_insecure)))]
+    pub async fn prove_application_key_relation(
+        &mut self,
+        direction: tlsn_core::transcript::Direction,
+        circuit: &zkf_ir::Circuit,
+        witness: &zkf_ir::Witness,
+        binding: &[u8],
+    ) -> Result<()> {
+        if !self.state.field_ready || self.state.epoch_ciphertext.is_none() || self.state.deferred_schedule.is_some() {
+            return Err(Error::user().with_msg("accept the TLS schedule proof before field relations"));
+        }
+        let prefix = match direction {
+            tlsn_core::transcript::Direction::Sent => self.state.keys.client_write_key,
+            tlsn_core::transcript::Direction::Received => self.state.keys.server_write_key,
+        };
+        let ctx = self.ctx.as_mut().ok_or_else(|| Error::internal().with_msg("proving context was dropped"))?;
+        zkf_ir::backend::mpz::prove(&mut self.state.vm, ctx, circuit, witness, prefix, binding)
+            .await.map_err(|e| Error::internal().with_msg(format!("application key relation failed: {e}")))
+    }
+
+    /// Combined Fiat--Shamir relation borrowing both session keys in order.
+    #[cfg(all(feature = "d1-experimental", not(tlsn_insecure)))]
+    pub async fn prove_application_keys_relation(
+        &mut self,
+        circuit: &zkf_ir::Circuit,
+        witness: &zkf_ir::Witness,
+        binding: &[u8],
+    ) -> Result<()> {
+        if !self.state.field_ready || self.state.epoch_ciphertext.is_none() || self.state.deferred_schedule.is_some() {
+            return Err(Error::user().with_msg("accept the TLS schedule proof before field relations"));
+        }
+        let prefixes = [self.state.keys.client_write_key, self.state.keys.server_write_key];
+        let ctx = self.ctx.as_mut().ok_or_else(|| Error::internal().with_msg("proving context was dropped"))?;
+        zkf_ir::backend::mpz::prove_profiled_prefixes(&mut self.state.vm, ctx, circuit, witness, &prefixes, binding, true)
+            .await.map_err(|e| Error::internal().with_msg(format!("application key relation failed: {e}")))
+    }
+
     /// Returns the TLS transcript.
     pub fn tls_transcript(&self) -> &TlsTranscript {
         &self.state.tls_transcript
@@ -661,6 +726,9 @@ impl Prover<state::Committed> {
         if let Some(schedule) = deferred_schedule.take() {
             schedule.verify()?;
         }
+
+        #[cfg(feature = "d1-experimental")]
+        { self.state.field_ready |= config.server_identity(); }
 
         Ok(output)
     }

@@ -354,6 +354,10 @@ impl Verifier<state::CommitAccepted<Mpc>> {
             low_latency: self.low_latency,
             state: state::Committed {
                 deferred_schedule: None,
+                #[cfg(feature = "d1-experimental")]
+                field_ready: false,
+                #[cfg(feature = "d1-experimental")]
+                epoch_ciphertext: None,
                 deferred_tags: None,
                 vm,
                 keys,
@@ -473,6 +477,8 @@ impl Verifier<state::CommitAccepted<Proxy>> {
             }
         };
 
+        #[cfg(feature = "d1-experimental")]
+        let epoch_ciphertext = output.epoch_ciphertext;
         let deferred_schedule = output.deferred_schedule;
         let keys = output.keys;
         let tls_transcript = output.tls_transcript;
@@ -529,6 +535,10 @@ impl Verifier<state::CommitAccepted<Proxy>> {
             low_latency: self.low_latency,
             state: state::Committed {
                 deferred_schedule,
+                #[cfg(feature = "d1-experimental")]
+                field_ready: false,
+                #[cfg(feature = "d1-experimental")]
+                epoch_ciphertext,
                 deferred_tags,
                 vm,
                 keys,
@@ -539,6 +549,54 @@ impl Verifier<state::CommitAccepted<Proxy>> {
 }
 
 impl Verifier<state::Committed> {
+    /// Borrow ciphertext recorded by the notary before suffix filtering.
+    /// Accept the session proof before signing this data and key commitments.
+    #[cfg(feature = "d1-experimental")]
+    pub fn application_epoch_ciphertext(&self) -> Option<&crate::ApplicationEpochCiphertext> {
+        self.state.epoch_ciphertext.as_ref()
+    }
+
+    /// Verify an experimental field relation on the authenticated TLS
+    /// application key. Both parties must negotiate this operation. The
+    /// notary must build the circuit/binding itself and accept the complete
+    /// TLS schedule before signing any resulting commitment.
+    #[cfg(all(feature = "d1-experimental", not(tlsn_insecure)))]
+    pub async fn verify_application_key_relation(
+        &mut self,
+        direction: tlsn_core::transcript::Direction,
+        circuit: &zkf_ir::Circuit,
+        binding: &[u8],
+    ) -> Result<()> {
+        if !self.state.field_ready || self.state.epoch_ciphertext.is_none()
+            || self.state.deferred_schedule.is_some() || self.state.deferred_tags.is_some() {
+            return Err(Error::user().with_msg("accept the TLS session proof before field relations"));
+        }
+        let prefix = match direction {
+            tlsn_core::transcript::Direction::Sent => self.state.keys.client_write_key,
+            tlsn_core::transcript::Direction::Received => self.state.keys.server_write_key,
+        };
+        let ctx = self.ctx.as_mut().ok_or_else(|| Error::internal().with_msg("verification context was dropped"))?;
+        zkf_ir::backend::mpz::verify(&mut self.state.vm, ctx, circuit, prefix, binding)
+            .await.map_err(|e| Error::user().with_msg(format!("application key relation rejected: {e}")))
+    }
+
+    /// Combined Fiat--Shamir relation borrowing both session keys in order.
+    #[cfg(all(feature = "d1-experimental", not(tlsn_insecure)))]
+    pub async fn verify_application_keys_relation(
+        &mut self,
+        circuit: &zkf_ir::Circuit,
+        binding: &[u8],
+    ) -> Result<()> {
+        if !self.state.field_ready || self.state.epoch_ciphertext.is_none()
+            || self.state.deferred_schedule.is_some() || self.state.deferred_tags.is_some() {
+            return Err(Error::user().with_msg("accept the TLS session proof before field relations"));
+        }
+        let prefixes = [self.state.keys.client_write_key, self.state.keys.server_write_key];
+        let ctx = self.ctx.as_mut().ok_or_else(|| Error::internal().with_msg("verification context was dropped"))?;
+        zkf_ir::backend::mpz::verify_profiled_prefixes(&mut self.state.vm, ctx, circuit, &prefixes, binding, true)
+            .await.map_err(|e| Error::user().with_msg(format!("application key relation rejected: {e}")))
+    }
+
     /// Returns the TLS transcript.
     pub fn tls_transcript(&self) -> &TlsTranscript {
         &self.state.tls_transcript
@@ -552,6 +610,10 @@ impl Verifier<state::Committed> {
             .take()
             .ok_or_else(|| Error::internal().with_msg("verification context was dropped"))?;
         let state::Committed {
+            #[cfg(feature = "d1-experimental")]
+            field_ready,
+            #[cfg(feature = "d1-experimental")]
+            epoch_ciphertext,
             mut vm,
             keys,
             tls_transcript,
@@ -583,6 +645,10 @@ impl Verifier<state::Committed> {
             mux_handle: self.mux_handle,
             low_latency: self.low_latency,
             state: state::Verify {
+                #[cfg(feature = "d1-experimental")]
+                field_ready,
+                #[cfg(feature = "d1-experimental")]
+                epoch_ciphertext,
                 vm,
                 keys,
                 tls_transcript,
@@ -616,6 +682,10 @@ impl Verifier<state::Verify> {
             .ok_or_else(|| Error::internal().with_msg("verification context was dropped"))?;
         let state::Verify {
             mut vm,
+            #[cfg(feature = "d1-experimental")]
+            field_ready,
+            #[cfg(feature = "d1-experimental")]
+            epoch_ciphertext,
             keys,
             tls_transcript,
             deferred_schedule,
@@ -661,6 +731,9 @@ impl Verifier<state::Verify> {
             })?;
         }
 
+        #[cfg(feature = "d1-experimental")]
+        let field_ready = field_ready || output.server_name.is_some();
+
         Ok((
             output,
             Verifier {
@@ -670,6 +743,10 @@ impl Verifier<state::Verify> {
                 mux_handle: self.mux_handle,
                 low_latency: self.low_latency,
                 state: state::Committed {
+                    #[cfg(feature = "d1-experimental")]
+                    field_ready,
+                    #[cfg(feature = "d1-experimental")]
+                    epoch_ciphertext,
                     vm,
                     keys,
                     tls_transcript,
@@ -688,6 +765,10 @@ impl Verifier<state::Verify> {
             .ok_or_else(|| Error::internal().with_msg("verification context was dropped"))?;
         let state::Verify {
             vm,
+            #[cfg(feature = "d1-experimental")]
+            field_ready,
+            #[cfg(feature = "d1-experimental")]
+            epoch_ciphertext,
             keys,
             tls_transcript,
             deferred_schedule,
@@ -709,6 +790,10 @@ impl Verifier<state::Verify> {
             low_latency: self.low_latency,
             state: state::Committed {
                 vm,
+                #[cfg(feature = "d1-experimental")]
+                field_ready,
+                #[cfg(feature = "d1-experimental")]
+                epoch_ciphertext,
                 keys,
                 tls_transcript,
                 deferred_schedule,

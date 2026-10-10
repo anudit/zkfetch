@@ -4,8 +4,8 @@ A single `t4g.small` (2 Graviton vCPUs, 2 GB) in `ap-south-1`, closer to
 India than the Cloudflare notaries (which India reaches via Hong Kong or
 Singapore). It runs the same notary binary, built natively for arm64 so PMULL
 and the AES instructions are used, as a systemd service behind native Caddy for HTTPS, with 4 session
-slots. New instances default to a 4 GiB gp3 root disk, using Amazon Linux 2023
-minimal with English locales only and 512 MiB of host swap. Package caches
+slots. New instances default to a 4 GiB gp3 root disk, using Amazon Linux 2027
+Preview minimal ARM64 with English locales only and 512 MiB of host swap. Package caches
 are cleaned, the cache timer disabled, and the unused server-side AWS CLI removed. It signs with `.zkf/hosted-notary.key`, so its public key matches the
 Cloudflare deployments and existing pins keep working.
 
@@ -25,7 +25,7 @@ Amazon Linux AMI lookup, and `sts:GetCallerIdentity`.
   DNS-only A record at the instance IP and run `NOTARY_DOMAIN=notary.example.com infra/aws/up.sh`.
   (Proxying the record through Cloudflare would route India via Hong Kong again.)
 - SSH is open only to the IP that last ran `up.sh`; the key and state live in
-  `.zkf/aws/` (git-ignored). Logs: `sudo docker logs -f zkf-notary`.
+  `.zkf/aws/` (git-ignored). Logs: `sudo journalctl -u zkf-notary -f`.
 - `up.sh` again redeploys the notary on the same instance. The IP changes only
   if the instance is replaced.
 - Cost: about $10 per month for the instance and its public IPv4 address,
@@ -63,7 +63,8 @@ EC2 runtime. To skip Docker entirely, provide a prebuilt Linux ARM64 notary:
 NOTARY_BINARY=/path/to/zkf-notary ZKF_CAPABILITIES_FILE=/private/capabilities.json infra/aws/up.sh
 ```
 
-The binary must be compatible with Amazon Linux 2023's glibc; shared-library
+The binary must be compatible with the host's glibc; the current binary built
+against the AL2023-compatible baseline also runs on AL2027. Shared-library
 resolution is checked before startup. No compiler, source tree or build cache is uploaded.
 Service units live in [`systemd/`](systemd/). Logs and service status:
 
@@ -73,3 +74,30 @@ sudo systemctl status zkf-notary caddy zkf-egress
 ```
 
 See the [native deployment comparison](../../docs/ec2-native-2026-10-09.md).
+
+## AL2027 migration
+
+The default AMI lookup is
+`/aws/service/ami-amazon-linux-latest/al2027-preview-ami-minimal-kernel-default-arm64`.
+AL2027 is currently a [preview intended for evaluation/testing](https://docs.aws.amazon.com/linux/al2027/ug/what-is-amazon-linux-2027.html).
+It does not automatically install updates; patch explicitly and replace preview
+hosts with GA images when available. SELinux remains enforcing; deployment
+restores file labels before starting the native services.
+
+An AMI change requires a replacement instance. To migrate an AL2023 host:
+
+```sh
+NEW_INSTANCE=1 NOTARY_BINARY=/path/to/zkf-notary \
+  ZKF_CAPABILITIES_FILE=/private/capabilities.json infra/aws/up.sh
+```
+
+This launches another tagged instance and publishes its endpoint after a pinned-key
+HTTPS health check. Test presentations against it before terminating the old instance
+by its exact instance ID. Rebuild/reload the extension to pick up the new hostname.
+Do not use `down.sh` for this cutover: it deletes both tagged hosts.
+`INSTANCE_ID` selects a specific host when redeploying during a migration;
+`AMI_PARAMETER` overrides the AMI lookup for future launches.
+
+The [AL2027 migration measurements](../../docs/benchmarks/d1-d3-baseline/hosted-al2027-2026-10-09.json)
+record 12/12 verified D1 requests at four parallel sessions and fresh/warm
+legacy verification, using the same notary binary as the AL2023 deployment.

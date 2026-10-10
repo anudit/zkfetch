@@ -1,0 +1,101 @@
+{
+  "measurement_scope": "Native localhost, one cold and two resumed sessions per scenario. Presentation timers include transcript-proof building. QuickSilver scenarios carry signed session predicates, not an offline predicate proof.",
+  "classification_caveat": "Known shapes only; GCM tags and JSON are not separately attributed. Allocation counters exclude check masks and do not measure consumed VOLE or peak RAM.",
+  "scenarios": [
+    {
+      "scenario": "binius",
+      "samples": 3,
+      "median_presentation_prove_ms": 437.351583,
+      "median_presentation_verify_ms": 379.239958,
+      "offline_proof_bytes": [
+        568512
+      ],
+      "presentation_bytes": [
+        592235
+      ],
+      "private_input_bits": 27552,
+      "allocated_and_gates": 2489104,
+      "allocated_bits_excluding_check_masks": 2516656,
+      "and_gates_by_known_shape": {
+        "linear": 0,
+        "aes128_key_expansion": 2560,
+        "aes128_full": 480000,
+        "sha256": 361168,
+        "blake3": 1624896,
+        "aes128_after_expansion": 20480
+      },
+      "warm_median_timings_ms": {
+        "notaryConnectMs": 32.219104,
+        "setupMs": 0.2331455,
+        "tlsMs": 34.987812500000004,
+        "proveMs": 67.71758299999999,
+        "attestMs": 63.5033755,
+        "totalMs": 198.6610615
+      }
+    },
+    {
+      "scenario": "quicksilver",
+      "samples": 3,
+      "median_presentation_prove_ms": 1.039541,
+      "median_presentation_verify_ms": 0.755708,
+      "offline_proof_bytes": [
+        0
+      ],
+      "presentation_bytes": [
+        22839
+      ],
+      "private_input_bits": 27552,
+      "allocated_and_gates": 2639997,
+      "allocated_bits_excluding_check_masks": 2667549,
+      "and_gates_by_known_shape": {
+        "linear": 0,
+        "unclassified": 150893,
+        "aes128_key_expansion": 2560,
+        "aes128_full": 480000,
+        "sha256": 361168,
+        "blake3": 1624896,
+        "aes128_after_expansion": 20480
+      },
+      "warm_median_timings_ms": {
+        "notaryConnectMs": 30.7048335,
+        "setupMs": 0.227208,
+        "tlsMs": 34.0548755,
+        "proveMs": 76.16062500000001,
+        "attestMs": 73.8007915,
+        "totalMs": 214.948417
+      }
+    },
+    {
+      "scenario": "reveal",
+      "samples": 3,
+      "median_presentation_prove_ms": 0.338084,
+      "median_presentation_verify_ms": 0.42408399999999996,
+      "offline_proof_bytes": [
+        0
+      ],
+      "presentation_bytes": [
+        6804
+      ],
+      "private_input_bits": 8208,
+      "allocated_and_gates": 1144109,
+      "allocated_bits_excluding_check_masks": 1152317,
+      "and_gates_by_known_shape": {
+        "linear": 0,
+        "unclassified": 150893,
+        "aes128_key_expansion": 2560,
+        "aes128_full": 473600,
+        "sha256": 361168,
+        "blake3": 135408,
+        "aes128_after_expansion": 20480
+      },
+      "warm_median_timings_ms": {
+        "notaryConnectMs": 23.405958000000002,
+        "setupMs": 0.201833,
+        "tlsMs": 14.0315205,
+        "proveMs": 36.745625000000004,
+        "attestMs": 34.6489585,
+        "totalMs": 109.03399900000001
+      }
+    }
+  ]
+}

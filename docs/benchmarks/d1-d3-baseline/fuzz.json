@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-09",
+  "tool": "cargo-fuzz 0.13.2 / libFuzzer / nightly-aarch64-apple-darwin",
+  "scope": "Preliminary primitive and experimental VOLEitH decoder fuzzing. CPU time was not separately measured. Full production presentation/protocol fuzzing and the release CPU budget remain outstanding.",
+  "runs": [
+    {
+      "target": "attestation_cbor",
+      "requested_wall_time_s": 30,
+      "elapsed_wall_time_s": 31,
+      "executions": 1294767,
+      "max_input_bytes": 65536,
+      "fuzzer_rss_limit_mib": 1024,
+      "max_reported_fuzzer_rss_mb": 474,
+      "findings": 0
+    },
+    {
+      "target": "record_table_bao",
+      "requested_wall_time_s": 30,
+      "elapsed_wall_time_s": 31,
+      "executions": 1658930,
+      "max_input_bytes": 65536,
+      "fuzzer_rss_limit_mib": 1024,
+      "max_reported_fuzzer_rss_mb": 520,
+      "findings": 0
+    },
+    {
+      "target": "json_anchors",
+      "requested_wall_time_s": 30,
+      "elapsed_wall_time_s": 31,
+      "executions": 813763,
+      "max_input_bytes": 65536,
+      "fuzzer_rss_limit_mib": 1024,
+      "max_reported_fuzzer_rss_mb": 534,
+      "findings": 0
+    },
+    {
+      "target": "voleith_proof",
+      "requested_wall_time_s": 30,
+      "elapsed_wall_time_s": 31,
+      "executions": 6066,
+      "max_input_bytes": 32768,
+      "fuzzer_rss_limit_mib": 1024,
+      "max_reported_fuzzer_rss_mb": 457,
+      "findings": 0,
+      "seed_families": [
+        8,
+        11
+      ]
+    }
+  ]
+}

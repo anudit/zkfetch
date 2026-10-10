@@ -33,6 +33,29 @@ pub const DEFAULT_PROXY_MAX_RECV: usize = 1 << 18;
 /// Upper bound accepted by the notary for a single framed message.
 pub const MAX_FRAME_LEN: usize = 16 << 20;
 
+/// Wire messages for v2 (D1) attestations between prover and notary.
+pub mod d1 {
+    use serde::{Deserialize, Serialize};
+
+    /// Query parameter on the notary URL that selects a v2 attestation. The
+    /// notary must know before the session which proof follows the TLS proof.
+    pub const QUERY: (&str, &str) = ("attestation", "2");
+    /// Mux stream carrying `SHA-256(binding) ‖ C_k(client) ‖ C_k(server)`,
+    /// followed by a flow byte (7: profiled top-level signed claims/head, 8: profiled ciphertext-only) and any
+    /// bounded metadata, before the combined key/framing proof.
+    pub const KEYS_STREAM: &[u8] = b"zkfetch/d1/keys";
+    pub const KEYS_FRAME_LEN: usize = 96;
+    /// Same cap as the v1 owner/context extensions.
+    pub const MAX_BINDING_LEN: usize = 256;
+
+    /// The prover's attestation request, after the session proofs.
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    pub struct Request {
+        pub owner: Option<String>,
+        pub context: Option<String>,
+    }
+}
+
 pub mod b64 {
     use base64::{Engine, engine::general_purpose::STANDARD};
 

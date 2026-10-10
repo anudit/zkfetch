@@ -1,0 +1,895 @@
+//! Experimental HTTP/1.1 JSON presentation with offline parser context.
+//!
+//! The verifier rebuilds the complete relation from signed Bao ciphertext,
+//! authenticated key commitments, public response headers and a caller's query.
+//! Headers are disclosed in this first profile. Content-Length framing only:
+//! chunking, compression, multiple responses and AES-256 sessions are rejected.
+//! This API does not create a notary attestation or validate its TLS provenance.
+use crate::{
+    experimental::{self, Context},
+    primitives::Parameters,
+};
+use anyhow::{Context as _, Result, ensure};
+use bincode::Options;
+use k256::ecdsa::VerifyingKey;
+use serde::{Deserialize, Serialize};
+use std::ops::Range;
+use zkf_attestation::{Attestation, Bytes, records::Opening};
+use zkf_ir::{Circuit, byte_inputs, json_circuit::Selection, predicates::Comparison};
+
+// A conservative cap while the authenticated evaluator still retains all
+// graph edges. Raising it requires a measured memory budget.
+const MAX_DOCUMENT: usize = 1024;
+const MAX_HEADERS: usize = 16384;
+
+pub use zkf_attestation::response::RecordView;
+
+/// Public statement metadata. Positions disclose lengths, not hidden values.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Statement {
+    pub headers: Vec<u8>,
+    pub records: Vec<RecordView>,
+    pub encoded_key: Vec<u8>,
+    pub key: Range<usize>,
+    pub colon: usize,
+    pub value: Range<usize>,
+}
+
+/// The relying party supplies this policy independently of the presentation.
+/// `key` means a member of the root object, without uniqueness guarantees.
+pub struct Query<'a> {
+    pub server_name: &'a str,
+    pub key: &'a str,
+    pub comparison: Comparison,
+    pub constant: u64,
+    pub nonce: [u8; 32],
+}
+
+/// Non-secret presentation components. Private keys are never serialized.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Presentation {
+    pub statement: Statement,
+    pub opening: Opening,
+    pub proof: Vec<u8>,
+}
+
+const PRESENTATION_MAGIC: &[u8; 8] = b"zkf2prs\x04";
+/// Bounds decoding before any proof work; proofs grow with the document.
+pub const MAX_PRESENTATION_BYTES: usize = 32 << 20;
+
+#[derive(Serialize, Deserialize)]
+struct Wire {
+    attestation: Vec<u8>,
+    presentation: Presentation,
+}
+
+fn wire_options() -> impl Options {
+    bincode::DefaultOptions::new()
+        .with_fixint_encoding()
+        .with_limit(MAX_PRESENTATION_BYTES as u64)
+        .reject_trailing_bytes()
+}
+
+impl Presentation {
+    /// `magic ‖ bincode(signed attestation envelope, presentation)`. The
+    /// attestation travels with the proof; trust still comes from the verifier.
+    pub fn encode(&self, signed_attestation: &[u8]) -> Result<Vec<u8>> {
+        let mut out = PRESENTATION_MAGIC.to_vec();
+        wire_options().serialize_into(
+            &mut out,
+            &Wire {
+                attestation: signed_attestation.to_vec(),
+                presentation: self.clone(),
+            },
+        )?;
+        ensure!(
+            out.len() <= MAX_PRESENTATION_BYTES,
+            "presentation exceeds cap"
+        );
+        Ok(out)
+    }
+
+    /// Returns the signed attestation envelope and the presentation.
+    pub fn decode(bytes: &[u8]) -> Result<(Vec<u8>, Self)> {
+        ensure!(
+            bytes.len() <= MAX_PRESENTATION_BYTES,
+            "presentation exceeds cap"
+        );
+        let body = bytes
+            .strip_prefix(PRESENTATION_MAGIC.as_slice())
+            .ok_or_else(|| anyhow::anyhow!("not a v2 presentation"))?;
+        let wire: Wire = wire_options()
+            .deserialize(body)
+            .context("invalid v2 presentation encoding")?;
+        Ok((wire.attestation, wire.presentation))
+    }
+
+    /// Whether `bytes` carry the v2 presentation magic.
+    pub fn is_v2(bytes: &[u8]) -> bool {
+        bytes.starts_with(PRESENTATION_MAGIC)
+    }
+}
+
+fn relation(
+    a: &Attestation,
+    statement: &Statement,
+    opening: &Opening,
+    query: &Query<'_>,
+) -> Result<Circuit> {
+    a.validate()?;
+    ensure!(a.server.name == query.server_name, "server policy mismatch");
+    ensure!(
+        a.tls.suite == 0x1301,
+        "SHA-384 session integration is not implemented"
+    );
+    ensure!(
+        a.recv.complete && !a.recv.records.is_empty(),
+        "complete response stream required"
+    );
+    ensure!(
+        a.recv.records[0].seq == 0,
+        "response must begin at application-epoch sequence zero"
+    );
+    ensure!(
+        statement.records.len() == a.recv.records.len(),
+        "record views must cover the signed stream"
+    );
+    ensure!(
+        statement.headers.len() <= MAX_HEADERS,
+        "response headers exceed cap"
+    );
+    ensure!(
+        statement.encoded_key.len() <= 4096,
+        "member encoding exceeds cap"
+    );
+    let decoded_key: String = serde_json::from_slice(&statement.encoded_key)?;
+    ensure!(decoded_key == query.key, "member policy mismatch");
+    ensure!(
+        opening.offset == 0 && opening.length == a.recv.len,
+        "this context profile requires the whole ciphertext stream"
+    );
+    let ciphertext = opening.verify(&a.recv)?;
+    let mut application_len = 0usize;
+    for (record, view) in a.recv.records.iter().zip(&statement.records) {
+        let inner_len = usize::from(record.len) - 16;
+        ensure!(view.content_len < inner_len, "content type outside record");
+        ensure!(
+            matches!(view.inner_type, 0x15..=0x17),
+            "unsupported inner record type"
+        );
+        if view.inner_type == 0x17 {
+            application_len = application_len
+                .checked_add(view.content_len)
+                .ok_or_else(|| anyhow::anyhow!("response size overflow"))?;
+        }
+    }
+    ensure!(
+        application_len <= MAX_DOCUMENT + MAX_HEADERS,
+        "response exceeds proof profile cap"
+    );
+    ensure!(
+        application_len > statement.headers.len(),
+        "missing JSON response body"
+    );
+    let body_len = application_len - statement.headers.len();
+    ensure!(body_len <= MAX_DOCUMENT, "JSON document exceeds cap");
+    verify_headers(&statement.headers, body_len)?;
+    // Validate statement bounds before allocating the parser circuit.
+    ensure!(
+        statement.key.start < statement.key.end
+            && statement.key.end <= body_len
+            && statement.colon < body_len
+            && statement.value.start < statement.value.end
+            && statement.value.end <= body_len,
+        "member selection outside document"
+    );
+    let head = zkf_attestation::response::Head {
+        headers: statement.headers.clone(),
+        records: statement.records.clone(),
+    };
+    let signed_head = head.is_signed(&a.claims);
+    // A mismatched reserved claim must fail, never fall back to another profile.
+    ensure!(signed_head || !a.claims.iter().any(|claim| matches!(claim,
+        zkf_attestation::Claim::Reveal {selector,..} if selector == zkf_attestation::response::HEAD_SELECTOR)), "signed response head differs");
+    zkf_ir::response::offline_relation(
+        a.keys.c_server.0,
+        &a.recv,
+        &ciphertext,
+        a.keys.iv_server.0,
+        &head,
+        signed_head,
+        &Selection {
+            encoded_key: &statement.encoded_key,
+            key: statement.key.clone(),
+            colon: statement.colon,
+            value: statement.value.clone(),
+        },
+        query.comparison,
+        query.constant,
+    )
+    .map_err(anyhow::Error::msg)
+}
+
+fn verify_headers(bytes: &[u8], body_len: usize) -> Result<()> {
+    let mut headers = [httparse::EMPTY_HEADER; 128];
+    let mut response = httparse::Response::new(&mut headers);
+    ensure!(
+        response.parse(bytes)? == httparse::Status::Complete(bytes.len()),
+        "incomplete or excess response headers"
+    );
+    ensure!(
+        response.version == Some(1) && response.code == Some(200),
+        "profile requires HTTP/1.1 200 response"
+    );
+    let mut length = None;
+    let mut content_type = false;
+    for header in response.headers {
+        if header.name.eq_ignore_ascii_case("content-length") {
+            ensure!(length.is_none(), "duplicate Content-Length");
+            let value = std::str::from_utf8(header.value)?;
+            ensure!(
+                !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()),
+                "invalid Content-Length"
+            );
+            length = Some(value.parse::<usize>()?);
+        } else if header.name.eq_ignore_ascii_case("content-type") {
+            ensure!(!content_type, "duplicate Content-Type");
+            let value = std::str::from_utf8(header.value)?;
+            ensure!(
+                value
+                    .split(';')
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .eq_ignore_ascii_case("application/json"),
+                "JSON Content-Type required"
+            );
+            content_type = true;
+        } else {
+            ensure!(
+                !header.name.eq_ignore_ascii_case("transfer-encoding")
+                    && !header.name.eq_ignore_ascii_case("content-encoding"),
+                "chunked or compressed response unsupported"
+            );
+        }
+    }
+    ensure!(
+        content_type && length == Some(body_len),
+        "response framing does not match complete JSON document"
+    );
+    Ok(())
+}
+
+/// Parses the wire name of a comparison ("eq", "ne", "lt", "le", "gt", "ge").
+pub fn parse_comparison(op: &str) -> Result<Comparison> {
+    Ok(match op {
+        "eq" => Comparison::Eq,
+        "ne" => Comparison::Ne,
+        "lt" => Comparison::Lt,
+        "le" => Comparison::Le,
+        "gt" => Comparison::Gt,
+        "ge" => Comparison::Ge,
+        other => anyhow::bail!("unsupported comparison {other:?}"),
+    })
+}
+
+fn context<'a>(a: &Attestation, q: &Query<'_>, binding: &'a [u8]) -> Result<Context<'a>> {
+    Ok(Context {
+        attestation_digest: a.digest()?,
+        statement: binding,
+        presentation_nonce: q.nonce,
+    })
+}
+fn query_binding(q: &Query<'_>, statement: &Statement) -> Result<Vec<u8>> {
+    let mut bytes = b"zkf/2/http-json/top-level-prefix-context-profile-4/depth-4\0".to_vec();
+    for value in [q.server_name, q.key] {
+        bytes.extend_from_slice(&(value.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(value.as_bytes());
+    }
+    bytes.push(match q.comparison {
+        Comparison::Eq => 0,
+        Comparison::Ne => 1,
+        Comparison::Lt => 2,
+        Comparison::Le => 3,
+        Comparison::Gt => 4,
+        Comparison::Ge => 5,
+    });
+    bytes.extend_from_slice(&q.constant.to_le_bytes());
+    let metadata = bincode::serialize(statement)?;
+    bytes.extend_from_slice(&(metadata.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(&metadata);
+    Ok(bytes)
+}
+
+const SIGNED_CLAIM_PROOF: &[u8] = b"zkf/2/presentation/notary-signed-top-level-member/v2";
+fn has_signed_claim(a: &Attestation, q: &Query<'_>) -> bool {
+    let op = match q.comparison {
+        Comparison::Eq => "eq",
+        Comparison::Ne => "ne",
+        Comparison::Lt => "lt",
+        Comparison::Le => "le",
+        Comparison::Gt => "gt",
+        Comparison::Ge => "ge",
+    };
+    a.server.name == q.server_name
+        && a.claims.contains(&zkf_attestation::response::member_claim(
+            q.key, op, q.constant, q.nonce,
+        ))
+}
+
+/// Prove from a key kept locally after a verified D1 fetch. The caller still
+/// owns the key and must zeroize its storage. This never generates an attestation.
+pub fn prove(
+    a: &Attestation,
+    statement: Statement,
+    opening: Opening,
+    query: &Query<'_>,
+    server_key: &[u8; 16],
+    params: Parameters,
+) -> Result<Presentation> {
+    if has_signed_claim(a, query) {
+        let head = zkf_attestation::response::Head {
+            headers: statement.headers.clone(),
+            records: statement.records.clone(),
+        };
+        ensure!(
+            head.is_signed(&a.claims),
+            "signed-claim response head mismatch"
+        );
+        let statement = Statement {
+            headers: statement.headers,
+            records: statement.records,
+            encoded_key: Vec::new(),
+            key: 0..0,
+            colon: 0,
+            value: 0..0,
+        };
+        return Ok(Presentation {
+            statement,
+            opening: Opening {
+                offset: 0,
+                length: 0,
+                proof: Vec::new(),
+            },
+            proof: SIGNED_CLAIM_PROOF.to_vec(),
+        });
+    }
+    let mut profile = crate::profile::Lap::new();
+    let c = relation(a, &statement, &opening, query)?;
+    crate::profile::circuit(c.committed_bits(), c.constraint_count());
+    profile.mark("present.relation");
+    let witness = c.eval_checked(&byte_inputs(server_key))?;
+    profile.mark("present.witness-evaluation");
+    let binding = query_binding(query, &statement)?;
+    let proof =
+        experimental::prove_checked(&witness.checked(), params, &context(a, query, &binding)?)?;
+    Ok(Presentation {
+        statement,
+        opening,
+        proof,
+    })
+}
+
+/// Verify with a pinned notary key and a separately supplied query/nonce.
+/// Time/owner/context authorization is the relying party's existing policy.
+pub fn verify(
+    a: &Attestation,
+    signature: &Bytes<64>,
+    trusted_key: &VerifyingKey,
+    presentation: &Presentation,
+    query: &Query<'_>,
+) -> Result<()> {
+    a.verify_signature(signature, trusted_key)?;
+    if presentation.proof == SIGNED_CLAIM_PROOF {
+        ensure!(
+            has_signed_claim(a, query),
+            "signed session claim or verifier nonce mismatch"
+        );
+        ensure!(
+            presentation.statement.encoded_key.is_empty()
+                && presentation.statement.key == (0..0)
+                && presentation.statement.colon == 0
+                && presentation.statement.value == (0..0),
+            "noncanonical signed-claim metadata"
+        );
+        let head = zkf_attestation::response::Head {
+            headers: presentation.statement.headers.clone(),
+            records: presentation.statement.records.clone(),
+        };
+        ensure!(
+            head.is_signed(&a.claims),
+            "signed-claim response head mismatch"
+        );
+        ensure!(
+            presentation.opening.offset == 0
+                && presentation.opening.length == 0
+                && presentation.opening.proof.is_empty(),
+            "noncanonical signed-claim opening"
+        );
+        a.validate()?;
+        zkf_ir::response::body_len(&a.recv, &head).map_err(anyhow::Error::msg)?;
+        return Ok(());
+    }
+    let mut profile = crate::profile::Lap::new();
+    let c = relation(a, &presentation.statement, &presentation.opening, query)?;
+    crate::profile::circuit(c.committed_bits(), c.constraint_count());
+    profile.mark("verify.relation");
+    let binding = query_binding(query, &presentation.statement)?;
+    experimental::verify_profiled(&c, &presentation.proof, &context(a, query, &binding)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aes::{
+        Aes128,
+        cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray},
+    };
+    use aes_gcm::{
+        Aes128Gcm, Nonce,
+        aead::{Aead, Payload},
+    };
+    use k256::ecdsa::SigningKey;
+    use zkf_attestation::{
+        Binding, Handshake, Keys, Server, Tls, TranscriptHash, key_id, records::RecordStream,
+    };
+    use zkf_ir::{aes::ExpandedKey, tls};
+
+    fn fixture() -> (Attestation, Statement, Opening, SigningKey) {
+        fixture_body(br#"{"id":123}"#)
+    }
+
+    fn fixture_body(body: &[u8]) -> (Attestation, Statement, Opening, SigningKey) {
+        fixture_body_padding(body, 0)
+    }
+
+    fn fixture_body_padding(
+        body: &[u8],
+        last_padding: u8,
+    ) -> (Attestation, Statement, Opening, SigningKey) {
+        let key = [7u8; 16];
+        let native = Aes128::new_from_slice(&key).unwrap();
+        let ck: Vec<_> = (1..=2)
+            .flat_map(|i| {
+                let mut block = GenericArray::clone_from_slice(&tls::commitment_block(i).unwrap());
+                native.encrypt_block(&mut block);
+                block.to_vec()
+            })
+            .collect();
+        let headers = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        let mut response = headers.clone();
+        response.extend_from_slice(body);
+        // Include a handshake control record before application data. It must
+        // remain covered by the root/table and advance the nonce sequence.
+        let contents = [
+            (vec![4, 0, 0, 0], 0x16),
+            (response[..40].to_vec(), 0x17),
+            (response[40..].to_vec(), 0x17),
+        ];
+        let gcm = Aes128Gcm::new_from_slice(&key).unwrap();
+        let mut records = Vec::new();
+        let mut views = Vec::new();
+        for (seq, (content, kind)) in contents.into_iter().enumerate() {
+            views.push(RecordView {
+                content_len: content.len(),
+                inner_type: kind,
+            });
+            let mut inner = content;
+            inner.push(kind);
+            inner.extend_from_slice(&[if seq == 2 { last_padding } else { 0 }, 0]);
+            let length = inner.len() + 16;
+            let mut record = vec![23, 3, 3, (length >> 8) as u8, length as u8];
+            let ciphertext = gcm
+                .encrypt(
+                    Nonce::from_slice(&tls::nonce([0; 12], seq as u64)),
+                    Payload {
+                        msg: &inner,
+                        aad: &record,
+                    },
+                )
+                .unwrap();
+            record.extend_from_slice(&ciphertext);
+            records.push(record);
+        }
+        let recv = RecordStream::new(&records, 0, true).unwrap();
+        let signing = SigningKey::from_slice(&[3; 32]).unwrap();
+        let a = Attestation {
+            v: 2,
+            alg: "secp256k1".into(),
+            notary_key_id: key_id(signing.verifying_key()),
+            sid: Bytes([1; 32]),
+            time: 1234,
+            mode: "proxy".into(),
+            server: Server {
+                name: "example.com".into(),
+                dialed_ip: "1.1.1.1".into(),
+                port: 443,
+                spki_sha256: Bytes([2; 32]),
+                chain_sha256: Bytes([3; 32]),
+                cert_verified_by_notary: true,
+            },
+            tls: Tls {
+                version: 0x0304,
+                suite: 0x1301,
+                group: 0x17,
+                hrr: false,
+            },
+            handshake: Handshake {
+                h_ch_sh: TranscriptHash::Sha256(Bytes([4; 32])),
+                h_ch_sf: TranscriptHash::Sha256(Bytes([5; 32])),
+            },
+            sent: RecordStream::new(&[], 0, true).unwrap().direction,
+            recv: recv.direction.clone(),
+            keys: Keys {
+                c_client: Bytes([0; 32]),
+                c_server: Bytes(ck.try_into().unwrap()),
+                iv_client: Bytes([0; 12]),
+                iv_server: Bytes([0; 12]),
+            },
+            claims: vec![],
+            binding: Binding {
+                owner: None,
+                context: None,
+            },
+        };
+        let statement = Statement {
+            headers,
+            records: views,
+            encoded_key: br#""id""#.to_vec(),
+            key: 1..5,
+            colon: 5,
+            value: 6..9,
+        };
+        let opening = recv.open(0, recv.direction.len).unwrap();
+        (a, statement, opening, signing)
+    }
+    fn query() -> Query<'static> {
+        Query {
+            server_name: "example.com",
+            key: "id",
+            comparison: Comparison::Ge,
+            constant: 100,
+            nonce: [2; 32],
+        }
+    }
+
+    #[test]
+    fn registered_profiles_pin_the_complete_builder_graph() {
+        let (mut a, statement, opening, _) = fixture();
+        let c = relation(&a, &statement, &opening, &query()).unwrap();
+        assert_eq!(
+            c.profile(),
+            Some("zkf/2/http-json/compact-aes/prefix/top-level/depth-4/full/v4")
+        );
+        assert_eq!(
+            c.digest()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>(),
+            "4525481612bb09f664c2f57e77e6060ace44aa15ef5ecd556b9307b58f347f69",
+            "builder changed: bump its profile and review the binding before updating the pin"
+        );
+        let head = zkf_attestation::response::Head {
+            headers: statement.headers.clone(),
+            records: statement.records.clone(),
+        };
+        a.claims.push(head.claim());
+        let c = relation(&a, &statement, &opening, &query()).unwrap();
+        assert_eq!(
+            c.profile(),
+            Some("zkf/2/http-json/compact-aes/prefix/top-level/depth-4/signed-head/v4")
+        );
+        assert_eq!(
+            c.digest()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>(),
+            "ff26bc9f240e8d44f25214bf9247d5bdf2271c3c87bc9218100ec8f85120e258",
+            "builder changed: bump its profile and review the binding before updating the pin"
+        );
+        let session = zkf_ir::response::session(
+            a.keys.c_server.0,
+            a.keys.c_server.0,
+            &a.recv,
+            &opening.verify(&a.recv).unwrap(),
+            a.keys.iv_server.0,
+            &head,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            session.profile(),
+            Some("zkf/2/session/standard-aes/top-level/depth-4/v4")
+        );
+        assert_eq!(
+            session
+                .digest()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>(),
+            "f55898ef40695800d78bae29906245174e191db60bb40f59c5a9dea97bdaeb75",
+            "builder changed: bump its profile and review the binding before updating the pin"
+        );
+        let keys = zkf_ir::tls::keys_commitment_statement([1; 32], [2; 32]);
+        assert_eq!(
+            keys.profile(),
+            Some("zkf/2/session/standard-aes/both-key-commitments/v4")
+        );
+        assert_eq!(
+            keys.digest()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>(),
+            "6bfc0ea7ab67386392728d42f551e56b3c368a40484cc1695c9f486cc27a07ef",
+            "builder changed: bump its profile and review the binding before updating the pin"
+        );
+    }
+
+    #[test]
+    fn transcript_binds_offsets_even_for_identical_duplicate_values() {
+        let body = br#"{"id":123,"id":123}"#;
+        let (a, statement, opening, signing) = fixture_body(body);
+        let mut p = prove(&a, statement, opening, &query(), &[7; 16], Parameters::Fast).unwrap();
+        let second = zkf_ir::json::members(body).unwrap().pop().unwrap();
+        p.statement.key = second.key_range.clone();
+        p.statement.colon = second.key_range.end;
+        p.statement.value = second.value_range;
+        assert!(
+            verify(
+                &a,
+                &a.sign(&signing).unwrap(),
+                signing.verifying_key(),
+                &p,
+                &query()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn nested_balance_cannot_satisfy_offline_or_signed_session_claim() {
+        let body = br#"{"balance":10,"history":[{"balance":999999}]}"#;
+        let (a, mut statement, opening, signing) = fixture_body(body);
+        let q = Query {
+            key: "balance",
+            constant: 999999,
+            ..query()
+        };
+        let members = zkf_ir::json::members(body).unwrap();
+        for member in members.iter().filter(|m| m.key == "balance") {
+            statement.encoded_key = body[member.key_range.clone()].to_vec();
+            statement.key = member.key_range.clone();
+            statement.colon = member.key_range.end;
+            statement.value = member.value_range.clone();
+            // The top-level value fails the threshold; the nested value fails depth.
+            assert!(
+                prove(
+                    &a,
+                    statement.clone(),
+                    opening.clone(),
+                    &q,
+                    &[7; 16],
+                    Parameters::Fast
+                )
+                .is_err()
+            );
+            let head = zkf_attestation::response::Head {
+                headers: statement.headers.clone(),
+                records: statement.records.clone(),
+            };
+            let claim = zkf_attestation::response::MemberClaim {
+                member: "balance".into(),
+                op: "ge".into(),
+                constant: 999999,
+                nonce: q.nonce,
+                encoded_key: statement.encoded_key.clone(),
+                key: statement.key.clone(),
+                colon: statement.colon,
+                value: statement.value.clone(),
+            };
+            let c = zkf_ir::response::session(
+                a.keys.c_server.0,
+                a.keys.c_server.0,
+                &a.recv,
+                &opening.verify(&a.recv).unwrap(),
+                a.keys.iv_server.0,
+                &head,
+                &[claim],
+            )
+            .unwrap();
+            assert!(c.eval(&byte_inputs(&[7; 32])).is_err());
+            if member.object_depth == 0 {
+                let low = Query { constant: 10, ..q };
+                let proof = prove(
+                    &a,
+                    statement.clone(),
+                    opening.clone(),
+                    &low,
+                    &[7; 16],
+                    Parameters::Fast,
+                )
+                .unwrap();
+                verify(
+                    &a,
+                    &a.sign(&signing).unwrap(),
+                    signing.verifying_key(),
+                    &proof,
+                    &low,
+                )
+                .unwrap();
+            }
+        }
+        // Old unscoped signed claims must not acquire top-level semantics.
+        let mut old = a.clone();
+        old.claims.push(zkf_attestation::Claim::Predicate {
+            selector: format!("zkf/2/member/v1/{}/62616c616e6365", "02".repeat(32)),
+            op: "ge".into(),
+            constant: 999999,
+            result: true,
+        });
+        assert!(!has_signed_claim(&old, &q));
+    }
+
+    #[test]
+    fn prefix_skips_later_body_blocks_but_keeps_unsigned_suffix_checks() {
+        let body = format!("{{\"id\":123,\"later\":\"{}\"}}", "a".repeat(900));
+        let (a, statement, opening, signing) = fixture_body(body.as_bytes());
+        let prefix = relation(&a, &statement, &opening, &query()).unwrap();
+        let mut full = Circuit::default();
+        let refs: Vec<_> = (0..16).map(|_| full.commit_byte()).collect();
+        let key = ExpandedKey::new(&mut full, &refs).unwrap();
+        let head = zkf_attestation::response::Head {
+            headers: statement.headers.clone(),
+            records: statement.records.clone(),
+        };
+        zkf_ir::response::decrypt(
+            &mut full,
+            &key,
+            &a.recv,
+            &opening.verify(&a.recv).unwrap(),
+            a.keys.iv_server.0,
+            &head,
+            zkf_ir::response::Scope::Full,
+        )
+        .unwrap();
+        assert!(prefix.committed_bits() < full.committed_bits() / 2);
+        let proof = prove(
+            &a,
+            statement.clone(),
+            opening.clone(),
+            &query(),
+            &[7; 16],
+            Parameters::Fast,
+        )
+        .unwrap();
+        verify(
+            &a,
+            &a.sign(&signing).unwrap(),
+            signing.verifying_key(),
+            &proof,
+            &query(),
+        )
+        .unwrap();
+        // Invalid padding in the last block must still fail even though that
+        // block lies well after the selected value. Headers and views are unchanged.
+        let (bad, bad_statement, bad_opening, _) = fixture_body_padding(body.as_bytes(), 1);
+        assert!(
+            relation(&bad, &bad_statement, &bad_opening, &query())
+                .unwrap()
+                .eval(&byte_inputs(&[7; 16]))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn signed_ciphertext_context_roundtrip_and_policy_mutations() {
+        let (a, statement, opening, signing) = fixture();
+        let signature = a.sign(&signing).unwrap();
+        let p = prove(&a, statement, opening, &query(), &[7; 16], Parameters::Fast).unwrap();
+        verify(&a, &signature, signing.verifying_key(), &p, &query()).unwrap();
+        let mut q = query();
+        q.nonce[0] ^= 1;
+        assert!(verify(&a, &signature, signing.verifying_key(), &p, &q).is_err());
+        let mut q = query();
+        q.constant = 124;
+        assert!(verify(&a, &signature, signing.verifying_key(), &p, &q).is_err());
+        let mut q = query();
+        q.key = "missing";
+        assert!(verify(&a, &signature, signing.verifying_key(), &p, &q).is_err());
+        let mut changed = a.clone();
+        changed.recv.root.0[0] ^= 1;
+        assert!(verify(&changed, &signature, signing.verifying_key(), &p, &query()).is_err());
+        let mut bad = p;
+        bad.opening.proof[8] ^= 1;
+        assert!(verify(&a, &signature, signing.verifying_key(), &bad, &query()).is_err());
+    }
+
+    #[test]
+    fn signed_head_saves_blocks_and_rejects_changed_views() {
+        let (mut a, statement, opening, signing) = fixture();
+        let baseline = relation(&a, &statement, &opening, &query())
+            .unwrap()
+            .committed_bits();
+        let head = zkf_attestation::response::Head {
+            headers: statement.headers.clone(),
+            records: statement.records.clone(),
+        };
+        a.claims.push(head.claim());
+        let optimized = relation(&a, &statement, &opening, &query())
+            .unwrap()
+            .committed_bits();
+        assert!(optimized < baseline);
+        let signature = a.sign(&signing).unwrap();
+        let proof = prove(
+            &a,
+            statement.clone(),
+            opening.clone(),
+            &query(),
+            &[7; 16],
+            Parameters::Fast,
+        )
+        .unwrap();
+        verify(&a, &signature, signing.verifying_key(), &proof, &query()).unwrap();
+        let mut bad = statement;
+        bad.records[0].content_len += 1;
+        assert!(relation(&a, &bad, &opening, &query()).is_err());
+    }
+    #[test]
+    fn signed_claim_is_bound_to_the_exact_query_and_nonce() {
+        let (mut a, statement, opening, signing) = fixture();
+        a.claims.push(
+            zkf_attestation::response::Head {
+                headers: statement.headers.clone(),
+                records: statement.records.clone(),
+            }
+            .claim(),
+        );
+        a.claims.push(zkf_attestation::response::member_claim(
+            "id",
+            "ge",
+            100,
+            query().nonce,
+        ));
+        let signature = a.sign(&signing).unwrap();
+        let p = prove(&a, statement, opening, &query(), &[7; 16], Parameters::Fast).unwrap();
+        assert_eq!(p.proof, SIGNED_CLAIM_PROOF);
+        verify(&a, &signature, signing.verifying_key(), &p, &query()).unwrap();
+        let mut q = query();
+        q.nonce[0] ^= 1;
+        assert!(verify(&a, &signature, signing.verifying_key(), &p, &q).is_err());
+        let mut q = query();
+        q.constant += 1;
+        assert!(verify(&a, &signature, signing.verifying_key(), &p, &q).is_err());
+        let mut q = query();
+        q.key = "other";
+        assert!(verify(&a, &signature, signing.verifying_key(), &p, &q).is_err());
+        let mut bad = p;
+        bad.statement.colon = 1;
+        assert!(verify(&a, &signature, signing.verifying_key(), &bad, &query()).is_err());
+    }
+
+    #[test]
+    fn malformed_framing_wrong_key_and_record_omission_rejected() {
+        let (a, statement, opening, _) = fixture();
+        let c = relation(&a, &statement, &opening, &query()).unwrap();
+        assert!(c.eval(&byte_inputs(&[8; 16])).is_err());
+        let mut bad = statement.clone();
+        bad.records.remove(0);
+        assert!(relation(&a, &bad, &opening, &query()).is_err());
+        let mut bad = statement.clone();
+        bad.records[0].inner_type = 0x17;
+        assert!(relation(&a, &bad, &opening, &query()).is_err());
+        let mut bad = statement.clone();
+        bad.headers.extend_from_slice(b"{}");
+        assert!(relation(&a, &bad, &opening, &query()).is_err());
+        for headers in [b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 10\r\nContent-Length: 10\r\n\r\n".as_slice(),
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 10\r\nTransfer-Encoding: chunked\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 10\r\nContent-Encoding: gzip\r\n\r\n"] {
+            assert!(verify_headers(headers,10).is_err());
+        }
+    }
+}

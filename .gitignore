@@ -31,3 +31,20 @@ vendor/mpz/*/Cargo.lock
 vendor/tlsn-mux/target/
 vendor/tlsn-mux/Cargo.lock
 docs*
+
+# D1/D3 design and measured baseline are explicitly required by that plan.
+!/docs/
+/docs/*
+!/docs/v2-d1-d3-design.md
+!/docs/benchmarks/
+/docs/benchmarks/*
+!/docs/benchmarks/d1-d3-baseline/
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+vendor/faest/target/
+vendor/faest/Cargo.lock
+vendor/spongefish/target/
+vendor/spongefish/Cargo.lock
+
+!/docs/v2-presentation-optimizations.md

@@ -1,0 +1,675 @@
+{
+  "architecture": "aarch64",
+  "backend": "quicksilver",
+  "fixture": "/formats/json",
+  "flow": "D4 existing protocol_v2",
+  "latency_ms": 0,
+  "measurement_scope": "Presentation timings include parsing and transcript proof building, not just Binius.",
+  "mode": "proxy",
+  "offline_security_bits": null,
+  "os": "macos",
+  "samples": [
+    {
+      "attestation_bytes": 13057,
+      "circuit_allocations": {
+        "allocated_and_gates": 2639997,
+        "circuits": [
+          {
+            "and_gates_per_call": 0,
+            "calls": 2,
+            "input_bits": 16,
+            "output_bits": 8,
+            "xor_gates_per_call": 8
+          },
+          {
+            "and_gates_per_call": 169,
+            "calls": 4,
+            "input_bits": 16,
+            "output_bits": 8,
+            "xor_gates_per_call": 89
+          },
+          {
+            "and_gates_per_call": 922,
+            "calls": 1,
+            "input_bits": 16,
+            "output_bits": 8,
+            "xor_gates_per_call": 317
+          },
+          {
+            "and_gates_per_call": 255,
+            "calls": 1,
+            "input_bits": 24,
+            "output_bits": 8,
+            "xor_gates_per_call": 133
+          },
+          {
+            "and_gates_per_call": 1394,
+            "calls": 1,
+            "input_bits": 24,
+            "output_bits": 8,
+            "xor_gates_per_call": 475
+          },
+          {
+            "and_gates_per_call": 1870,
+            "calls": 1,
+            "input_bits": 32,
+            "output_bits": 8,
+            "xor_gates_per_call": 633
+          },
+          {
+            "and_gates_per_call": 2348,
+            "calls": 2,
+            "input_bits": 40,
+            "output_bits": 8,
+            "xor_gates_per_call": 791
+          },
+          {
+            "and_gates_per_call": 2829,
+            "calls": 2,
+            "input_bits": 48,
+            "output_bits": 8,
+            "xor_gates_per_call": 949
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 48,
+            "output_bits": 24,
+            "xor_gates_per_call": 24
+          },
+          {
+            "and_gates_per_call": 3311,
+            "calls": 2,
+            "input_bits": 56,
+            "output_bits": 8,
+            "xor_gates_per_call": 1107
+          },
+          {
+            "and_gates_per_call": 3794,
+            "calls": 3,
+            "input_bits": 64,
+            "output_bits": 8,
+            "xor_gates_per_call": 1265
+          },
+          {
+            "and_gates_per_call": 4278,
+            "calls": 2,
+            "input_bits": 72,
+            "output_bits": 8,
+            "xor_gates_per_call": 1423
+          },
+          {
+            "and_gates_per_call": 1240,
+            "calls": 1,
+            "input_bits": 80,
+            "output_bits": 8,
+            "xor_gates_per_call": 4274
+          },
+          {
+            "and_gates_per_call": 6713,
+            "calls": 1,
+            "input_bits": 112,
+            "output_bits": 8,
+            "xor_gates_per_call": 2213
+          },
+          {
+            "and_gates_per_call": 1280,
+            "calls": 2,
+            "input_bits": 128,
+            "output_bits": 1408,
+            "xor_gates_per_call": 5729
+          },
+          {
+            "and_gates_per_call": 8665,
+            "calls": 1,
+            "input_bits": 144,
+            "output_bits": 8,
+            "xor_gates_per_call": 2845
+          },
+          {
+            "and_gates_per_call": 9641,
+            "calls": 2,
+            "input_bits": 160,
+            "output_bits": 8,
+            "xor_gates_per_call": 3161
+          },
+          {
+            "and_gates_per_call": 14521,
+            "calls": 1,
+            "input_bits": 240,
+            "output_bits": 8,
+            "xor_gates_per_call": 4741
+          },
+          {
+            "and_gates_per_call": 6400,
+            "calls": 75,
+            "input_bits": 256,
+            "output_bits": 128,
+            "xor_gates_per_call": 28176
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 162,
+            "input_bits": 256,
+            "output_bits": 256,
+            "xor_gates_per_call": 0
+          },
+          {
+            "and_gates_per_call": 22573,
+            "calls": 16,
+            "input_bits": 768,
+            "output_bits": 256,
+            "xor_gates_per_call": 110644
+          },
+          {
+            "and_gates_per_call": 58441,
+            "calls": 1,
+            "input_bits": 960,
+            "output_bits": 8,
+            "xor_gates_per_call": 18961
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 8,
+            "input_bits": 1024,
+            "output_bits": 512,
+            "xor_gates_per_call": 512
+          },
+          {
+            "and_gates_per_call": 10416,
+            "calls": 156,
+            "input_bits": 1024,
+            "output_bits": 512,
+            "xor_gates_per_call": 59088
+          },
+          {
+            "and_gates_per_call": 5120,
+            "calls": 4,
+            "input_bits": 1536,
+            "output_bits": 128,
+            "xor_gates_per_call": 22576
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 1568,
+            "output_bits": 784,
+            "xor_gates_per_call": 784
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 2608,
+            "output_bits": 1304,
+            "xor_gates_per_call": 1304
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 13600,
+            "output_bits": 6800,
+            "xor_gates_per_call": 6800
+          }
+        ],
+        "private_input_bits": 27552
+      },
+      "offline_proof_bytes": 0,
+      "presentation_bytes": 22839,
+      "presentation_prove_ms": 1.3303340000000001,
+      "presentation_verify_ms": 0.7919160000000001,
+      "session_index": 0,
+      "timings": {
+        "attestMs": 71.886625,
+        "notaryConnectMs": 5.247834,
+        "prewarmed": false,
+        "proveMs": 81.168167,
+        "setupMs": 146.438958,
+        "tlsMs": 2.6405,
+        "totalMs": 307.382334,
+        "voleResumed": false
+      }
+    },
+    {
+      "attestation_bytes": 13057,
+      "circuit_allocations": {
+        "allocated_and_gates": 2639997,
+        "circuits": [
+          {
+            "and_gates_per_call": 0,
+            "calls": 2,
+            "input_bits": 16,
+            "output_bits": 8,
+            "xor_gates_per_call": 8
+          },
+          {
+            "and_gates_per_call": 169,
+            "calls": 4,
+            "input_bits": 16,
+            "output_bits": 8,
+            "xor_gates_per_call": 89
+          },
+          {
+            "and_gates_per_call": 922,
+            "calls": 1,
+            "input_bits": 16,
+            "output_bits": 8,
+            "xor_gates_per_call": 317
+          },
+          {
+            "and_gates_per_call": 255,
+            "calls": 1,
+            "input_bits": 24,
+            "output_bits": 8,
+            "xor_gates_per_call": 133
+          },
+          {
+            "and_gates_per_call": 1394,
+            "calls": 1,
+            "input_bits": 24,
+            "output_bits": 8,
+            "xor_gates_per_call": 475
+          },
+          {
+            "and_gates_per_call": 1870,
+            "calls": 1,
+            "input_bits": 32,
+            "output_bits": 8,
+            "xor_gates_per_call": 633
+          },
+          {
+            "and_gates_per_call": 2348,
+            "calls": 2,
+            "input_bits": 40,
+            "output_bits": 8,
+            "xor_gates_per_call": 791
+          },
+          {
+            "and_gates_per_call": 2829,
+            "calls": 2,
+            "input_bits": 48,
+            "output_bits": 8,
+            "xor_gates_per_call": 949
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 48,
+            "output_bits": 24,
+            "xor_gates_per_call": 24
+          },
+          {
+            "and_gates_per_call": 3311,
+            "calls": 2,
+            "input_bits": 56,
+            "output_bits": 8,
+            "xor_gates_per_call": 1107
+          },
+          {
+            "and_gates_per_call": 3794,
+            "calls": 3,
+            "input_bits": 64,
+            "output_bits": 8,
+            "xor_gates_per_call": 1265
+          },
+          {
+            "and_gates_per_call": 4278,
+            "calls": 2,
+            "input_bits": 72,
+            "output_bits": 8,
+            "xor_gates_per_call": 1423
+          },
+          {
+            "and_gates_per_call": 1240,
+            "calls": 1,
+            "input_bits": 80,
+            "output_bits": 8,
+            "xor_gates_per_call": 4274
+          },
+          {
+            "and_gates_per_call": 6713,
+            "calls": 1,
+            "input_bits": 112,
+            "output_bits": 8,
+            "xor_gates_per_call": 2213
+          },
+          {
+            "and_gates_per_call": 1280,
+            "calls": 2,
+            "input_bits": 128,
+            "output_bits": 1408,
+            "xor_gates_per_call": 5729
+          },
+          {
+            "and_gates_per_call": 8665,
+            "calls": 1,
+            "input_bits": 144,
+            "output_bits": 8,
+            "xor_gates_per_call": 2845
+          },
+          {
+            "and_gates_per_call": 9641,
+            "calls": 2,
+            "input_bits": 160,
+            "output_bits": 8,
+            "xor_gates_per_call": 3161
+          },
+          {
+            "and_gates_per_call": 14521,
+            "calls": 1,
+            "input_bits": 240,
+            "output_bits": 8,
+            "xor_gates_per_call": 4741
+          },
+          {
+            "and_gates_per_call": 6400,
+            "calls": 75,
+            "input_bits": 256,
+            "output_bits": 128,
+            "xor_gates_per_call": 28176
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 162,
+            "input_bits": 256,
+            "output_bits": 256,
+            "xor_gates_per_call": 0
+          },
+          {
+            "and_gates_per_call": 22573,
+            "calls": 16,
+            "input_bits": 768,
+            "output_bits": 256,
+            "xor_gates_per_call": 110644
+          },
+          {
+            "and_gates_per_call": 58441,
+            "calls": 1,
+            "input_bits": 960,
+            "output_bits": 8,
+            "xor_gates_per_call": 18961
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 8,
+            "input_bits": 1024,
+            "output_bits": 512,
+            "xor_gates_per_call": 512
+          },
+          {
+            "and_gates_per_call": 10416,
+            "calls": 156,
+            "input_bits": 1024,
+            "output_bits": 512,
+            "xor_gates_per_call": 59088
+          },
+          {
+            "and_gates_per_call": 5120,
+            "calls": 4,
+            "input_bits": 1536,
+            "output_bits": 128,
+            "xor_gates_per_call": 22576
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 1568,
+            "output_bits": 784,
+            "xor_gates_per_call": 784
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 2608,
+            "output_bits": 1304,
+            "xor_gates_per_call": 1304
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 13600,
+            "output_bits": 6800,
+            "xor_gates_per_call": 6800
+          }
+        ],
+        "private_input_bits": 27552
+      },
+      "offline_proof_bytes": 0,
+      "presentation_bytes": 22839,
+      "presentation_prove_ms": 1.039541,
+      "presentation_verify_ms": 0.699375,
+      "session_index": 1,
+      "timings": {
+        "attestMs": 72.391458,
+        "notaryConnectMs": 40.722916999999995,
+        "prewarmed": false,
+        "proveMs": 74.41300000000001,
+        "setupMs": 0.224541,
+        "tlsMs": 55.108584,
+        "totalMs": 242.860542,
+        "voleResumed": true
+      }
+    },
+    {
+      "attestation_bytes": 13057,
+      "circuit_allocations": {
+        "allocated_and_gates": 2639997,
+        "circuits": [
+          {
+            "and_gates_per_call": 0,
+            "calls": 2,
+            "input_bits": 16,
+            "output_bits": 8,
+            "xor_gates_per_call": 8
+          },
+          {
+            "and_gates_per_call": 169,
+            "calls": 4,
+            "input_bits": 16,
+            "output_bits": 8,
+            "xor_gates_per_call": 89
+          },
+          {
+            "and_gates_per_call": 922,
+            "calls": 1,
+            "input_bits": 16,
+            "output_bits": 8,
+            "xor_gates_per_call": 317
+          },
+          {
+            "and_gates_per_call": 255,
+            "calls": 1,
+            "input_bits": 24,
+            "output_bits": 8,
+            "xor_gates_per_call": 133
+          },
+          {
+            "and_gates_per_call": 1394,
+            "calls": 1,
+            "input_bits": 24,
+            "output_bits": 8,
+            "xor_gates_per_call": 475
+          },
+          {
+            "and_gates_per_call": 1870,
+            "calls": 1,
+            "input_bits": 32,
+            "output_bits": 8,
+            "xor_gates_per_call": 633
+          },
+          {
+            "and_gates_per_call": 2348,
+            "calls": 2,
+            "input_bits": 40,
+            "output_bits": 8,
+            "xor_gates_per_call": 791
+          },
+          {
+            "and_gates_per_call": 2829,
+            "calls": 2,
+            "input_bits": 48,
+            "output_bits": 8,
+            "xor_gates_per_call": 949
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 48,
+            "output_bits": 24,
+            "xor_gates_per_call": 24
+          },
+          {
+            "and_gates_per_call": 3311,
+            "calls": 2,
+            "input_bits": 56,
+            "output_bits": 8,
+            "xor_gates_per_call": 1107
+          },
+          {
+            "and_gates_per_call": 3794,
+            "calls": 3,
+            "input_bits": 64,
+            "output_bits": 8,
+            "xor_gates_per_call": 1265
+          },
+          {
+            "and_gates_per_call": 4278,
+            "calls": 2,
+            "input_bits": 72,
+            "output_bits": 8,
+            "xor_gates_per_call": 1423
+          },
+          {
+            "and_gates_per_call": 1240,
+            "calls": 1,
+            "input_bits": 80,
+            "output_bits": 8,
+            "xor_gates_per_call": 4274
+          },
+          {
+            "and_gates_per_call": 6713,
+            "calls": 1,
+            "input_bits": 112,
+            "output_bits": 8,
+            "xor_gates_per_call": 2213
+          },
+          {
+            "and_gates_per_call": 1280,
+            "calls": 2,
+            "input_bits": 128,
+            "output_bits": 1408,
+            "xor_gates_per_call": 5729
+          },
+          {
+            "and_gates_per_call": 8665,
+            "calls": 1,
+            "input_bits": 144,
+            "output_bits": 8,
+            "xor_gates_per_call": 2845
+          },
+          {
+            "and_gates_per_call": 9641,
+            "calls": 2,
+            "input_bits": 160,
+            "output_bits": 8,
+            "xor_gates_per_call": 3161
+          },
+          {
+            "and_gates_per_call": 14521,
+            "calls": 1,
+            "input_bits": 240,
+            "output_bits": 8,
+            "xor_gates_per_call": 4741
+          },
+          {
+            "and_gates_per_call": 6400,
+            "calls": 75,
+            "input_bits": 256,
+            "output_bits": 128,
+            "xor_gates_per_call": 28176
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 162,
+            "input_bits": 256,
+            "output_bits": 256,
+            "xor_gates_per_call": 0
+          },
+          {
+            "and_gates_per_call": 22573,
+            "calls": 16,
+            "input_bits": 768,
+            "output_bits": 256,
+            "xor_gates_per_call": 110644
+          },
+          {
+            "and_gates_per_call": 58441,
+            "calls": 1,
+            "input_bits": 960,
+            "output_bits": 8,
+            "xor_gates_per_call": 18961
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 8,
+            "input_bits": 1024,
+            "output_bits": 512,
+            "xor_gates_per_call": 512
+          },
+          {
+            "and_gates_per_call": 10416,
+            "calls": 156,
+            "input_bits": 1024,
+            "output_bits": 512,
+            "xor_gates_per_call": 59088
+          },
+          {
+            "and_gates_per_call": 5120,
+            "calls": 4,
+            "input_bits": 1536,
+            "output_bits": 128,
+            "xor_gates_per_call": 22576
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 1568,
+            "output_bits": 784,
+            "xor_gates_per_call": 784
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 2608,
+            "output_bits": 1304,
+            "xor_gates_per_call": 1304
+          },
+          {
+            "and_gates_per_call": 0,
+            "calls": 1,
+            "input_bits": 13600,
+            "output_bits": 6800,
+            "xor_gates_per_call": 6800
+          }
+        ],
+        "private_input_bits": 27552
+      },
+      "offline_proof_bytes": 0,
+      "presentation_bytes": 22839,
+      "presentation_prove_ms": 1.006083,
+      "presentation_verify_ms": 0.755708,
+      "session_index": 2,
+      "timings": {
+        "attestMs": 75.210125,
+        "notaryConnectMs": 20.68675,
+        "prewarmed": false,
+        "proveMs": 77.90825,
+        "setupMs": 0.229875,
+        "tlsMs": 13.001166999999999,
+        "totalMs": 187.036292,
+        "voleResumed": true
+      }
+    }
+  ],
+  "scenario": "quicksilver",
+  "tls": "1.3"
+}

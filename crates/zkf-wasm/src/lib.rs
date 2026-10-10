@@ -8,7 +8,7 @@
 //! parallel OT work across web workers in a cross-origin isolated context.
 
 use wasm_bindgen::prelude::*;
-use zkf_core::{NotarizeParams, RevealSpec, VerifyOptions};
+use zkf_core::{NotarizeParams, PresentV2Request, RevealSpec, VerifyOptions, VerifyV2Options};
 
 #[cfg(all(feature = "threads", target_arch = "wasm32"))]
 pub use wasm_bindgen_rayon::init_thread_pool;
@@ -73,4 +73,30 @@ pub fn verify(presentation: String, options_json: String) -> Result<String, JsEr
     let opts: VerifyOptions = serde_json::from_str(&options_json).map_err(err)?;
     let output = zkf_verifier::verify(&presentation, &opts).map_err(|e| err(format!("{e:#}")))?;
     serde_json::to_string(&output).map_err(err)
+}
+
+/// Builds a v2 presentation (base64) from a v2 attestation, its secrets and a
+/// `PresentV2Request` JSON. Experimental; proving takes seconds, so call it
+/// from a worker.
+#[wasm_bindgen(js_name = presentV2)]
+pub fn present_v2(attestation: String, secrets: String, request_json: String) -> Result<String, JsError> {
+    let request: PresentV2Request = serde_json::from_str(&request_json).map_err(err)?;
+    zkf_prover::present_v2(&attestation, &secrets, &request).map_err(|e| err(format!("{e:#}")))
+}
+
+/// Verifies a v2 presentation. Input: `VerifyV2Options` JSON. Output: `VerifyV2Output` JSON.
+#[wasm_bindgen(js_name = verifyV2)]
+pub fn verify_v2(presentation: String, options_json: String) -> Result<String, JsError> {
+    let opts: VerifyV2Options = serde_json::from_str(&options_json).map_err(err)?;
+    let output = zkf_verifier::verify_v2(&presentation, &opts).map_err(|e| err(format!("{e:#}")))?;
+    serde_json::to_string(&output).map_err(err)
+}
+
+/// Enable opt-in v2 stage timing; values and credentials are never recorded.
+#[wasm_bindgen(js_name = setV2Profiling)]
+pub fn set_v2_profiling(enabled: bool) { zkf_voleith::profile::enable(enabled); }
+/// Return and clear stage timings from this worker.
+#[wasm_bindgen(js_name = takeV2Profile)]
+pub fn take_v2_profile() -> Result<String, JsError> {
+    serde_json::to_string(&zkf_voleith::profile::take()).map_err(err)
 }

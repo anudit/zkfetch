@@ -3,6 +3,10 @@ mod config;
 mod prover;
 mod verifier;
 
+/// Optional allocation counters for reproducible circuit-cost benchmarks.
+#[cfg(feature = "circuit-metrics")]
+pub mod metrics;
+
 pub use config::{ProverConfig, VerifierConfig};
 pub use prover::Prover;
 pub use verifier::Verifier;

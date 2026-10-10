@@ -12,9 +12,10 @@ crate-type = ["cdylib", "rlib"]
 [features]
 # Multi-threaded build: needs nightly `-Z build-std` with atomics and a
 # cross-origin isolated page (see packages/wasm/package.json `build:threads`).
-threads = ["dep:wasm-bindgen-rayon"]
+threads = ["dep:wasm-bindgen-rayon", "zkf-prover/parallel", "zkf-verifier/parallel"]
 
 [dependencies]
+zkf-voleith.workspace = true
 zkf-core = { workspace = true }
 zkf-prover = { workspace = true }
 zkf-verifier = { workspace = true }

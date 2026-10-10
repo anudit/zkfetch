@@ -57,6 +57,12 @@ opaque_debug::implement!(Connected<S>);
 
 /// State after the TLS transcript has been committed.
 pub struct Committed {
+    #[cfg(feature = "d1-experimental")]
+    pub(crate) field_ready: bool,
+    #[cfg(feature = "d1-experimental")]
+    pub(crate) epoch_ciphertext: Option<crate::ApplicationEpochCiphertext>,
+    #[cfg(feature = "d1-experimental")]
+    pub(crate) native_keys: Option<crate::ApplicationKeySecrets>,
     pub(crate) vm: ProverZk,
     pub(crate) deferred_schedule: Option<crate::proxy::tls13::ScheduleProof>,
     pub(crate) server_name: ServerName,

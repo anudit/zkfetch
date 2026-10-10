@@ -5,6 +5,9 @@
 //! (trusted notary keys, owner/context binding).
 
 mod policy;
+mod v2;
+
+pub use v2::{is_v2, verify_v2};
 
 use anyhow::{Context, Result, anyhow, bail};
 use bincode::Options;

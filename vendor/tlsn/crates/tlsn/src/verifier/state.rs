@@ -52,6 +52,10 @@ impl<C> std::fmt::Debug for CommitAccepted<C> {
 
 /// State after the TLS transcript has been committed.
 pub struct Committed {
+    #[cfg(feature = "d1-experimental")]
+    pub(crate) field_ready: bool,
+    #[cfg(feature = "d1-experimental")]
+    pub(crate) epoch_ciphertext: Option<crate::ApplicationEpochCiphertext>,
     pub(crate) vm: VerifierZk,
     pub(crate) deferred_schedule: Option<crate::proxy::tls13::ScheduleProof>,
     pub(crate) deferred_tags: Option<crate::tag::TagProof>,
@@ -63,6 +67,10 @@ opaque_debug::implement!(Committed);
 
 /// State after receiving a proving request.
 pub struct Verify {
+    #[cfg(feature = "d1-experimental")]
+    pub(crate) field_ready: bool,
+    #[cfg(feature = "d1-experimental")]
+    pub(crate) epoch_ciphertext: Option<crate::ApplicationEpochCiphertext>,
     pub(crate) vm: VerifierZk,
     pub(crate) deferred_schedule: Option<crate::proxy::tls13::ScheduleProof>,
     pub(crate) deferred_tags: Option<crate::tag::TagProof>,

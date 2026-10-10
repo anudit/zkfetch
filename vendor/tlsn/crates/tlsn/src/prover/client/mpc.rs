@@ -322,6 +322,10 @@ impl TlsClient for MpcTlsClient {
                         .into_inner();
 
                     let output = TlsOutput {
+                        #[cfg(feature = "d1-experimental")]
+                        epoch_ciphertext: None,
+                        #[cfg(feature = "d1-experimental")]
+                        native_keys: None,
                         deferred_schedule: None,
                         keys,
                         tls_transcript,

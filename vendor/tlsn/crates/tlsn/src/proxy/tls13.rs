@@ -1024,6 +1024,13 @@ impl<V: Vm<Binary> + Execute + Send + crate::deps::StatementBinding> ProxyProver
             None
         };
 
+        #[cfg(feature = "d1-experimental")]
+        let epoch_ciphertext = crate::ApplicationEpochCiphertext {
+            sent: traffic.sent[handshake.sent_app..].iter().cloned().map(OpaqueMessage::encode).collect(),
+            received: traffic.recv[handshake.recv_app..].iter().cloned().map(OpaqueMessage::encode).collect(),
+            iv_client: civ, iv_server: siv, hello_hash: hello.hash,
+            application_hash: handshake.application_hash,
+        };
         apply_suffixes(&mut sent, sent_suffixes)?;
         apply_suffixes(&mut recv, recv_suffixes)?;
         let tls_transcript = build_transcript(time, handshake, sent, recv)?;
@@ -1032,6 +1039,10 @@ impl<V: Vm<Binary> + Execute + Send + crate::deps::StatementBinding> ProxyProver
             self.ctx,
             self.vm,
             TlsOutput {
+                #[cfg(feature = "d1-experimental")]
+                epoch_ciphertext: Some(epoch_ciphertext),
+                #[cfg(feature = "d1-experimental")]
+                native_keys: Some(crate::ApplicationKeySecrets::new(secrets.client_app.0, secrets.server_app.0)),
                 keys,
                 tls_transcript,
                 deferred_schedule,
@@ -1152,6 +1163,13 @@ impl<V: Vm<Binary> + Execute + Send + crate::deps::StatementBinding> ProxyVerifi
 
         let mut sent = Traffic::app_records(&traffic.sent, handshake.sent_app, civ)?;
         let mut recv = Traffic::app_records(&traffic.recv, handshake.recv_app, siv)?;
+        #[cfg(feature = "d1-experimental")]
+        let epoch_ciphertext = crate::ApplicationEpochCiphertext {
+            sent: traffic.sent[handshake.sent_app..].iter().cloned().map(OpaqueMessage::encode).collect(),
+            received: traffic.recv[handshake.recv_app..].iter().cloned().map(OpaqueMessage::encode).collect(),
+            iv_client: civ, iv_server: siv, hello_hash: hello.hash,
+            application_hash: handshake.application_hash,
+        };
         apply_suffixes(&mut sent, claim.sent)?;
         apply_suffixes(&mut recv, claim.recv)?;
 
@@ -1161,6 +1179,10 @@ impl<V: Vm<Binary> + Execute + Send + crate::deps::StatementBinding> ProxyVerifi
             self.ctx,
             self.vm,
             TlsOutput {
+                #[cfg(feature = "d1-experimental")]
+                epoch_ciphertext: Some(epoch_ciphertext),
+                #[cfg(feature = "d1-experimental")]
+                native_keys: None,
                 keys,
                 tls_transcript,
                 deferred_schedule,

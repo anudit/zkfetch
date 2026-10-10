@@ -1,0 +1,388 @@
+{
+  "variant": "profiled-signed-head-fast",
+  "parameters": "fast",
+  "threads": 8,
+  "client": "real-headless-Chrome",
+  "samples": [
+    {
+      "round": 0,
+      "proveMs": 151.46499997377396,
+      "verifyMs": 81.26999998092651,
+      "proofBytes": 28081,
+      "verified": true,
+      "proveProfile": {
+        "stages": [
+          {
+            "name": "present.relation",
+            "ms": 56.824951999999996
+          },
+          {
+            "name": "present.witness-evaluation",
+            "ms": 29.274901999999997
+          },
+          {
+            "name": "prove.checked-witness-reuse",
+            "ms": 0
+          },
+          {
+            "name": "prove.vole-commit",
+            "ms": 18.774902
+          },
+          {
+            "name": "transcript.binding-and-circuit-digest",
+            "ms": 0.76001
+          },
+          {
+            "name": "prove.transcript-and-consistency",
+            "ms": 8.815185999999999
+          },
+          {
+            "name": "prove.authenticated-rows",
+            "ms": 2.5598140000000003
+          },
+          {
+            "name": "prove.constraint-polynomials",
+            "ms": 18.520020000000002
+          },
+          {
+            "name": "prove.weighted-check",
+            "ms": 1.895019
+          },
+          {
+            "name": "prove.grind-and-open",
+            "ms": 0.320068
+          },
+          {
+            "name": "prove.encoding",
+            "ms": 0.474854
+          }
+        ],
+        "committed_bits": 11031,
+        "constraints": 8283
+      },
+      "verifyProfile": {
+        "stages": [
+          {
+            "name": "verify.relation",
+            "ms": 43.725097999999996
+          },
+          {
+            "name": "verify.proof-decode",
+            "ms": 0.430176
+          },
+          {
+            "name": "verify.vole-reconstruct",
+            "ms": 16.01001
+          },
+          {
+            "name": "transcript.binding-and-circuit-digest",
+            "ms": 0.36499
+          },
+          {
+            "name": "verify.transcript-and-consistency",
+            "ms": 7.194824
+          },
+          {
+            "name": "verify.authenticated-rows",
+            "ms": 0.745117
+          },
+          {
+            "name": "verify.constraints",
+            "ms": 6.119872999999999
+          },
+          {
+            "name": "verify.weighted-check",
+            "ms": 0.815186
+          }
+        ],
+        "committed_bits": 11031,
+        "constraints": 8283
+      }
+    },
+    {
+      "round": 1,
+      "proveMs": 112.41500002145767,
+      "verifyMs": 76.45000004768372,
+      "proofBytes": 28081,
+      "verified": true,
+      "proveProfile": {
+        "stages": [
+          {
+            "name": "present.relation",
+            "ms": 43.405029
+          },
+          {
+            "name": "present.witness-evaluation",
+            "ms": 25.600098000000003
+          },
+          {
+            "name": "prove.checked-witness-reuse",
+            "ms": 0
+          },
+          {
+            "name": "prove.vole-commit",
+            "ms": 14.695068000000001
+          },
+          {
+            "name": "transcript.binding-and-circuit-digest",
+            "ms": 0.40503
+          },
+          {
+            "name": "prove.transcript-and-consistency",
+            "ms": 7.869872999999999
+          },
+          {
+            "name": "prove.authenticated-rows",
+            "ms": 0.689941
+          },
+          {
+            "name": "prove.constraint-polynomials",
+            "ms": 14.854981
+          },
+          {
+            "name": "prove.weighted-check",
+            "ms": 1.650146
+          },
+          {
+            "name": "prove.grind-and-open",
+            "ms": 0.129883
+          },
+          {
+            "name": "prove.encoding",
+            "ms": 0.26513699999999996
+          }
+        ],
+        "committed_bits": 11031,
+        "constraints": 8283
+      },
+      "verifyProfile": {
+        "stages": [
+          {
+            "name": "verify.relation",
+            "ms": 43.15503
+          },
+          {
+            "name": "verify.proof-decode",
+            "ms": 0.400146
+          },
+          {
+            "name": "verify.vole-reconstruct",
+            "ms": 16.375
+          },
+          {
+            "name": "transcript.binding-and-circuit-digest",
+            "ms": 0.425049
+          },
+          {
+            "name": "verify.transcript-and-consistency",
+            "ms": 7.0598149999999995
+          },
+          {
+            "name": "verify.authenticated-rows",
+            "ms": 0.680176
+          },
+          {
+            "name": "verify.constraints",
+            "ms": 4.929931
+          },
+          {
+            "name": "verify.weighted-check",
+            "ms": 0.675049
+          }
+        ],
+        "committed_bits": 11031,
+        "constraints": 8283
+      }
+    },
+    {
+      "round": 2,
+      "proveMs": 113.21000003814697,
+      "verifyMs": 72.97000002861023,
+      "proofBytes": 28081,
+      "verified": true,
+      "proveProfile": {
+        "stages": [
+          {
+            "name": "present.relation",
+            "ms": 43.629883
+          },
+          {
+            "name": "present.witness-evaluation",
+            "ms": 25.965088
+          },
+          {
+            "name": "prove.checked-witness-reuse",
+            "ms": 0
+          },
+          {
+            "name": "prove.vole-commit",
+            "ms": 14.509766
+          },
+          {
+            "name": "transcript.binding-and-circuit-digest",
+            "ms": 0.445068
+          },
+          {
+            "name": "prove.transcript-and-consistency",
+            "ms": 7.824951
+          },
+          {
+            "name": "prove.authenticated-rows",
+            "ms": 0.585206
+          },
+          {
+            "name": "prove.constraint-polynomials",
+            "ms": 15.264892
+          },
+          {
+            "name": "prove.weighted-check",
+            "ms": 1.675049
+          },
+          {
+            "name": "prove.grind-and-open",
+            "ms": 0.179932
+          },
+          {
+            "name": "prove.encoding",
+            "ms": 0.375
+          }
+        ],
+        "committed_bits": 11031,
+        "constraints": 8283
+      },
+      "verifyProfile": {
+        "stages": [
+          {
+            "name": "verify.relation",
+            "ms": 43.5
+          },
+          {
+            "name": "verify.proof-decode",
+            "ms": 0.439942
+          },
+          {
+            "name": "verify.vole-reconstruct",
+            "ms": 13.369872999999998
+          },
+          {
+            "name": "transcript.binding-and-circuit-digest",
+            "ms": 0.255127
+          },
+          {
+            "name": "verify.transcript-and-consistency",
+            "ms": 7.195068
+          },
+          {
+            "name": "verify.authenticated-rows",
+            "ms": 0.6198729999999999
+          },
+          {
+            "name": "verify.constraints",
+            "ms": 4.2299809999999995
+          },
+          {
+            "name": "verify.weighted-check",
+            "ms": 0.6650389999999999
+          }
+        ],
+        "committed_bits": 11031,
+        "constraints": 8283
+      }
+    },
+    {
+      "round": 3,
+      "proveMs": 112.4099999666214,
+      "verifyMs": 72.81000000238419,
+      "proofBytes": 28081,
+      "verified": true,
+      "proveProfile": {
+        "stages": [
+          {
+            "name": "present.relation",
+            "ms": 43.375
+          },
+          {
+            "name": "present.witness-evaluation",
+            "ms": 25.909912
+          },
+          {
+            "name": "prove.checked-witness-reuse",
+            "ms": 0
+          },
+          {
+            "name": "prove.vole-commit",
+            "ms": 14.434815
+          },
+          {
+            "name": "transcript.binding-and-circuit-digest",
+            "ms": 0.27001899999999995
+          },
+          {
+            "name": "prove.transcript-and-consistency",
+            "ms": 7.920165999999999
+          },
+          {
+            "name": "prove.authenticated-rows",
+            "ms": 0.65503
+          },
+          {
+            "name": "prove.constraint-polynomials",
+            "ms": 15
+          },
+          {
+            "name": "prove.weighted-check",
+            "ms": 1.61499
+          },
+          {
+            "name": "prove.grind-and-open",
+            "ms": 0.17480400000000001
+          },
+          {
+            "name": "prove.encoding",
+            "ms": 0.300049
+          }
+        ],
+        "committed_bits": 11031,
+        "constraints": 8283
+      },
+      "verifyProfile": {
+        "stages": [
+          {
+            "name": "verify.relation",
+            "ms": 43.540039
+          },
+          {
+            "name": "verify.proof-decode",
+            "ms": 0.359864
+          },
+          {
+            "name": "verify.vole-reconstruct",
+            "ms": 13.190185
+          },
+          {
+            "name": "transcript.binding-and-circuit-digest",
+            "ms": 0.26001
+          },
+          {
+            "name": "verify.transcript-and-consistency",
+            "ms": 7.329834
+          },
+          {
+            "name": "verify.authenticated-rows",
+            "ms": 0.61499
+          },
+          {
+            "name": "verify.constraints",
+            "ms": 4.260009999999999
+          },
+          {
+            "name": "verify.weighted-check",
+            "ms": 0.695068
+          }
+        ],
+        "committed_bits": 11031,
+        "constraints": 8283
+      }
+    }
+  ]
+}

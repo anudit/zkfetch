@@ -6,10 +6,14 @@
 //! presentation according to a [`RevealSpec`].
 
 mod commit;
+#[cfg(feature = "d1-experimental")]
+mod d1;
 mod present;
 mod rt;
 mod setup_pool;
 
+#[cfg(feature = "d1-experimental")]
+pub use d1::present_v2;
 pub use present::present;
 
 use web_time::Instant;
@@ -145,6 +149,8 @@ struct SessionKey {
     proxy_host: Option<String>,
     max_sent: usize,
     max_recv: usize,
+    /// The notary must know before the session that a v2 attestation follows.
+    attestation_v2: bool,
 }
 
 impl SessionKey {
@@ -167,7 +173,35 @@ impl SessionKey {
             },
             max_sent: params.max_sent.unwrap_or(DEFAULT_MAX_SENT),
             max_recv: params.max_recv.unwrap_or(DEFAULT_MAX_RECV),
+            attestation_v2: params.attestation_v2,
         })
+        .and_then(Self::check_v2)
+    }
+
+    fn check_v2(self) -> Result<Self> {
+        if !self.attestation_v2 {
+            return Ok(self);
+        }
+        anyhow::ensure!(
+            cfg!(feature = "d1-experimental"),
+            "this build does not support attestationV2"
+        );
+        anyhow::ensure!(
+            self.proxy && self.protocol_v2,
+            "attestationV2 requires mode \"proxy\" and protocolV2"
+        );
+        Ok(self)
+    }
+
+    /// The notary URL, carrying the v2 selector when requested.
+    fn connect_url(&self) -> Result<String> {
+        if !self.attestation_v2 {
+            return Ok(self.notary_url.clone());
+        }
+        let mut url = url::Url::parse(&self.notary_url).context("invalid notaryUrl")?;
+        let (name, value) = zkf_core::d1::QUERY;
+        url.query_pairs_mut().append_pair(name, value);
+        Ok(url.into())
     }
 }
 
@@ -220,6 +254,13 @@ async fn prepare_with(
     if key.proxy && params.connect_addr.is_some() {
         bail!("connectAddr is not supported in proxy mode: the notary dials the server");
     }
+    if !params.attestation_v2 && (!params.session_claims.is_empty() || params.session_claim_nonce.is_some()) {
+        bail!("sessionClaims require attestationV2");
+    }
+    if key.attestation_v2 && tls_version != TlsVersion::V1_3 {
+        bail!("attestationV2 requires TLS 1.3");
+    }
+    let notary_url = key.connect_url()?;
 
     // Session with the notary.
     let started = Instant::now();
@@ -248,7 +289,7 @@ async fn prepare_with(
             host: key.proxy_host.clone().expect("proxy host"),
             client_hello: hello.bytes().to_vec(),
         });
-    let mut notary = transport::connect(&params.notary_url).await?;
+    let mut notary = transport::connect(&notary_url).await?;
     let opening = async {
         if key.proxy && key.persistent_vole {
             let cache_key = format!(
@@ -268,7 +309,7 @@ async fn prepare_with(
             }
             client_hello = None;
             // A verified legacy opening: reconnect without the pool extension.
-            notary = transport::connect(&params.notary_url).await?;
+            notary = transport::connect(&notary_url).await?;
         }
         zkf_core::notary_auth::authenticate(&mut notary, params.expected_notary_key.as_deref())
             .await?;
@@ -387,7 +428,22 @@ async fn notarize_auto(
     params: NotarizeParams,
     prepared: Option<Prepared>,
 ) -> Result<NotarizeOutput> {
-    SessionKey::new(&params)?;
+    if SessionKey::new(&params)?.attestation_v2
+        && (!params.predicates.is_empty() || params.reveal.is_some() || params.binius)
+    {
+        bail!(
+            "attestationV2 proves claims offline with presentV2; predicates, reveal and binius do not apply"
+        );
+    }
+    if !params.session_claims.is_empty() {
+        anyhow::ensure!(params.attestation_v2 && params.session_claims.len()<=16, "sessionClaims require v2 and at most 16 claims");
+        #[cfg(feature = "d1-experimental")]
+        d1::parse_nonce(params.session_claim_nonce.as_deref().ok_or_else(||anyhow!("sessionClaims require sessionClaimNonce"))?)?;
+        for claim in &params.session_claims {
+            anyhow::ensure!(claim.key.len()<=1024 && matches!(claim.op.as_str(),"eq"|"ne"|"lt"|"le"|"gt"|"ge"), "invalid session member predicate");
+            claim.value.value().map_err(anyhow::Error::msg)?;
+        }
+    }
     let requested = params.tls_version.as_deref().unwrap_or("auto");
     let first = match (requested, prepared.as_ref().map(|p| p.tls_version)) {
         ("1.2", None | Some(TlsVersion::V1_2)) | ("auto", Some(TlsVersion::V1_2)) => {
@@ -557,6 +613,75 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
                 "the response is {received} bytes, over the {limit}-byte limit for proxy mode (raise maxRecv to allow it)"
             );
         }
+    }
+
+    #[cfg(feature = "d1-experimental")]
+    if key.attestation_v2 {
+        let response_view = response_view(
+            &HttpTranscript::parse(prover.transcript())
+                .context("could not parse HTTP transcript")?,
+        )?;
+        let low_latency = pool_lease.as_ref().is_some_and(|p| p.low_latency);
+        let (secrets, expected) = watch_notary(&mut driver_task, async {
+            let out = d1::prove(&mut prover, &handle, low_latency, &params).await?;
+            prover.close().await?;
+            Ok(out)
+        })
+        .await?;
+        timings.prove_ms = split();
+
+        let request = zkf_core::d1::Request {
+            owner: params.owner.clone(),
+            context: params.context.clone(),
+        };
+        let request_bytes = bincode::serialize(&request)?;
+        let reply = if low_latency {
+            let mut reply = handle.application_stream(b"zkfetch/flow2/attestation")?;
+            let bytes = watch_notary(&mut driver_task, async {
+                transport::write_frame(&mut reply, &request_bytes).await?;
+                handle.proof_batch_control().end_batch().await?;
+                transport::read_frame(&mut reply).await
+            })
+            .await?;
+            handle.close();
+            driver_task.forget();
+            bytes
+        } else {
+            handle.close();
+            let mut socket = driver_task.await?;
+            transport::write_frame(&mut socket, &request_bytes).await?;
+            transport::read_frame(&mut socket).await?
+        };
+        let host = key.proxy_host.as_deref().expect("proxy host");
+        let signed = d1::accept(
+            &reply,
+            &expected,
+            host,
+            &request,
+            params.expected_notary_key.as_deref(),
+        )?;
+        timings.attest_ms = split();
+        timings.total_ms = started.elapsed().as_secs_f64() * 1e3
+            + if prewarmed {
+                0.0
+            } else {
+                connect_ms + setup_ms
+            };
+        if let Some(lease) = pool_lease {
+            lease.finish();
+        }
+        return Ok(NotarizeOutput {
+            attestation: b64::encode(signed.encode()?),
+            secrets: secrets.encode()?,
+            response: response_view,
+            tls_version: "1.3".into(),
+            notary_key: KeyView {
+                alg: "secp256k1".into(),
+                key: hex::encode(signed.claimed_key.to_encoded_point(true).as_bytes()),
+            },
+            timings,
+            attestation_version: 2,
+        });
     }
 
     // Parsed spans are !Send, so keep them out of scope across awaits.
@@ -767,6 +892,7 @@ async fn finish(prepared: Prepared, params: NotarizeParams) -> Result<NotarizeOu
             key: hex::encode(&key.data),
         },
         timings,
+        attestation_version: 1,
     })
 }
 

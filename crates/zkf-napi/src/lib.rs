@@ -3,7 +3,7 @@
 
 use napi::{Error, Result};
 use napi_derive::napi;
-use zkf_core::{NotarizeParams, RevealSpec, VerifyOptions};
+use zkf_core::{NotarizeParams, PresentV2Request, RevealSpec, VerifyOptions, VerifyV2Options};
 
 fn err(e: impl std::fmt::Display) -> Error {
     Error::from_reason(e.to_string())
@@ -31,6 +31,28 @@ pub fn present(attestation: String, secrets: String, spec_json: String) -> Resul
 pub fn verify(presentation: String, options_json: String) -> Result<String> {
     let opts: VerifyOptions = serde_json::from_str(&options_json).map_err(err)?;
     let output = zkf_verifier::verify(&presentation, &opts).map_err(|e| err(format!("{e:#}")))?;
+    serde_json::to_string(&output).map_err(err)
+}
+
+/// Builds a v2 presentation (base64) from a v2 attestation, its secrets and a
+/// `PresentV2Request` JSON. Experimental; proving takes seconds.
+#[napi(js_name = "presentV2")]
+pub async fn present_v2(attestation: String, secrets: String, request_json: String) -> Result<String> {
+    let request: PresentV2Request = serde_json::from_str(&request_json).map_err(err)?;
+    napi::tokio::task::spawn_blocking(move || zkf_prover::present_v2(&attestation, &secrets, &request))
+        .await
+        .map_err(err)?
+        .map_err(|e| err(format!("{e:#}")))
+}
+
+/// Verifies a v2 presentation. Input: `VerifyV2Options` JSON. Output: `VerifyV2Output` JSON.
+#[napi(js_name = "verifyV2")]
+pub async fn verify_v2(presentation: String, options_json: String) -> Result<String> {
+    let opts: VerifyV2Options = serde_json::from_str(&options_json).map_err(err)?;
+    let output = napi::tokio::task::spawn_blocking(move || zkf_verifier::verify_v2(&presentation, &opts))
+        .await
+        .map_err(err)?
+        .map_err(|e| err(format!("{e:#}")))?;
     serde_json::to_string(&output).map_err(err)
 }
 

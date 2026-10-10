@@ -1,5 +1,6 @@
 import { NOTARY } from "./defaults";
-import type { BackgroundReply, BackgroundRequest, Proof, ProverReply, ProverRequest, Status } from "./messages";
+import type { BackgroundReply, BackgroundRequest, Proof, ProofVersion, ProverReply, ProverRequest, Status } from "./messages";
+import { verifierNonce } from "./v2";
 
 function element<T extends HTMLElement>(id: string): T {
   const value = document.getElementById(id);
@@ -9,6 +10,8 @@ function element<T extends HTMLElement>(id: string): T {
 
 const prove = element<HTMLButtonElement>("prove");
 const verify = element<HTMLButtonElement>("verify");
+const proofVersion = element<HTMLSelectElement>("proof-version");
+const version = (): ProofVersion => proofVersion.value === "2" ? 2 : 1;
 const progress = element("progress");
 const error = element("error");
 let status: Status = { tabOpen: false, hasToken: false };
@@ -16,6 +19,7 @@ let notaryLive = false;
 let relayLive = false;
 let busy = false;
 let proof: Proof | undefined;
+let challenge: string | undefined;
 let worker: Worker | undefined;
 let operation: { finish(cause?: string): void } | undefined;
 let checkingServices = false;
@@ -54,8 +58,12 @@ function showError(text: string) {
 
 function render() {
   maybePrepare();
-  prove.disabled = busy || !status.hasToken || !notaryLive || !relayLive;
+  prove.disabled = busy || version() === 2 || !status.hasToken || !notaryLive || !relayLive;
   verify.disabled = busy || !proof;
+  proofVersion.disabled = busy;
+  element("format-note").textContent = version() === 2
+    ? 'V2 currently proves top-level JSON members only. Duolingo streaks require a nested-path proof; select v1 for this claim.'
+    : "V1 verifies your username and the full longest-streak path.";
   prove.textContent = busy && !proof ? "Generating proof…" : "Generate proof";
   prove.title = prepareState === "ready" ? "Notary session ready" : prepareState === "preparing" ? "Preparing notary session…" : "";
   indicator("tab", status.tabOpen ? "Open" : "Closed", status.tabOpen ? "live" : "checking");
@@ -138,11 +146,17 @@ async function refreshServices() {
 function showProof(reply: Proof) {
   proof = reply;
   element("result").hidden = false;
-  element("streak").textContent = String(proof.longestStreak);
-  element("username").textContent = `@${proof.username}`;
+  element("claim-label").textContent = proof.version === 2 ? 'JSON member "length"' : "Longest streak";
+  element("claim-unit").textContent = proof.version === 2 ? "" : "days";
+  element("streak").textContent = String(proof.version === 2 ? proof.predicate.value : proof.longestStreak);
+  element("username").textContent = proof.version === 2 ? "Username and full JSON path are not proven." : `@${proof.username}`;
   element("elapsed").textContent = duration(proof.elapsedMs);
   element("verify-time").textContent = "—";
-  element<HTMLTextAreaElement>("proof").value = proof.presentation;
+  // Export the verifier challenge and claim with v2, not just an opaque proof.
+  element("presentation-label").textContent = proof.version === 2 ? "Presentation + claim + challenge · JSON" : "Presentation · base64";
+  element<HTMLTextAreaElement>("proof").value = proof.version === 2
+    ? JSON.stringify({ version: 2, presentation: proof.presentation, predicate: proof.predicate, nonce: proof.nonce })
+    : proof.presentation;
   const ahead = proof.timings.prewarmed ? " (ahead)" : "";
   const pool = proof.timings.voleResumed ? "warm VOLE pool" : "fresh OT";
   const phases = [
@@ -155,7 +169,8 @@ function showProof(reply: Proof) {
     ["Presentation", proof.presentMs],
   ] as const;
   const threads = proof.threads ? `${proof.threads} threads` : "1 thread";
-  element("timings").textContent = `TLS ${proof.tlsVersion ?? "auto"} · QuickSilver · proxy · ${threads} · ${pool}\n\n${phases.map(([label, ms]) => `${label.padEnd(19)}${duration(ms)}`).join("\n")}`;
+  const engine = proof.version === 2 ? "v2 · QuickSilver session · VOLEitH presentation" : "v1 · QuickSilver";
+  element("timings").textContent = `TLS ${proof.tlsVersion ?? "auto"} · ${engine} · proxy · ${threads} · ${pool}\n\n${phases.map(([label, ms]) => `${label.padEnd(19)}${duration(ms)}`).join("\n")}`;
   indicator("verification", "Unverified", "checking");
 }
 
@@ -166,6 +181,7 @@ function onReply(event: MessageEvent<ProverReply>) {
       maybePrepare();
       break;
     case "prepared":
+      if (reply.version !== version()) break;
       prepareState = reply.ok ? "ready" : "idle";
       render();
       break;
@@ -182,14 +198,24 @@ function onReply(event: MessageEvent<ProverReply>) {
       operation?.finish(reply.error);
       break;
     case "proof":
+      if (reply.proof.version !== version() || (reply.proof.version === 2 && reply.proof.nonce !== challenge)) {
+        operation?.finish("The proof does not match the requested format or verifier challenge.");
+        break;
+      }
       showProof(reply.proof);
       operation?.finish();
       break;
     case "verified":
+      if (reply.version === 2) {
+        element("streak").textContent = String(reply.verified.predicate.value);
+        element("username").textContent = "Username and full JSON path are not proven.";
+        element("transcript").textContent = `${reply.verified.serverName}\nAttestation v2 · proxy\n${new Date(reply.verified.time * 1000).toISOString()}\nTrusted notary: ${reply.verified.notaryKey.key}\nProven JSON member: ${reply.verified.predicate.key} ${reply.verified.predicate.op} ${reply.verified.predicate.value}\n\n${reply.verified.responseHeaders}`;
+      } else {
       element("streak").textContent = String(reply.longestStreak);
       element("username").textContent = `@${reply.username}`;
-      element("verify-time").textContent = duration(reply.elapsedMs);
       element("transcript").textContent = `${reply.verified.serverName}\nTLS ${reply.verified.tlsVersion}\n${new Date(reply.verified.time * 1000).toISOString()}\nTrusted notary: ${reply.verified.notaryKey.key}\n\n${reply.verified.sent}\n${reply.verified.recv}`;
+      }
+      element("verify-time").textContent = duration(reply.elapsedMs);
       element("verified-details").hidden = false;
       indicator("verification", "Verified", "live");
       operation?.finish();
@@ -201,8 +227,10 @@ function onReply(event: MessageEvent<ProverReply>) {
 function proverWorker(): Worker {
   if (worker) return worker;
   worker = new Worker(new URL("prover.js", import.meta.url), { type: "module" });
-  worker.onmessage = onReply;
+  const activeWorker = worker;
+  worker.onmessage = event => { if (worker === activeWorker) onReply(event); };
   worker.onerror = event => {
+    if (worker !== activeWorker) return;
     event.preventDefault();
     resetWorker();
     operation?.finish("The prover worker failed. Rebuild the extension and reload it.");
@@ -218,17 +246,19 @@ function proverWorker(): Worker {
 }
 
 function resetWorker() {
-  worker?.terminate();
+  const previous = worker;
+  previous?.postMessage({ type: "dispose" } satisfies ProverRequest);
+  if (previous) setTimeout(() => previous.terminate(), 0);
   worker = undefined;
   prepareState = "idle";
 }
 
 /** Starts a prepared session if one is useful now. */
 function maybePrepare() {
-  if (prepareState !== "idle" || busy || !status.hasToken || !notaryLive) return;
+  if (version() === 2 || prepareState !== "idle" || busy || !status.hasToken || !notaryLive) return;
   if (document.visibilityState !== "visible" || unusedPrepares >= MAX_UNUSED_PREPARES) return;
   prepareState = "preparing";
-  proverWorker().postMessage({ type: "prepare" } satisfies ProverRequest);
+  proverWorker().postMessage({ type: "prepare", version: version() } satisfies ProverRequest);
 }
 
 function startOperation(message: ProverRequest) {
@@ -275,7 +305,13 @@ prove.addEventListener("click", async () => {
     element("verified-details").hidden = true;
     element<HTMLTextAreaElement>("proof").value = "";
     element("transcript").textContent = "";
-    startOperation({ type: "prove", auth });
+    if (version() === 2) {
+      challenge = verifierNonce();
+      startOperation({ type: "prove", auth, version: 2, nonce: challenge });
+    } else {
+      challenge = undefined;
+      startOperation({ type: "prove", auth, version: 1 });
+    }
   } catch (cause) {
     busy = false;
     render();
@@ -285,9 +321,26 @@ prove.addEventListener("click", async () => {
 
 verify.addEventListener("click", () => {
   if (!proof || busy) return;
+  if (proof.version === 2 && (!challenge || proof.nonce !== challenge)) {
+    showError("The verifier challenge is unavailable. Generate a new proof.");
+    return;
+  }
   element("verified-details").hidden = true;
   indicator("verification", "Verifying…", "checking");
-  startOperation({ type: "verify", presentation: proof.presentation });
+  startOperation(proof.version === 2
+    ? { type: "verify", version: 2, presentation: proof.presentation, predicate: proof.predicate, nonce: proof.nonce }
+    : { type: "verify", version: 1, presentation: proof.presentation });
+});
+
+proofVersion.addEventListener("change", () => {
+  proof = undefined;
+  challenge = undefined;
+  element("result").hidden = true;
+  element("verified-details").hidden = true;
+  error.hidden = true;
+  unusedPrepares = 0;
+  resetWorker();
+  render();
 });
 
 element("open").addEventListener("click", () => {

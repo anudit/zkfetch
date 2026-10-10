@@ -44,6 +44,18 @@ verifier shares one reduction between `x*y` and `delta*z`. Challenge
 generation and transcript order are unchanged. A differential test checks
 both roles against the original code across segment boundaries.
 
+### D1/D3 baseline counters (opt-in)
+
+`mpz-zk`'s `circuit-metrics` feature counts allocated circuit calls grouped by
+input/output bit lengths and AND/XOR counts, plus successfully marked private
+input bits. It records no witness values. Counters are process-wide and must
+be reset only in isolated benchmarks with no other prover VMs running.
+These allocations exclude check-mask correlations and are not a measurement
+of all consumed VOLE, peak memory or physical RTTs. The feature is disabled by
+default and adds no instrumentation to normal builds. It changes no proof
+equations or protocol messages; field/degree-3 protocol support remains a
+separate, unfinished D1/D3 task.
+
 Measurements and reproducible profiling commands are in
 [`docs/quicksilver-hotspots-2026-10-08.md`](../../docs/quicksilver-hotspots-2026-10-08.md).
 
@@ -99,3 +111,22 @@ consistency check before using outputs, and burns failed leases. No correlations
 are copied or restored. The mux collects a bounded final flight and drains all
 stream queues before transmitting it; tests verify one underlying write and
 that no bytes escape before release.
+
+The experimental `crates/zkf-ir/src/backend/mpz.rs` adapter reuses this VM's
+existing authenticated bit MACs/keys, including references to existing TLS key
+outputs. GF-byte and GF128 commitments are linear lifts of those bit rows.
+It checks degree-three homogeneous constraints using fresh degree-dependent
+masks and a post-commitment verifier challenge. No MPZ bit authentication or
+Ferret soundness parameters change. D4 batching and authenticated streaming
+remain outstanding; the default binary VM remains the production backend.
+
+
+### Combined v2 key/framing proof
+
+The optimized D1 caller can borrow both original application-key references
+in one degree-three relation. Its Fiat–Shamir seed is domain-separated from
+the VM transcript after canonical statement and commitment flush absorption.
+The relation covers both key OWFs and optional public HTTP framing/member
+claims, including independent claim nonces. The verifier signs only after
+acceptance. The interactive single-key reference bridge remains available.
+See [binding and soundness conditions](../../docs/v2-presentation-optimizations.md).

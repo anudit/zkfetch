@@ -1,0 +1,1 @@
+Vendored worldfnd/spongefish at 4b3a189ceb3f5bdc6848c1ce8ab64c948bb867d1. Apache-2.0. Only spongefish/derive workspace members retained. No upstream source changes. zkfetch uses its transcript interface with TurboSHAKE128.

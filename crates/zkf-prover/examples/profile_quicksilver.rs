@@ -261,6 +261,10 @@ async fn run(
                 tls_version: Some(opts.tls.clone()),
                 mode: Some(opts.mode.clone()),
                 relay_url: None,
+                attestation_v2: false,
+        signed_response_head: false,
+        session_claims: vec![],
+        session_claim_nonce: None,
             }),
         )
         .await

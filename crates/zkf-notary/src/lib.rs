@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod admission;
+#[cfg(feature = "d1-experimental")]
+mod d1;
 pub mod metrics;
 
 use anyhow::{Context, Result, bail};
@@ -50,6 +52,11 @@ pub trait ServerConnector {
     type Stream: futures::AsyncRead + futures::AsyncWrite + Send + Unpin;
 
     fn connect(&self, host: &str, port: u16) -> impl Future<Output = Result<Self::Stream>>;
+
+    /// The address actually dialed, signed into v2 attestations.
+    fn peer_ip(_stream: &Self::Stream) -> Option<std::net::IpAddr> {
+        None
+    }
 }
 
 /// TCP connector for the native notary.
@@ -102,6 +109,10 @@ impl ServerConnector for TcpConnector {
             .with_context(|| format!("failed to connect to {host}:{port}"))?;
         tcp.set_nodelay(true)?;
         Ok(tcp.compat())
+    }
+
+    fn peer_ip(stream: &Self::Stream) -> Option<std::net::IpAddr> {
+        stream.get_ref().peer_addr().ok().map(|addr| addr.ip())
     }
 }
 
@@ -453,7 +464,9 @@ pub async fn serve(
                     .map(|(_, v)| v.into_owned())
                     .unwrap_or_default();
                 let scope = pool_scope(&config, &capability);
-                notarize_scoped(ws, &config, &*connector, scope).await
+                let (name, value) = zkf_core::d1::QUERY;
+                let attestation_v2 = url.query_pairs().any(|(k, v)| k == name && v == value);
+                notarize_with(ws, &config, &*connector, scope, attestation_v2).await
             })
             .await
             .unwrap_or_else(|_| Err(anyhow::anyhow!("session timed out after {timeout:?}")));
@@ -487,7 +500,7 @@ where
 /// Hosts with external admission (e.g. Workers) must supply a distinct scope
 /// per tenant. Reuse is in-memory only and fails closed to fresh OT.
 pub async fn notarize_scoped<S, C>(
-    mut socket: S,
+    socket: S,
     config: &NotaryConfig,
     connector: &C,
     scope: [u8; 32],
@@ -496,6 +509,26 @@ where
     S: futures::AsyncRead + futures::AsyncWrite + Unpin + 'static,
     C: ServerConnector,
 {
+    notarize_with(socket, config, connector, scope, false).await
+}
+
+/// Like [`notarize_scoped`]; `attestation_v2` (selected by the prover in the
+/// notary URL) signs a v2 attestation after the key-commitment proofs.
+pub async fn notarize_with<S, C>(
+    mut socket: S,
+    config: &NotaryConfig,
+    connector: &C,
+    scope: [u8; 32],
+    attestation_v2: bool,
+) -> Result<()>
+where
+    S: futures::AsyncRead + futures::AsyncWrite + Unpin + 'static,
+    C: ServerConnector,
+{
+    anyhow::ensure!(
+        !attestation_v2 || cfg!(feature = "d1-experimental"),
+        "this notary does not support v2 attestations"
+    );
     let opening = zkf_core::notary_auth::respond_pool_with(
         &mut socket,
         &config.signing_key,
@@ -597,24 +630,24 @@ where
                 if cold {
                     ready.await.map_err(anyhow::Error::msg)?;
                 }
-                let (commitments, predicates, transcript, host) = verify_session(
+                let verified = verify_session(
                     &mut handle,
                     config,
                     connector,
                     pool_lease.as_mut().map(|(_, p)| p),
                     opened_server,
+                    attestation_v2,
                 )
                 .await?;
                 let bytes = transport::read_frame(&mut reply).await?;
-                let attestation =
-                    sign_attestation(config, &bytes, commitments, predicates, transcript, host)?;
+                let attestation = sign_reply(config, &bytes, verified)?;
                 // Publish the next lease before replying, so an immediate next session
                 // cannot race attestation delivery and unexpectedly reset the pool.
                 if let Some((opening, mut pool)) = pool_lease.take() {
                     pool.park();
                     VOLE_POOLS.put(scope, opening.request, pool);
                 }
-                transport::write_frame(&mut reply, &bincode::serialize(&attestation)?).await?;
+                transport::write_frame(&mut reply, &attestation).await?;
                 handle.close();
                 Ok::<_, anyhow::Error>(())
             };
@@ -624,7 +657,7 @@ where
         .await?;
         return Ok(());
     }
-    let (mut socket, (transcript_commitments, verified_predicates, tls_transcript, proxy_host)) =
+    let (mut socket, verified) =
         futures::future::try_join(driver.err_into::<anyhow::Error>(), async {
             let out = verify_session(
                 &mut handle,
@@ -632,6 +665,7 @@ where
                 connector,
                 pool_lease.as_mut().map(|(_, p)| p),
                 None,
+                attestation_v2,
             )
             .await;
             handle.close();
@@ -639,20 +673,41 @@ where
         })
         .await?;
     let request_bytes = transport::read_frame(&mut socket).await?;
-    let attestation = sign_attestation(
-        config,
-        &request_bytes,
-        transcript_commitments,
-        verified_predicates,
-        tls_transcript,
-        proxy_host,
-    )?;
-    transport::write_frame(&mut socket, &bincode::serialize(&attestation)?).await?;
+    let attestation = sign_reply(config, &request_bytes, verified)?;
+    transport::write_frame(&mut socket, &attestation).await?;
     if let Some((opening, pool)) = pool_lease {
         VOLE_POOLS.put(scope, opening.request, pool);
     }
     futures::AsyncWriteExt::close(&mut socket).await.ok();
     Ok(())
+}
+
+/// What a verified session leaves to sign.
+struct Verified {
+    commitments: Vec<tlsn::transcript::TranscriptCommitment>,
+    predicates: Vec<tlsn::transcript::TranscriptPredicate>,
+    transcript: tlsn::transcript::TlsTranscript,
+    host: Option<String>,
+    #[cfg(feature = "d1-experimental")]
+    d1: Option<d1::Evidence>,
+}
+
+/// Signs the attestation the session asked for; returns the reply frame.
+fn sign_reply(config: &NotaryConfig, request_bytes: &[u8], verified: Verified) -> Result<Vec<u8>> {
+    #[cfg(feature = "d1-experimental")]
+    if let Some(evidence) = verified.d1 {
+        let host = verified.host.as_deref().expect("v2 sessions are proxy sessions");
+        return d1::sign(config, request_bytes, &verified.transcript, host, evidence);
+    }
+    let attestation = sign_attestation(
+        config,
+        request_bytes,
+        verified.commitments,
+        verified.predicates,
+        verified.transcript,
+        verified.host,
+    )?;
+    Ok(bincode::serialize(&attestation)?)
 }
 
 fn sign_attestation(
@@ -772,12 +827,8 @@ async fn verify_session<C: ServerConnector>(
     connector: &C,
     pool: Option<&mut tlsn::vole_pool::VerifierVolePool>,
     opened_server: Option<(C::Stream, zkf_core::notary_auth::ProxyOpen)>,
-) -> Result<(
-    Vec<tlsn::transcript::TranscriptCommitment>,
-    Vec<tlsn::transcript::TranscriptPredicate>,
-    tlsn::transcript::TlsTranscript,
-    Option<String>,
-)> {
+    attestation_v2: bool,
+) -> Result<Verified> {
     phase("start");
     let verifier_config = VerifierConfig::builder()
         .root_store(config.root_store())
@@ -785,6 +836,7 @@ async fn verify_session<C: ServerConnector>(
     phase("root store");
 
     let mut proxy_host = None;
+    let mut dialed_ip = None;
     // The session configuration must arrive promptly; idle connections would
     // otherwise hold a slot for the whole session timeout (ZKF-09).
     let mut verifier = handle.new_verifier(verifier_config)?;
@@ -817,6 +869,12 @@ async fn verify_session<C: ServerConnector>(
     let verifier = match commit.await? {
         VerifierCommitStart::Mpc(verifier) => {
             anyhow::ensure!(opened_server.is_none(), "proxy opening cannot select MPC");
+            if attestation_v2 {
+                verifier
+                    .reject(Some("v2 attestations require proxy mode"))
+                    .await?;
+                bail!("v2 attestation requested for an MPC session");
+            }
             let mpc = verifier.config();
             if mpc.max_sent_data() > MAX_SENT_LIMIT || mpc.max_recv_data() > MAX_RECV_LIMIT {
                 verifier
@@ -849,6 +907,7 @@ async fn verify_session<C: ServerConnector>(
                 };
                 (server, Vec::new())
             };
+            dialed_ip = C::peer_ip(&server);
             let accepted = verifier.accept().await?;
             proxy_host = Some(host);
             phase("proxy accepted");
@@ -864,7 +923,7 @@ async fn verify_session<C: ServerConnector>(
             server_name: verified_server,
             ..
         },
-        verifier,
+        mut verifier,
     ) = verifier.verify().await?.accept().await?;
 
     let verified_server = verified_server
@@ -888,15 +947,29 @@ async fn verify_session<C: ServerConnector>(
             })
             .sum::<usize>()
     ));
+    #[cfg(feature = "d1-experimental")]
+    let d1 = if attestation_v2 {
+        anyhow::ensure!(
+            transcript_commitments.is_empty() && verified_predicates.is_empty(),
+            "v2 sessions carry no transcript commitments or session predicates"
+        );
+        Some(d1::verify(&mut verifier, handle, dialed_ip).await?)
+    } else {
+        None
+    };
+    #[cfg(not(feature = "d1-experimental"))]
+    let _ = (&mut verifier, dialed_ip);
     let tls_transcript = verifier.tls_transcript().clone();
     verifier.close().await?;
 
-    Ok((
-        transcript_commitments,
-        verified_predicates,
-        tls_transcript,
-        proxy_host,
-    ))
+    Ok(Verified {
+        commitments: transcript_commitments,
+        predicates: verified_predicates,
+        transcript: tls_transcript,
+        host: proxy_host,
+        #[cfg(feature = "d1-experimental")]
+        d1,
+    })
 }
 
 #[cfg(test)]

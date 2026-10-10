@@ -22,18 +22,24 @@
 
       <div class="session-actions"><button id="open" class="text-button">Open Duolingo</button><button id="refresh" class="text-button">Refresh status</button></div>
       <p id="hint" class="note">Sign in to Duolingo. Your token is detected automatically.</p>
+      <label class="eyebrow" for="proof-version">Proof format</label>
+      <select id="proof-version">
+        <option value="1">Username + streak · v1</option>
+        <option value="2">Numeric member claim · v2</option>
+      </select>
+      <p id="format-note" class="note">V1 verifies your username and the full longest-streak path.</p>
       <button id="prove" class="primary" disabled>Generate proof</button>
       <p id="progress" class="note" role="status" aria-live="polite"></p>
       <p id="error" class="error" role="alert" hidden></p>
 
       <section id="result" hidden aria-label="Proof result">
-        <div class="result-heading"><span class="eyebrow">Longest streak</span><span id="verification" class="status" data-state="checking">Unverified</span></div>
-        <p class="streak"><span id="streak">0</span> <span>days</span></p>
+        <div class="result-heading"><span id="claim-label" class="eyebrow">Longest streak</span><span id="verification" class="status" data-state="checking">Unverified</span></div>
+        <p class="streak"><span id="streak">0</span> <span id="claim-unit">days</span></p>
         <p id="username" class="account"></p>
         <dl class="measurements"><div><dt>Proof generated in</dt><dd id="elapsed"></dd></div><div><dt>Verification</dt><dd id="verify-time">—</dd></div></dl>
         <button id="verify" class="primary">Verify proof</button>
-        <details><summary>Proof &amp; timings</summary><pre id="timings"></pre><label class="eyebrow" for="proof">Presentation · base64</label><textarea id="proof" readonly spellcheck="false" aria-label="Proof presentation"></textarea></details>
-        <details id="verified-details" hidden><summary>Verified transcript</summary><pre id="transcript"></pre></details>
+        <details><summary>Proof &amp; timings</summary><pre id="timings"></pre><label id="presentation-label" class="eyebrow" for="proof">Presentation · base64</label><textarea id="proof" readonly spellcheck="false" aria-label="Proof presentation"></textarea></details>
+        <details id="verified-details" hidden><summary>Verified details</summary><pre id="transcript"></pre></details>
       </section>
 
       <footer>Your bearer token stays hidden in the proof.</footer>

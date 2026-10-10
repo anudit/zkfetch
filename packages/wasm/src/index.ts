@@ -3,12 +3,16 @@
 import initWasm, * as single from "../pkg/zkf.js";
 import type { InitInput } from "../pkg/zkf.js";
 import {
+  validateMemberPredicate,
   validatePredicates,
   type NotarizeOutput,
   type NotarizeParams,
+  type PresentV2Request,
   type RevealSpec,
   type VerifyOptions,
   type VerifyOutput,
+  type VerifyV2Options,
+  type VerifyV2Output,
 } from "@zkfetch/native/types";
 
 export * from "@zkfetch/native/types";
@@ -128,4 +132,19 @@ export function verify(presentation: string, options: VerifyOptions = {}): Verif
   validatePredicates(options.expectedPredicates);
   ready();
   return JSON.parse(wasm.verify(presentation, JSON.stringify(options)));
+}
+
+/** Experimental: proves `request.predicate` about a v2 session offline.
+ * Takes seconds of CPU: call it from a worker. */
+export async function presentV2(attestation: string, secrets: string, request: PresentV2Request): Promise<string> {
+  validateMemberPredicate(request.predicate);
+  await init();
+  return wasm.presentV2(attestation, secrets, JSON.stringify(request));
+}
+
+/** Experimental: verifies a v2 presentation against the verifier's policy. */
+export async function verifyV2(presentation: string, options: VerifyV2Options): Promise<VerifyV2Output> {
+  validateMemberPredicate(options.predicate);
+  await init();
+  return JSON.parse(wasm.verifyV2(presentation, JSON.stringify(options)));
 }

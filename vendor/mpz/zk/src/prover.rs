@@ -44,6 +44,14 @@ impl<OT> Prover<OT> {
         self.transcript.update(statement);
     }
 
+    /// Fiat--Shamir seed after the canonical statement and all commitment
+    /// corrections have been absorbed. Does not expose the secret MAC delta.
+    pub fn field_challenge(&self) -> [u8; 32] {
+        let mut transcript = self.transcript.clone();
+        transcript.update(b"zkfetch/quicksilver/degree-three/check/v1\0");
+        *transcript.finalize().as_bytes()
+    }
+
     /// Returns the MACs.
     ///
     /// # Arguments
@@ -250,6 +258,8 @@ where
     OT: RCOTReceiver<bool, Block>,
 {
     fn call_raw(&mut self, call: Call) -> VmResult<Slice> {
+        #[cfg(feature = "circuit-metrics")]
+        crate::metrics::record_call(&call);
         let output = self.store.alloc_output(call.circ().outputs().len());
 
         let count = call.circ().and_count();
@@ -337,6 +347,9 @@ where
         self.store.mark_private_raw(slice).map_err(VmError::view)?;
 
         self.ot.alloc(slice.len()).map_err(VmError::view)?;
+
+        #[cfg(feature = "circuit-metrics")]
+        crate::metrics::record_private(slice.len());
 
         Ok(())
     }

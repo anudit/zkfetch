@@ -1,7 +1,10 @@
 [workspace]
 resolver = "2"
-exclude = ["vendor"]
+exclude = ["vendor", "fuzz"]
 members = [
+  "crates/zkf-attestation",
+  "crates/zkf-ir",
+  "crates/zkf-voleith",
   "crates/zkf-core",
   "crates/zkf-notary",
   "crates/zkf-prover",
@@ -20,6 +23,9 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
+zkf-attestation = { path = "crates/zkf-attestation" }
+zkf-ir = { path = "crates/zkf-ir" }
+zkf-voleith = { path = "crates/zkf-voleith" }
 zkf-core = { path = "crates/zkf-core" }
 zkf-notary = { path = "crates/zkf-notary" }
 zkf-prover = { path = "crates/zkf-prover" }

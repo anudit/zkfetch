@@ -8,6 +8,7 @@ edition = "2024"
 default = []
 rayon = ["mpz-zk-core/rayon", "blake3/rayon"]
 mock = ["mpz-ot/ideal"]
+circuit-metrics = ["dep:serde"]
 
 [dependencies]
 mpz-vm-core = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
@@ -25,3 +26,4 @@ serio = { version = "0.2" }
 
 
 bincode = "1.3"
+serde = { version = "1", features = ["derive"], optional = true }

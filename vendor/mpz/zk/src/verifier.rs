@@ -48,6 +48,14 @@ impl<OT> Verifier<OT> {
         self.transcript.update(statement);
     }
 
+    /// Fiat--Shamir seed after the canonical statement and all commitment
+    /// corrections have been absorbed. Does not expose the secret MAC delta.
+    pub fn field_challenge(&self) -> [u8; 32] {
+        let mut transcript = self.transcript.clone();
+        transcript.update(b"zkfetch/quicksilver/degree-three/check/v1\0");
+        *transcript.finalize().as_bytes()
+    }
+
     /// Returns the global MAC correlation, `delta`.
     pub fn delta(&self) -> &Delta {
         self.store.delta()

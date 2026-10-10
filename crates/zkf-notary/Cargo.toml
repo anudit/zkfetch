@@ -6,6 +6,11 @@ version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+default = ["d1-experimental"]
+# v2 (D1) attestations, selected per session by the prover. Experimental.
+d1-experimental = ["tlsn/d1-experimental", "dep:zkf-attestation", "dep:zkf-ir"]
+
 [[bin]]
 name = "zkf-notary"
 path = "src/main.rs"
@@ -16,6 +21,8 @@ serde = { workspace = true }
 sha2 = { workspace = true }
 url = { workspace = true }
 zkf-core = { workspace = true }
+zkf-attestation = { workspace = true, optional = true }
+zkf-ir = { workspace = true, optional = true }
 zkf-predicates = { workspace = true }
 tlsn = { workspace = true }
 anyhow = { workspace = true }

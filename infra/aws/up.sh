@@ -12,6 +12,9 @@
 source "$(dirname "$0")/common.sh"
 
 INSTANCE_TYPE=${INSTANCE_TYPE:-t4g.small}
+AMI_PARAMETER=${AMI_PARAMETER:-/aws/service/ami-amazon-linux-latest/al2027-preview-ami-minimal-kernel-default-arm64}
+NEW_INSTANCE=${NEW_INSTANCE:-0}
+[[ "$NEW_INSTANCE" == 0 || "$NEW_INSTANCE" == 1 ]] || { echo "NEW_INSTANCE must be 0 or 1" >&2; exit 1; }
 ARTIFACTS="$STATE/artifacts"
 CADDY_VERSION=2.10.2
 # Official release archive checksum (SHA-512).
@@ -73,18 +76,34 @@ aws ec2 authorize-security-group-ingress --group-id "$SG" \
   --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$MY_IP/32,Description=deployer}]" >/dev/null 2>&1 || true
 
 log "Instance"
-INSTANCE=$(aws ec2 describe-instances --filters "$FILTER" Name=instance-state-name,Values=pending,running \
-  --query 'Reservations[0].Instances[0].InstanceId' --output text)
+AMI=$(aws ssm get-parameter --name "$AMI_PARAMETER" --query Parameter.Value --output text)
+INSTANCE=${INSTANCE_ID:-None}
+if [[ "$INSTANCE" == None && "$NEW_INSTANCE" == 0 ]]; then
+  INSTANCE=$(aws ec2 describe-instances --filters "$FILTER" Name=instance-state-name,Values=pending,running \
+    --query 'Reservations[0].Instances[0].InstanceId' --output text)
+fi
+if [[ "$INSTANCE" != None ]]; then
+  IMAGE_NAME=$(aws ec2 describe-instances --instance-ids "$INSTANCE" --query 'Reservations[0].Instances[0].ImageId' --output text)
+  IMAGE_NAME=$(aws ec2 describe-images --image-ids "$IMAGE_NAME" --query 'Images[0].Name' --output text)
+  if [[ "$AMI_PARAMETER" == *al2027-* && "$IMAGE_NAME" != al2027-* ]]; then
+    echo "Existing $INSTANCE uses $IMAGE_NAME. Use NEW_INSTANCE=1 to launch AL2027; validate it before terminating the old instance." >&2
+    exit 1
+  fi
+fi
 if [[ "$INSTANCE" == "None" ]]; then
-  AMI=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-minimal-kernel-default-arm64 \
-    --query Parameter.Value --output text)
   USER_DATA=$(cat <<'EOF'
 #!/bin/bash
-set -e
+set -euo pipefail
 # Keep English locales and translations on this dedicated notary host.
 printf '%%_install_langs en:en_US\n' > /etc/rpm/macros.zkfetch-languages
 dnf install -y iptables glibc-langpack-en
-dnf remove -y --setopt=clean_requirements_on_remove=False glibc-all-langpacks awscli-2
+REMOVE=()
+for package in glibc-all-langpacks awscli-2 awscli; do
+  if rpm -q "$package" >/dev/null 2>&1; then REMOVE+=("$package"); fi
+done
+if (( ${#REMOVE[@]} )); then
+  dnf remove -y --setopt=clean_requirements_on_remove=False "${REMOVE[@]}"
+fi
 localectl set-locale LANG=en_US.UTF-8
 systemctl disable --now dnf-makecache.timer || true
 dnf clean all
@@ -154,6 +173,8 @@ cat "$STAGE/ldd.txt"
 ! grep -q 'not found' "$STAGE/ldd.txt"
 install -m755 "$STAGE/notary-egress.sh" /etc/zkfetch/notary-egress.sh
 install -m644 "$STAGE/systemd/"*.service /etc/systemd/system/
+# AL2027 enforces SELinux: staging files must acquire their destination labels.
+restorecon -RF /usr/local/bin/zkf-notary /usr/local/bin/caddy /etc/zkfetch /etc/systemd/system
 cat > /etc/caddy/Caddyfile <<CADDY
 $HOST {
 	handle /health {
@@ -164,6 +185,7 @@ $HOST {
 	}
 }
 CADDY
+restorecon -RF /etc/caddy
 /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 systemd-analyze verify /etc/systemd/system/zkf-{egress,notary}.service /etc/systemd/system/caddy.service
 systemctl daemon-reload
@@ -184,8 +206,8 @@ done
 [[ -n "$KEY" && ( -z "$EXPECTED" || "$KEY" == "$EXPECTED" ) ]] || { echo "health check failed (public key: ${KEY:-none})" >&2; exit 1; }
 
 jq -n --arg url "wss://$HOST/notarize" --arg health "https://$HOST/health" --arg key "$KEY" \
-  --arg instance "$INSTANCE" --arg ip "$IP" --arg type "$INSTANCE_TYPE" \
-  '{url:$url, health:$health, publicKey:$key, location:"ap-south-1", instance:$instance, ip:$ip, instanceType:$type}' \
+  --arg instance "$INSTANCE" --arg ip "$IP" --arg type "$INSTANCE_TYPE" --arg amiParameter "$AMI_PARAMETER" \
+  '{url:$url, health:$health, publicKey:$key, location:"ap-south-1", instance:$instance, ip:$ip, instanceType:$type, amiParameter:$amiParameter}' \
   > "$STATE/deployment.json"
 # Public manifest (no instance details), read by the Chrome extension build.
 jq '{url, health, publicKey, location, instanceType, deployedAt: (now|todate)}' "$STATE/deployment.json" \

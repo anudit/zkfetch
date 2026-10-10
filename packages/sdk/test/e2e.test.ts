@@ -4,7 +4,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type DevFixture, type DevNotary, restoreResponse, startFixture, startNotary, verify, zkFetch } from "../src";
+import { type DevFixture, type DevNotary, newNonce, restoreResponse, startFixture, startNotary, verify, verifyV2, zkFetch } from "../src";
 
 let fixture: DevFixture;
 let fixture13: DevFixture;
@@ -189,6 +189,61 @@ test("zkConfig.reveal commits only the declared disclosure", async () => {
   expect(verify(restored.zk.present({ prove: [predicate] }), opts).recv).not.toContain("John Doe");
   expect(() => restored.zk.present({ response: { body: true } })).toThrow("not committed at fetch time");
 }, 60_000);
+
+test("attestationV2: zkFetch -> presentV2 -> verifyV2 bound to the verifier's nonce", async () => {
+  const caPath = join(mkdtempSync(join(tmpdir(), "zkf-")), "fixture13-ca.der");
+  writeFileSync(caPath, Buffer.from(fixture13.caCert, "base64"));
+  const proxyNotary = await startNotary({
+    key: "07".repeat(32),
+    extraRoots: [caPath],
+    proxyResolve: { [fixture13.serverName]: fixture13.addr },
+  });
+  try {
+    const res = await zkFetch(`https://${fixture13.serverName}/formats/json`, {
+      headers: { Authorization: "Bearer v2-private" },
+      zkConfig: {
+        notaryUrl: proxyNotary.url,
+        expectedNotaryKey: proxyNotary.publicKey,
+        mode: "proxy",
+        tlsVersion: "1.3",
+        extraRootCerts: [fixture13.caCert],
+        context: "v2-challenge",
+        attestationV2: true,
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { id: number }).id).toBe(1234567890);
+    expect(res.zk.attestationVersion).toBe(2);
+
+    // The session survives serialization; claims are chosen later.
+    const restored = restoreResponse(JSON.parse(JSON.stringify(res.zk)));
+    expect(() => restored.zk.present({})).toThrow("presentV2");
+    const nonce = newNonce();
+    const predicate = { key: "id", op: "ge", value: "1000" } as const;
+    const presentation = await restored.zk.presentV2({ predicate, nonce });
+    const opts = {
+      trustedNotaryKeys: [proxyNotary.publicKey],
+      expectedServerName: fixture13.serverName,
+      predicate,
+      nonce,
+      expectedContext: "v2-challenge",
+      maxAgeSecs: 600,
+    };
+    const out = await verifyV2(presentation, opts);
+    expect(out.serverName).toBe(fixture13.serverName);
+    expect(out.responseHeaders).toStartWith("HTTP/1.1 200");
+    expect(out.context).toBe("v2-challenge");
+    expect(out.predicate).toEqual(predicate);
+    expect(Buffer.from(presentation, "base64").includes("v2-private")).toBe(false);
+
+    await expect(verifyV2(presentation, { ...opts, nonce: newNonce() })).rejects.toThrow();
+    await expect(verifyV2(presentation, { ...opts, predicate: { ...predicate, value: "2000000000" } })).rejects.toThrow();
+    await expect(verifyV2(presentation, { ...opts, trustedNotaryKeys: [notary.publicKey.replace(/.$/, c => (c === "0" ? "1" : "0"))] })).rejects.toThrow();
+    await expect(restored.zk.presentV2({ predicate: { ...predicate, op: "gt", value: "1234567890" }, nonce })).rejects.toThrow();
+  } finally {
+    proxyNotary.proc.kill();
+  }
+}, 120_000);
 
 // Real hosts through the local notary, without auto fallback. Opt-in: ZKF_LIVE=1.
 for (const tlsVersion of ["1.2", "1.3"] as const) {

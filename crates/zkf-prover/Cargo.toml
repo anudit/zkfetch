@@ -6,7 +6,33 @@ version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+parallel = ["zkf-voleith?/parallel"]
+default = ["d1-experimental"]
+# v2 (D1) attestations and VOLE-in-the-Head presentations. Experimental:
+# unreviewed parameters and composition; selected per request.
+d1-experimental = [
+  "tlsn/d1-experimental",
+  "dep:zkf-ir",
+  "dep:zkf-attestation",
+  "dep:zkf-voleith",
+  "dep:aes",
+  "dep:aes-gcm",
+  "dep:httparse",
+  "dep:sha2",
+  "dep:zeroize",
+]
+circuit-metrics = ["tlsn/circuit-metrics"]
+
 [dependencies]
+zkf-ir = { workspace = true, optional = true }
+zkf-attestation = { workspace = true, optional = true }
+zkf-voleith = { workspace = true, optional = true }
+aes = { version = "0.8", optional = true }
+aes-gcm = { version = "0.10", optional = true }
+httparse = { version = "1", optional = true }
+sha2 = { workspace = true, optional = true }
+zeroize = { version = "1", features = ["derive"], optional = true }
 mpz-common = { git = "https://github.com/privacy-ethereum/mpz", rev = "v0.1.0-alpha.6" }
 rand = { workspace = true }
 serde = { workspace = true }

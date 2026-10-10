@@ -1,0 +1,82 @@
+{
+  "host": "wss://13-207-197-187.sslip.io/notarize",
+  "client": "native",
+  "samples": [
+    {
+      "mode": "default-cold",
+      "verified": true,
+      "rejectsWrongNonce": true,
+      "bodyBytes": 47,
+      "timings": {
+        "notaryConnectMs": 136.472708,
+        "setupMs": 1588.305292,
+        "tlsMs": 441.874458,
+        "proveMs": 54.510208,
+        "attestMs": 163.609792,
+        "totalMs": 2384.7725410000003,
+        "prewarmed": false,
+        "voleResumed": false
+      },
+      "presentationMs": 512.265167,
+      "verifyMs": 455.6624999999999,
+      "presentationBytes": 184392
+    },
+    {
+      "mode": "default-warm",
+      "verified": true,
+      "rejectsWrongNonce": true,
+      "bodyBytes": 47,
+      "timings": {
+        "notaryConnectMs": 261.26683299999996,
+        "setupMs": 0.30133299999999996,
+        "tlsMs": 687.021875,
+        "proveMs": 53.250083,
+        "attestMs": 196.244709,
+        "totalMs": 1198.084874,
+        "prewarmed": false,
+        "voleResumed": true
+      },
+      "presentationMs": 510.1242919999995,
+      "verifyMs": 437.649625,
+      "presentationBytes": 184392
+    },
+    {
+      "mode": "signed-head",
+      "verified": true,
+      "rejectsWrongNonce": true,
+      "bodyBytes": 47,
+      "timings": {
+        "notaryConnectMs": 356.13679199999996,
+        "setupMs": 0.24608300000000002,
+        "tlsMs": 700.8402500000001,
+        "proveMs": 394.838,
+        "attestMs": 830.799,
+        "totalMs": 2282.860208,
+        "prewarmed": false,
+        "voleResumed": true
+      },
+      "presentationMs": 151.3408330000002,
+      "verifyMs": 125.12275000000045,
+      "presentationBytes": 31527
+    },
+    {
+      "mode": "signed-claim",
+      "verified": true,
+      "rejectsWrongNonce": true,
+      "bodyBytes": 47,
+      "timings": {
+        "notaryConnectMs": 374.19075000000004,
+        "setupMs": 0.24525000000000002,
+        "tlsMs": 282.984583,
+        "proveMs": 599.689208,
+        "attestMs": 1258.962042,
+        "totalMs": 2516.071916,
+        "prewarmed": false,
+        "voleResumed": true
+      },
+      "presentationMs": 0.3485420000015438,
+      "verifyMs": 0.4687919999996666,
+      "presentationBytes": 2139
+    }
+  ]
+}

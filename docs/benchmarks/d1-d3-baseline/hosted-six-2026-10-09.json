@@ -1,0 +1,43 @@
+{
+  "d1": [
+    {
+      "level": 6,
+      "success": 18,
+      "total": 18,
+      "warmCount": 12,
+      "warmMedianMs": 1727.683708,
+      "medianMs": 1847.866126,
+      "peakServiceMiB": 943.26171875,
+      "peakCgroupRecordedMiB": 973.9921875,
+      "peakHostCpuPct": 95.78313253012048,
+      "minAvailableMiB": 601.19921875,
+      "peakSwapMiB": 2.3828125,
+      "peakIowaitPct": 2.0,
+      "peakStealPct": 0.0,
+      "newOomKills": 0,
+      "restarts": 0.0,
+      "diskUsedGiB": 1.7259445190429688,
+      "offlineMedianMs": 4089.323478999999,
+      "medianPresentationBytes": 513783.0,
+      "errors": [],
+      "waves": [
+        {
+          "round": 0,
+          "verified": 6,
+          "attempts": 6
+        },
+        {
+          "round": 1,
+          "verified": 6,
+          "attempts": 6
+        },
+        {
+          "round": 2,
+          "verified": 6,
+          "attempts": 6
+        }
+      ]
+    }
+  ],
+  "method": "D1 attestationV2, jsonplaceholder /todos/1, offline userId >= 1 proof with fresh nonce; three waves of six; service restarted before test; 0.5-second metrics sampling. Fetch latency excludes local offline prove/verify. Original four-session admission restored."
+}

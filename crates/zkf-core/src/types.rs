@@ -72,6 +72,23 @@ pub struct NotarizeParams {
     /// connection to the server.
     #[serde(default)]
     pub relay_url: Option<String>,
+    /// Experimental D1 attestation (proxy mode, TLS 1.3, AES-128-GCM only).
+    /// The notary signs ciphertext roots and key commitments instead of
+    /// plaintext commitments; claims are proven later, offline, with
+    /// `present_v2`. No session predicates.
+    #[serde(default)]
+    pub attestation_v2: bool,
+    /// Opt in to verified/signed response framing. Moves AES work into the
+    /// session; false by default to keep the interactive fetch inexpensive.
+    #[serde(default)]
+    pub signed_response_head: bool,
+    /// Known-at-fetch structural numeric member claims, checked and signed
+    /// by the notary. Later queries still use offline VOLE-in-the-Head.
+    #[serde(default)]
+    pub session_claims: Vec<MemberPredicate>,
+    /// Independent verifier challenge, required with sessionClaims.
+    #[serde(default)]
+    pub session_claim_nonce: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +134,80 @@ pub struct NotarizeOutput {
     pub timings: NotarizeTimings,
     /// Negotiated TLS version ("1.2" or "1.3").
     pub tls_version: String,
+    /// 1: TLSNotary attestation with transcript commitments. 2: D1
+    /// attestation (ciphertext roots and key commitments); `secrets` then
+    /// holds the session's application keys.
+    #[serde(default = "attestation_v1")]
+    pub attestation_version: u8,
+}
+
+fn attestation_v1() -> u8 {
+    1
+}
+
+/// A comparison over the unsigned integer value of a JSON object member,
+/// proven offline against a v2 attestation. `key` names a member of
+/// the root object: it is not a path and does not assert uniqueness.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MemberPredicate {
+    pub key: String,
+    /// "eq", "ne", "lt", "le", "gt" or "ge".
+    pub op: String,
+    pub value: Decimal,
+}
+
+/// What a v2 presentation proves. The verifier supplies `nonce`, so a
+/// presentation cannot be replayed to another verifier or request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PresentV2Request {
+    pub predicate: MemberPredicate,
+    /// 32 bytes, hex, chosen by the verifier.
+    pub nonce: String,
+    /// "fast" (default; larger proof) or "small" (more prover work).
+    #[serde(default)]
+    pub parameters: Option<String>,
+    /// This profile discloses every response header. Responses that set
+    /// cookies are refused unless this is true.
+    #[serde(default)]
+    pub allow_set_cookie: bool,
+}
+
+/// Policy for verifying a v2 presentation. Every field is required except
+/// the optional checks at the end.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VerifyV2Options {
+    /// Accepted notary keys, compressed SEC1 hex.
+    pub trusted_notary_keys: Vec<String>,
+    pub expected_server_name: String,
+    pub predicate: MemberPredicate,
+    /// The nonce this verifier issued, 32 bytes hex.
+    pub nonce: String,
+    #[serde(default)]
+    pub max_age_secs: Option<u64>,
+    #[serde(default)]
+    pub expected_owner: Option<String>,
+    #[serde(default)]
+    pub expected_context: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyV2Output {
+    pub server_name: String,
+    /// Session start, Unix seconds, as signed by the notary.
+    pub time: u64,
+    pub notary_key: KeyView,
+    /// Always "proxy" for v2.
+    pub mode: String,
+    /// Disclosed response head (status line and headers).
+    pub response_headers: String,
+    /// The proven claim (equal to the requested one).
+    pub predicate: MemberPredicate,
+    pub owner: Option<String>,
+    pub context: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
