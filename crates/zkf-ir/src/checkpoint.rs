@@ -13,15 +13,47 @@
 //!   counter block (counters start at 1); the tag differs from the first
 //!   byte of both `C_k` blocks and from zero (`H = AES_K(0¹²⁸)` stays hidden).
 use crate::aes::ExpandedKey;
-use crate::json_segment::{CHECKPOINT_SPACING, STATE_BITS, State};
-use crate::{Byte, Circuit};
+use crate::json_segment::{CHECKPOINT_SPACING, LEVELS, NSTATES, POSITION_BITS, STATE_BITS, State};
+use crate::{Byte, Circuit, Wire};
 
 pub const TAG: u8 = 0xc7;
-pub const PARTS: usize = 3;
+pub const PARTS: usize = 2;
 pub const PAYLOAD_BYTES: usize = 9;
 pub const COMMITMENT_BYTES: usize = 16 * PARTS;
 pub const MAX_INDEX: usize = (1 << 14) - 1;
-const _: () = assert!(STATE_BITS <= PARTS * PAYLOAD_BYTES * 8);
+/// Committed payload: grammar, lexer and depth as binary indices (linear in
+/// their one-hot wires), then kind, unicode and stack bits as-is.
+pub const PAYLOAD_BITS: usize = 4 + 6 + 4 + LEVELS + 4 + LEVELS * POSITION_BITS;
+const _: () = assert!(PAYLOAD_BITS <= PARTS * PAYLOAD_BYTES * 8);
+const GROUPS: [(usize, usize, usize); 3] = [(0, 10, 4), (10, NSTATES, 6), (10 + NSTATES, LEVELS + 1, 4)];
+
+/// Native payload bits from canonical state bits (one-hot groups → indices).
+pub fn payload(bits: &[bool]) -> Vec<bool> {
+    assert_eq!(bits.len(), STATE_BITS);
+    let mut out = Vec::with_capacity(PAYLOAD_BITS);
+    for (start, len, width) in GROUPS {
+        let index = bits[start..start + len].iter().position(|b| *b).unwrap_or(0);
+        out.extend((0..width).map(|i| index >> i & 1 == 1));
+    }
+    out.extend_from_slice(&bits[10 + NSTATES + LEVELS + 1..]);
+    debug_assert_eq!(out.len(), PAYLOAD_BITS);
+    out
+}
+
+/// Payload wires: index bits are free linear combinations of one-hot wires.
+/// Callers must have constrained the groups to be one-hot.
+fn payload_wires(c: &mut Circuit, state: &State) -> Vec<Wire> {
+    let bits = state.bits();
+    let mut out = Vec::with_capacity(PAYLOAD_BITS);
+    for (start, len, width) in GROUPS {
+        for i in 0..width {
+            let terms: Vec<_> = (0..len).filter(|j| j >> i & 1 == 1).map(|j| bits[start + j]).collect();
+            out.push(c.bit_sum(&terms));
+        }
+    }
+    out.extend_from_slice(&bits[10 + NSTATES + LEVELS + 1..]);
+    out
+}
 
 pub type Commitment = [u8; COMMITMENT_BYTES];
 
@@ -38,7 +70,7 @@ fn header(index: usize, part: usize) -> [u8; 3] {
 
 /// Native block for `part` of checkpoint `index`, from the state bits.
 pub fn block(index: usize, part: usize, bits: &[bool]) -> [u8; 16] {
-    assert_eq!(bits.len(), STATE_BITS);
+    let bits = payload(bits);
     let mut out = [0u8; 16];
     out[..3].copy_from_slice(&header(index, part));
     for i in 0..PAYLOAD_BYTES * 8 {
@@ -96,7 +128,7 @@ pub fn unpack(bytes: &[u8]) -> Option<Vec<bool>> {
 }
 
 fn block_wires(c: &mut Circuit, index: usize, part: usize, state: &State) -> [Byte; 16] {
-    let bits = state.bits();
+    let bits = payload_wires(c, state);
     let zero = c.public_bit(false);
     let header = header(index, part);
     std::array::from_fn(|i| match i {

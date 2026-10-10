@@ -37,6 +37,18 @@ pub struct Statement {
     pub anchors: Vec<PathAnchor>,
     /// Public bound authenticated in the transcript; the verifier caps it at eight.
     pub max_depth: u8,
+    /// Checkpoint-window profile: parse only planned windows from signed
+    /// parser checkpoints. Requires a signed head and checkpoint root.
+    pub windows: bool,
+    /// The plan's nonzero checkpoints, in plan order, with Merkle paths.
+    pub checkpoints: Vec<OpenedCheckpoint>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenedCheckpoint {
+    pub index: u32,
+    pub commitment: Vec<u8>,
+    pub path: Vec<[u8; 32]>,
 }
 
 /// The relying party supplies this policy independently of the presentation.
@@ -59,7 +71,7 @@ pub struct Presentation {
     pub proof: Vec<u8>,
 }
 
-const PRESENTATION_MAGIC: &[u8; 8] = b"zkf2prs\x06";
+const PRESENTATION_MAGIC: &[u8; 8] = b"zkf2prs\x07";
 
 pub fn effective_path(q: &Query<'_>) -> Result<Vec<JsonPathSegment>> {
     let path = if q.path.is_empty() {
@@ -173,7 +185,7 @@ fn relation(
         "member encoding exceeds cap"
     );
     let path = effective_path(query)?;
-    let path_profile = !query.path.is_empty() || query.unique;
+    let path_profile = !query.path.is_empty() || query.unique || statement.windows;
     ensure!(
         statement.max_depth > 0 && statement.max_depth <= 8,
         "invalid JSON depth bound"
@@ -181,6 +193,14 @@ fn relation(
     ensure!(
         path_profile || statement.max_depth == 4,
         "noncanonical root depth bound"
+    );
+    ensure!(
+        !statement.windows || statement.max_depth == 8,
+        "noncanonical window depth bound"
+    );
+    ensure!(
+        statement.windows || statement.checkpoints.is_empty(),
+        "checkpoints outside the window profile"
     );
     if path_profile {
         ensure!(
@@ -265,6 +285,51 @@ fn relation(
             statement.anchors.iter().all(|a| a.value.end <= body_len),
             "path anchor beyond body"
         );
+    }
+    if statement.windows {
+        ensure!(signed_head, "checkpoint windows require a signed response head");
+        let (spacing, count, root) = zkf_attestation::checkpoints::signed(&a.claims)
+            .ok_or_else(|| anyhow::anyhow!("attestation carries no signed checkpoints"))?;
+        ensure!(
+            spacing == zkf_ir::json_segment::CHECKPOINT_SPACING
+                && count == zkf_ir::checkpoint::count(body_len),
+            "signed checkpoints do not match this response"
+        );
+        let plan = zkf_ir::json_window::plan(body_len, &path, &statement.anchors, query.unique)
+            .map_err(anyhow::Error::msg)?;
+        let needed: Vec<usize> = plan.checkpoints.iter().copied().filter(|i| *i > 0).collect();
+        ensure!(
+            statement.checkpoints.len() == needed.len(),
+            "checkpoint openings do not match the window plan"
+        );
+        let mut opened = Vec::with_capacity(needed.len());
+        for (o, index) in statement.checkpoints.iter().zip(&needed) {
+            let commitment: [u8; 32] = o
+                .commitment
+                .as_slice()
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("malformed checkpoint commitment"))?;
+            ensure!(
+                o.index as usize == *index
+                    && zkf_attestation::checkpoints::verify(&root, count, *index, &commitment, &o.path),
+                "checkpoint {index} is not in the signed checkpoint tree"
+            );
+            opened.push(commitment);
+        }
+        return zkf_ir::response::offline_relation_windows(
+            a.keys.c_server.0,
+            &a.recv,
+            &ciphertext,
+            a.keys.iv_server.0,
+            &head,
+            &opened,
+            &path,
+            &statement.anchors,
+            query.unique,
+            query.comparison,
+            query.constant,
+        )
+        .map_err(anyhow::Error::msg);
     }
     zkf_ir::response::offline_relation_path(
         a.keys.c_server.0,
@@ -417,6 +482,20 @@ pub fn prove(
     server_key: &[u8; 16],
     params: Parameters,
 ) -> Result<Presentation> {
+    prove_with_checkpoints(a, statement, opening, query, server_key, params, &[])
+}
+
+/// `checkpoint_states[i]` holds the state bits of checkpoint `i + 1`, as kept
+/// from the session; needed only for the checkpoint-window profile.
+pub fn prove_with_checkpoints(
+    a: &Attestation,
+    statement: Statement,
+    opening: Opening,
+    query: &Query<'_>,
+    server_key: &[u8; 16],
+    params: Parameters,
+    checkpoint_states: &[Vec<bool>],
+) -> Result<Presentation> {
     if has_signed_claim(a, query) {
         let head = zkf_attestation::response::Head {
             headers: statement.headers.clone(),
@@ -435,6 +514,8 @@ pub fn prove(
             value: 0..0,
             anchors: Vec::new(),
             max_depth: 4,
+            windows: false,
+            checkpoints: Vec::new(),
         };
         return Ok(Presentation {
             statement,
@@ -450,7 +531,14 @@ pub fn prove(
     let c = relation(a, &statement, &opening, query)?;
     crate::profile::circuit(c.committed_bits(), c.constraint_count());
     profile.mark("present.relation");
-    let witness = c.eval_checked(&byte_inputs(server_key))?;
+    let mut inputs = byte_inputs(server_key);
+    for opened in &statement.checkpoints {
+        let state = checkpoint_states
+            .get((opened.index as usize).wrapping_sub(1))
+            .ok_or_else(|| anyhow::anyhow!("missing state for checkpoint {}", opened.index))?;
+        inputs.extend(state.iter().map(|b| zkf_ir::field::Fe(u128::from(*b))));
+    }
+    let witness = c.eval_checked(&inputs)?;
     profile.mark("present.witness-evaluation");
     let binding = query_binding(query, &statement)?;
     let proof =
@@ -638,6 +726,8 @@ mod tests {
             value: 6..9,
             anchors: Vec::new(),
             max_depth: 4,
+            windows: false,
+            checkpoints: Vec::new(),
         };
         let opening = recv.open(0, recv.direction.len).unwrap();
         (a, statement, opening, signing)
@@ -1145,6 +1235,110 @@ mod tests {
             result: true,
         });
         assert!(!has_signed_claim(&old, &q));
+    }
+
+    fn window_presentation(
+        body: &[u8],
+        path: &[JsonPathSegment],
+        unique: bool,
+        params: Parameters,
+    ) -> (Attestation, SigningKey, Presentation, Query<'static>, std::time::Duration, std::time::Duration) {
+        let (mut a, base, opening, signing) = fixture_body(body);
+        let head = zkf_attestation::response::Head {
+            headers: base.headers.clone(),
+            records: base.records.clone(),
+        };
+        let states = zkf_ir::checkpoint::native_states(body).unwrap();
+        let commitments: Vec<_> = states
+            .iter()
+            .enumerate()
+            .map(|(i, s)| zkf_ir::checkpoint::commit_native(&[7; 16], i + 1, s))
+            .collect();
+        a.claims.push(head.claim());
+        a.claims.push(zkf_attestation::checkpoints::claim(32, &commitments));
+        let mut statement = path_statement(body, base, path);
+        statement.windows = true;
+        statement.max_depth = 8;
+        let plan = zkf_ir::json_window::plan(body.len(), path, &statement.anchors, unique).unwrap();
+        statement.checkpoints = plan
+            .checkpoints
+            .iter()
+            .filter(|i| **i > 0)
+            .map(|i| OpenedCheckpoint {
+                index: *i as u32,
+                commitment: commitments[i - 1].to_vec(),
+                path: zkf_attestation::checkpoints::path(&commitments, *i),
+            })
+            .collect();
+        let key: &'static str = match path.last().unwrap() {
+            JsonPathSegment::Member(name) => Box::leak(name.clone().into_boxed_str()),
+            JsonPathSegment::Index(_) => "",
+        };
+        let q = Query {
+            key,
+            path: Box::leak(path.to_vec().into_boxed_slice()),
+            unique,
+            comparison: Comparison::Eq,
+            constant: 123,
+            ..query()
+        };
+        let started = std::time::Instant::now();
+        let presentation =
+            prove_with_checkpoints(&a, statement, opening, &q, &[7; 16], params, &states).unwrap();
+        let prove_time = started.elapsed();
+        let started = std::time::Instant::now();
+        verify(&a, &a.sign(&signing).unwrap(), signing.verifying_key(), &presentation, &q).unwrap();
+        (a, signing, presentation, q, prove_time, started.elapsed())
+    }
+
+    #[test]
+    fn window_profile_proves_deep_paths_and_rejects_tampering() {
+        let body = format!(
+            r#"{{"pad":"{}","streakData":{{"other":[1,2],"longestStreak":{{"length":123}}}}}}"#,
+            "x".repeat(900)
+        );
+        let path: Vec<_> = ["streakData", "longestStreak", "length"]
+            .into_iter()
+            .map(|s| JsonPathSegment::Member(s.into()))
+            .collect();
+        for (unique, params) in [(false, Parameters::Fast), (false, Parameters::Small), (true, Parameters::Small)] {
+            let (a, signing, presentation, q, prove_time, verify_time) =
+                window_presentation(body.as_bytes(), &path, unique, params);
+            let signed = a.sign(&signing).unwrap();
+            let encoded = presentation
+                .encode(&zkf_attestation::SignedAttestation::sign(a.clone(), &signing).unwrap().encode().unwrap())
+                .unwrap()
+                .len();
+            println!(
+                "window-bench body={} unique={unique} params={params:?} proof={} presentation={} prove_ms={:.1} verify_ms={:.1}",
+                body.len(),
+                presentation.proof.len(),
+                encoded,
+                prove_time.as_secs_f64() * 1e3,
+                verify_time.as_secs_f64() * 1e3
+            );
+            if unique {
+                continue;
+            }
+            // Tampered checkpoint commitment or Merkle path.
+            let mut bad = presentation.clone();
+            bad.statement.checkpoints[0].commitment[0] ^= 1;
+            assert!(verify(&a, &signed, signing.verifying_key(), &bad, &q).is_err());
+            let mut bad = presentation.clone();
+            bad.statement.checkpoints[0].path[0][0] ^= 1;
+            assert!(verify(&a, &signed, signing.verifying_key(), &bad, &q).is_err());
+            // Without the signed checkpoint root, the profile is unavailable.
+            let mut unsigned = a.clone();
+            unsigned.claims.retain(|c| !matches!(c, zkf_attestation::Claim::Reveal { selector, .. } if selector.starts_with(zkf_attestation::checkpoints::SELECTOR_PREFIX)));
+            assert!(verify(&unsigned, &unsigned.sign(&signing).unwrap(), signing.verifying_key(), &presentation, &q).is_err());
+            // Different claimed value or path.
+            assert!(verify(&a, &signed, signing.verifying_key(), &presentation, &Query { constant: 124, ..q }).is_err());
+            let other: Vec<_> = ["streakData", "longestStreak"]
+                .into_iter()
+                .map(|s| JsonPathSegment::Member(s.into()))
+                .collect();
+            assert!(verify(&a, &signed, signing.verifying_key(), &presentation, &Query { path: &other, ..q }).is_err());
+        }
     }
 
     #[test]

@@ -528,6 +528,8 @@ pub fn present_v2(
         } else {
             member.anchors
         },
+        windows: false,
+        checkpoints: Vec::new(),
     };
 
     let params = match request.parameters.as_deref().unwrap_or("fast") {

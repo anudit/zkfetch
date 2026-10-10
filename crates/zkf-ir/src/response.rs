@@ -472,6 +472,99 @@ pub fn offline_relation_path(
     });
     Ok(c)
 }
+/// Decrypt (compact AES) only the body blocks overlapping `ranges`
+/// (inclusive body positions). Requires a signed head: record views and
+/// header bytes are notary-verified, so suffix and header blocks are skipped.
+pub fn decrypt_body_ranges(
+    c: &mut Circuit,
+    key: &ExpandedKey,
+    direction: &Direction,
+    ciphertext: &[u8],
+    iv: [u8; 12],
+    head: &Head,
+    ranges: &[(usize, usize)],
+) -> Result<std::collections::BTreeMap<usize, Byte>, String> {
+    let size = body_len(direction, head)?;
+    if ranges.iter().any(|(s, e)| s > e || *e >= size) {
+        return Err("window outside body".into());
+    }
+    let wanted = |p: usize| ranges.iter().any(|(s, e)| *s <= p && p <= *e);
+    let mut out = std::collections::BTreeMap::new();
+    let mut application_at = 0;
+    let headers = head.headers.len();
+    for (record, view) in direction.records.iter().zip(&head.records) {
+        let inner_len = usize::from(record.len) - 16;
+        let start = usize::try_from(record.offset).map_err(|_| "record offset overflow")? + 5;
+        let inner = ciphertext.get(start..start + inner_len).ok_or("missing ciphertext")?;
+        if view.inner_type == 0x17 {
+            for (block_index, bytes) in inner.chunks(16).enumerate() {
+                let first = block_index * 16;
+                let positions: Vec<usize> = (first..first + bytes.len())
+                    .filter(|at| *at < view.content_len && application_at + at >= headers)
+                    .map(|at| application_at + at - headers)
+                    .collect();
+                if !positions.iter().any(|p| wanted(*p)) {
+                    continue;
+                }
+                let mut ct = [0; 16];
+                ct[..bytes.len()].copy_from_slice(bytes);
+                let counter = tls::counter_block(iv, record.seq, block_index as u32)
+                    .map_err(|e| e.to_string())?;
+                let plain = tls::ctr_block(c, key, counter, ct, [None; 16]).map_err(|e| e.to_string())?;
+                for (i, byte) in plain.into_iter().enumerate().take(bytes.len()) {
+                    let at = first + i;
+                    if at < view.content_len && application_at + at >= headers {
+                        let p = application_at + at - headers;
+                        if wanted(p) {
+                            out.insert(p, byte);
+                        }
+                    }
+                }
+            }
+            application_at += view.content_len;
+        }
+    }
+    Ok(out)
+}
+
+/// Offline path proof over signed checkpoints: decrypt and parse only the
+/// planned windows. `opened` lists the commitments of the plan's nonzero
+/// checkpoints; the caller verifies their Merkle paths to the signed root.
+#[allow(clippy::too_many_arguments)]
+pub fn offline_relation_windows(
+    commitment: [u8; 32],
+    direction: &Direction,
+    ciphertext: &[u8],
+    iv: [u8; 12],
+    head: &Head,
+    opened: &[crate::checkpoint::Commitment],
+    path: &[crate::json::JsonPathSegment],
+    anchors: &[crate::json::PathAnchor],
+    unique: bool,
+    comparison: crate::predicates::Comparison,
+    constant: u64,
+) -> Result<Circuit, String> {
+    let size = body_len(direction, head)?;
+    let plan = crate::json_window::plan(size, path, anchors, unique)?;
+    let mut c = Circuit::default();
+    let refs: Vec<_> = (0..16).map(|_| c.commit_byte()).collect();
+    let expanded = ExpandedKey::new(&mut c, &refs).map_err(|e| e.to_string())?;
+    for (wire, expected) in tls::key_commitment(&mut c, &expanded).into_iter().zip(commitment) {
+        c.assert_byte(wire, expected);
+    }
+    let body = decrypt_body_ranges(&mut c, &expanded, direction, ciphertext, iv, head, &plan.windows)?;
+    let selected = crate::json_window::assert_path(
+        &mut c, &expanded, &body, size, &plan, opened, path, anchors, unique,
+    )?;
+    let value = crate::predicates::ascii_u64(&mut c, &selected).map_err(|e| e.to_string())?;
+    let constant = crate::predicates::U64::public(&mut c, constant);
+    value.assert_compare(&mut c, constant, comparison);
+    c.register_profile(OFFLINE_WINDOW_PROFILE);
+    Ok(c)
+}
+pub const OFFLINE_WINDOW_PROFILE: &str =
+    "zkf/2/http-json/compact-aes/checkpoint-windows-32/path-depth-8/signed-head/v1";
+
 pub const OFFLINE_FULL_PROFILE: &str =
     "zkf/2/http-json/compact-aes/prefix/top-level/depth-4/full/v4";
 pub const OFFLINE_BODY_PROFILE: &str =

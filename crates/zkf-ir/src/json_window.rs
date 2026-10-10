@@ -29,6 +29,9 @@ use crate::json_segment::{CHECKPOINT_SPACING, LEVELS, Parser, State};
 use crate::{Byte, Circuit, Wire};
 use std::collections::BTreeMap;
 
+/// Bytes of gap below which adjacent windows are parsed as one.
+pub const MERGE_GAP: usize = 8;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Plan {
     /// Inclusive body ranges, each starting at a checkpoint boundary.
@@ -90,8 +93,10 @@ pub fn plan(
     let mut windows: Vec<(usize, usize)> = Vec::new();
     for (start, end) in ranges {
         let start = start / CHECKPOINT_SPACING * CHECKPOINT_SPACING;
+        // Parsing a short gap costs less than opening another checkpoint
+        // (two AES blocks plus the state witness, ~2.1k committed bits).
         match windows.last_mut() {
-            Some(last) if start <= last.1 + 1 => last.1 = last.1.max(end),
+            Some(last) if start <= last.1 + 1 + MERGE_GAP => last.1 = last.1.max(end),
             _ => windows.push((start, end)),
         }
     }
@@ -463,6 +468,40 @@ mod tests {
         assert!(plan(body.len(), &path, &forged, false).is_ok());
         assert!(check(body.as_bytes(), &path, &forged, false).is_err());
     }
+
+    #[test]
+    #[ignore = "diagnostic"]
+    fn window_cost_breakdown() {
+        let body = format!(
+            r#"{{"pad":"{}","streakData":{{"other":[1,2],"longestStreak":{{"length":123}}}}}}"#,
+            "x".repeat(900)
+        );
+        let path = member(&["streakData", "longestStreak", "length"]);
+        let anchors = anchors_for(body.as_bytes(), &path);
+        let p = plan(body.len(), &path, &anchors, false).unwrap();
+        println!("plan {:?}", p);
+        let mut c = Circuit::default();
+        let k: Vec<_> = (0..16).map(|_| c.commit_byte()).collect();
+        let base = c.committed_bits();
+        let expanded = ExpandedKey::new(&mut c, &k).unwrap();
+        println!("key-expansion bits {}", c.committed_bits() - base);
+        let base = c.committed_bits();
+        let state = State::committed(&mut c);
+        state.assert_well_formed(&mut c);
+        println!("state bits {}", c.committed_bits() - base);
+        let base = c.committed_bits();
+        checkpoint::assert_commitment(&mut c, &expanded, 1, &state, &[0; checkpoint::COMMITMENT_BYTES], false);
+        println!("opening bits {}", c.committed_bits() - base);
+        let base = c.committed_bits();
+        let bytes: Vec<_> = (0..64).map(|_| c.commit_byte()).collect();
+        let after_inputs = c.committed_bits();
+        let mut a = Algebra::new(&mut c);
+        a.cache_byte_classes();
+        let initial = State::initial(a_circuit_dummy());
+        drop(initial);
+        let _ = (bytes, base, after_inputs, &mut a);
+    }
+    fn a_circuit_dummy() -> &'static mut Circuit { Box::leak(Box::new(Circuit::default())) }
 
     #[test]
     fn array_index_and_uniqueness() {

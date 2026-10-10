@@ -122,7 +122,7 @@ pub struct SessionMetadata {
     pub claims: Vec<MemberClaim>,
     /// Checkpoint spacing in body bytes; 0 when checkpoints are off.
     pub checkpoint_spacing: u16,
-    /// JSON parser checkpoint commitments, 48 bytes each, for checkpoints
+    /// JSON parser checkpoint commitments, 32 bytes each, for checkpoints
     /// 1..=n at `checkpoint_spacing`.
     pub checkpoints: Vec<u8>,
 }

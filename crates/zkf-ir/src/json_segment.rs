@@ -21,7 +21,7 @@ use crate::{Byte, Circuit, Wire};
 
 pub const CHECKPOINT_SPACING: usize = 32;
 pub const LEVELS: usize = 8;
-pub const POSITION_BITS: usize = 16;
+pub const POSITION_BITS: usize = 14;
 pub const MAX_BODY: usize = (1 << POSITION_BITS) - 1;
 
 const ROOT: usize = 0;

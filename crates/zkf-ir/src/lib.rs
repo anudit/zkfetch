@@ -256,6 +256,10 @@ impl Circuit {
     pub fn linear(&mut self, terms: Vec<(Fe, Wire)>, constant: Fe) -> Wire {
         self.linear_kind(terms, constant, false)
     }
+    /// GF(2) sum of bit edges, as a bit edge (free: no committed value).
+    pub fn bit_sum(&mut self, bits: &[Wire]) -> Wire {
+        self.linear_kind(bits.iter().map(|w| (Fe::ONE, *w)).collect(), Fe::ZERO, true)
+    }
     pub fn xor(&mut self, a: Wire, b: Wire) -> Wire {
         self.linear(vec![(Fe::ONE, a), (Fe::ONE, b)], Fe::ZERO)
     }

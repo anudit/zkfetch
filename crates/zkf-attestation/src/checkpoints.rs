@@ -7,7 +7,7 @@
 use crate::{Bytes, Claim};
 use sha2::{Digest, Sha256};
 
-pub const COMMITMENT_BYTES: usize = 48;
+pub const COMMITMENT_BYTES: usize = 32;
 pub const SELECTOR_PREFIX: &str = "zkf/2/json-checkpoints/v1/";
 
 fn leaf(index: usize, commitment: &[u8]) -> [u8; 32] {
@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn audit_paths_verify_for_every_size_and_reject_substitutions() {
         for n in 1..=37usize {
-            let commitments: Vec<[u8; 48]> = (0..n).map(|i| [i as u8 + 1; 48]).collect();
+            let commitments: Vec<[u8; 32]> = (0..n).map(|i| [i as u8 + 1; 32]).collect();
             let r = root(&commitments);
             for index in 1..=n {
                 let p = path(&commitments, index);
@@ -147,7 +147,7 @@ mod tests {
                 assert!(!verify(&r, n, index, &commitments[index - 1], &long));
             }
         }
-        let commitments = vec![[3u8; 48]; 4];
+        let commitments = vec![[3u8; 32]; 4];
         let claims = vec![claim(32, &commitments)];
         assert_eq!(signed(&claims), Some((32, 4, root(&commitments))));
         assert_eq!(signed(&[claim(32, &commitments), claim(32, &commitments)]), None);
