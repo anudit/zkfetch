@@ -10,6 +10,14 @@ const send = (message: ProverReply) => self.postMessage(message);
 // be set up before the user ID and token are known.
 const ZK_CONFIG = { notaryUrl: NOTARY.url, expectedNotaryKey: NOTARY.publicKey, mode: "proxy", tlsVersion: "1.3", protocolV2: true, persistentVole: true } as const;
 const config = (version: ProofVersion) => ({ ...ZK_CONFIG, attestationV2: version === 2 });
+/** The example's claim is known before fetching, so the notary checks and signs
+ * it in session and the presentation opens that signature (no offline proof).
+ * Preparation uses the same budget-determining options with a placeholder nonce. */
+const exampleConfig = (nonce: string) => ({
+  ...config(2), signedResponseHead: true, maxRecv: 8192,
+  sessionClaims: [{ ...TOP_LEVEL_PREDICATE }], sessionClaimNonce: nonce,
+});
+const PREPARE_NONCE = "0".repeat(64);
 const DISCLOSURE = { response: { jsonPaths: DISCLOSURES } };
 
 let loading: Promise<void> | undefined;
@@ -38,7 +46,9 @@ async function startPrepare(version: ProofVersion, target: "duolingo" | "top-lev
   if (prepared?.usable && preparedVersion === version && preparedTarget === target) return;
   discard();
   const started = performance.now();
-  const session = prepare(target === "top-level" ? TOP_LEVEL_URL : `${API}/users`, config(version));
+  const session = target === "top-level"
+    ? prepare(TOP_LEVEL_URL, exampleConfig(PREPARE_NONCE))
+    : prepare(`${API}/users`, config(version));
   prepared = session;
   preparedVersion = version;
   preparedTarget = target;
@@ -124,12 +134,12 @@ async function proveExample(message: Extract<ProverRequest, { type: "prove-examp
   preparedVersion = undefined;
   preparedTarget = undefined;
   clearTimeout(expiry);
-  const response = await zkFetch(TOP_LEVEL_URL, { zkConfig: { ...config(2), prepared: session } });
+  const response = await zkFetch(TOP_LEVEL_URL, { zkConfig: { ...exampleConfig(message.nonce), prepared: session } });
   if (!response.ok) throw new Error(`Example endpoint returned HTTP ${response.status}.`);
   const body = JSON.parse(await response.text());
   if (body?.id !== 1) throw new Error("Example endpoint did not return top-level id = 1.");
   if (response.zk.attestationVersion !== 2) throw new Error("The notary did not return a v2 attestation.");
-  send({ type: "progress", text: "Proving top-level id = 1 offline…" });
+  send({ type: "progress", text: "Opening the notary-signed claim id = 1…" });
   const presentStarted = performance.now();
   const predicate = { ...TOP_LEVEL_PREDICATE };
   const presentation = await response.zk.presentV2({ predicate, nonce: message.nonce });
