@@ -50,7 +50,7 @@ const N1: usize = 31;
 const N2: usize = 32;
 const N3: usize = 33;
 const NSTATES: usize = 34;
-pub const MAX_DEPTH: usize = 64;
+pub const MAX_DEPTH: usize = 8;
 pub const MAX_DOCUMENT_BYTES: usize = 64 << 10;
 
 fn and(c: &mut Circuit, a: Wire, b: Wire) -> Wire {

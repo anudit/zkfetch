@@ -362,6 +362,7 @@ pub fn offline_relation_path(
         &[crate::json::JsonPathSegment],
         &[crate::json::PathAnchor],
         bool,
+        usize,
     )>,
 ) -> Result<Circuit, String> {
     let size = body_len(direction, head)?;
@@ -386,14 +387,14 @@ pub fn offline_relation_path(
         } else {
             Scope::Full
         },
-        if path.is_some_and(|(_, _, unique)| unique) {
+        if path.is_some_and(|(_, _, unique, _)| unique) {
             size
         } else {
             selection.value.end.saturating_add(1).min(size)
         },
     )?;
-    let selected = if let Some((steps, anchors, unique)) = path {
-        crate::json_algebra::path_member(&mut c, &body, steps, anchors, unique)
+    let selected = if let Some((steps, anchors, unique, depth)) = path {
+        crate::json_algebra::path_member_bounded(&mut c, &body, steps, anchors, unique, depth)
     } else {
         crate::json_algebra::top_level_member(&mut c, &body, selection, 4, true)
     }
@@ -419,6 +420,6 @@ pub const OFFLINE_FULL_PROFILE: &str =
 pub const OFFLINE_BODY_PROFILE: &str =
     "zkf/2/http-json/compact-aes/prefix/top-level/depth-4/signed-head/v4";
 pub const SESSION_PROFILE: &str = "zkf/2/session/standard-aes/prefix/top-level/depth-4/v5";
-pub const OFFLINE_PATH_FULL_PROFILE: &str = "zkf/2/http-json/compact-aes/path/depth-8/full/v5";
+pub const OFFLINE_PATH_FULL_PROFILE: &str = "zkf/2/http-json/compact-aes/path/bounded-depth-8/full/v7";
 pub const OFFLINE_PATH_BODY_PROFILE: &str =
-    "zkf/2/http-json/compact-aes/path/depth-8/signed-head/v5";
+    "zkf/2/http-json/compact-aes/path/bounded-depth-8/signed-head/v7";

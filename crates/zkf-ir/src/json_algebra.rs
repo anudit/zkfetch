@@ -246,7 +246,18 @@ pub fn path_member(
     anchors: &[PathAnchor],
     unique: bool,
 ) -> Result<Vec<Byte>, JsonCircuitError> {
-    if path.is_empty() || path.len() > 8 || path.len() != anchors.len() {
+    path_member_bounded(circuit, document, path, anchors, unique, 8)
+}
+
+pub fn path_member_bounded(
+    circuit: &mut Circuit,
+    document: &[Byte],
+    path: &[JsonPathSegment],
+    anchors: &[PathAnchor],
+    unique: bool,
+    max_depth: usize,
+) -> Result<Vec<Byte>, JsonCircuitError> {
+    if max_depth == 0 || max_depth > 8 || path.is_empty() || path.len() > max_depth || path.len() != anchors.len() {
         return Err(JsonCircuitError::Bounds);
     }
     let last = anchors.last().unwrap();
@@ -260,7 +271,7 @@ pub fn path_member(
         circuit,
         document,
         &selection,
-        8,
+        max_depth,
         !unique,
         false,
         Some((path, anchors, unique)),
@@ -277,6 +288,7 @@ fn member_profile(
     path: Option<(&[JsonPathSegment], &[PathAnchor], bool)>,
 ) -> Result<Vec<Byte>, JsonCircuitError> {
     let mut compiler = Algebra::new(circuit);
+    if path.is_some() { compiler.cache_byte_classes(); }
     let c = &mut compiler;
     let s = selection;
     if max_depth == 0 || max_depth > MAX_DEPTH {
@@ -856,6 +868,27 @@ mod tests {
         let path = names(&["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
         assert!(!accepts_path(body, &path, &selection(body, &path), false));
     }
+    #[test]
+    fn measured_unique_path_cost_and_depth_bounds() {
+        let body = br#"{"streakData":{"longestStreak":{"length":123}},"other":{"longestStreak":{"length":123}},"length":999,"rows":[{"length":10},{"length":777}],"deep":{"a":{"b":{"c":{"d":{"e":{"f":{"g":456}}}}}}}}"#;
+        assert_eq!(body.len(), 192);
+        let path = names(&["streakData", "longestStreak", "length"]);
+        let anchors = selection(body, &path);
+        for (unique, bound) in [(false, 3), (false, 8), (true, 8)] {
+            let end = if unique { body.len() } else { anchors.last().unwrap().value.end + 1 };
+            let bytes = &body[..end];
+            let mut c = Circuit::default();
+            let input: Vec<_> = bytes.iter().map(|_| c.commit_byte()).collect();
+            path_member_bounded(&mut c, &input, &path, &anchors, unique, bound).unwrap();
+            c.eval(&byte_inputs(bytes)).unwrap();
+            println!("path-cost unique={unique} depth={bound} bytes={} bits={} constraints={}", bytes.len(), c.committed_bits(), c.constraint_count());
+        }
+        let mut c = Circuit::default();
+        let input: Vec<_> = body.iter().map(|_| c.commit_byte()).collect();
+        assert!(path_member_bounded(&mut c, &input, &path, &anchors, true, 9).is_err());
+        assert_eq!(crate::json::required_depth(body), 8);
+    }
+
     #[test]
     fn measured_membership_cost() {
         let body = br#"{"userId":1,"id":1,"title":"delectus aut autem","completed":false}"#;

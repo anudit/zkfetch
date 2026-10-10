@@ -436,6 +436,14 @@ pub fn present_v2(
         key: leaf.key.clone(),
         colon: leaf.colon,
         value: leaf.value.clone(),
+        max_depth: if request.predicate.path.is_empty() && !request.predicate.unique {
+            4
+        } else {
+            let end = if request.predicate.unique { body.len() } else { leaf.value.end.saturating_add(1).min(body.len()) };
+            let depth = zkf_ir::json::required_depth(&body[..end]);
+            ensure!(depth <= 8, "JSON prefix exceeds depth eight");
+            depth as u8
+        },
         anchors: if request.predicate.path.is_empty() && !request.predicate.unique {
             Vec::new()
         } else {

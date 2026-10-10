@@ -9,13 +9,13 @@ use crate::{
     experimental::{self, Context},
     primitives::Parameters,
 };
-use anyhow::{Context as _, Result, ensure};
+use anyhow::{ensure, Context as _, Result};
 use bincode::Options;
 use k256::ecdsa::VerifyingKey;
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
-use zkf_attestation::{Attestation, Bytes, records::Opening};
-use zkf_ir::{Circuit, byte_inputs, json_circuit::Selection, predicates::Comparison};
+use zkf_attestation::{records::Opening, Attestation, Bytes};
+use zkf_ir::{byte_inputs, json_circuit::Selection, predicates::Comparison, Circuit};
 
 // A conservative cap while the authenticated evaluator still retains all
 // graph edges. Raising it requires a measured memory budget.
@@ -35,6 +35,8 @@ pub struct Statement {
     pub colon: usize,
     pub value: Range<usize>,
     pub anchors: Vec<PathAnchor>,
+    /// Public bound authenticated in the transcript; the verifier caps it at eight.
+    pub max_depth: u8,
 }
 
 /// The relying party supplies this policy independently of the presentation.
@@ -57,7 +59,7 @@ pub struct Presentation {
     pub proof: Vec<u8>,
 }
 
-const PRESENTATION_MAGIC: &[u8; 8] = b"zkf2prs\x05";
+const PRESENTATION_MAGIC: &[u8; 8] = b"zkf2prs\x06";
 
 pub fn effective_path(q: &Query<'_>) -> Result<Vec<JsonPathSegment>> {
     let path = if q.path.is_empty() {
@@ -172,7 +174,19 @@ fn relation(
     );
     let path = effective_path(query)?;
     let path_profile = !query.path.is_empty() || query.unique;
+    ensure!(
+        statement.max_depth > 0 && statement.max_depth <= 8,
+        "invalid JSON depth bound"
+    );
+    ensure!(
+        path_profile || statement.max_depth == 4,
+        "noncanonical root depth bound"
+    );
     if path_profile {
+        ensure!(
+            path.len() <= statement.max_depth as usize,
+            "path exceeds JSON depth bound"
+        );
         ensure!(
             statement.anchors.len() == path.len(),
             "missing path anchors"
@@ -267,7 +281,12 @@ fn relation(
         },
         query.comparison,
         query.constant,
-        path_profile.then_some((path.as_slice(), statement.anchors.as_slice(), query.unique)),
+        path_profile.then_some((
+            path.as_slice(),
+            statement.anchors.as_slice(),
+            query.unique,
+            statement.max_depth as usize,
+        )),
     )
     .map_err(anyhow::Error::msg)
 }
@@ -343,7 +362,7 @@ fn context<'a>(a: &Attestation, q: &Query<'_>, binding: &'a [u8]) -> Result<Cont
     })
 }
 fn query_binding(q: &Query<'_>, statement: &Statement) -> Result<Vec<u8>> {
-    let mut bytes = b"zkf/2/http-json/path-context-profile-5/depth-8\0".to_vec();
+    let mut bytes = b"zkf/2/http-json/path-context-profile-6/bounded-depth-8\0".to_vec();
     for value in [q.server_name, q.key] {
         bytes.extend_from_slice(&(value.len() as u64).to_le_bytes());
         bytes.extend_from_slice(value.as_bytes());
@@ -413,6 +432,7 @@ pub fn prove(
             colon: 0,
             value: 0..0,
             anchors: Vec::new(),
+            max_depth: 4,
         };
         return Ok(Presentation {
             statement,
@@ -493,16 +513,16 @@ pub fn verify(
 mod tests {
     use super::*;
     use aes::{
+        cipher::{generic_array::GenericArray, BlockEncrypt, KeyInit},
         Aes128,
-        cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray},
     };
     use aes_gcm::{
-        Aes128Gcm, Nonce,
         aead::{Aead, Payload},
+        Aes128Gcm, Nonce,
     };
     use k256::ecdsa::SigningKey;
     use zkf_attestation::{
-        Binding, Handshake, Keys, Server, Tls, TranscriptHash, key_id, records::RecordStream,
+        key_id, records::RecordStream, Binding, Handshake, Keys, Server, Tls, TranscriptHash,
     };
     use zkf_ir::{aes::ExpandedKey, tls};
 
@@ -615,6 +635,7 @@ mod tests {
             colon: 5,
             value: 6..9,
             anchors: Vec::new(),
+            max_depth: 4,
         };
         let opening = recv.open(0, recv.direction.len).unwrap();
         (a, statement, opening, signing)
@@ -646,8 +667,60 @@ mod tests {
         statement.key = leaf.key.clone();
         statement.colon = leaf.colon;
         statement.value = leaf.value.clone();
+        statement.max_depth = zkf_ir::json::required_depth(body).try_into().unwrap();
         statement.anchors = member.anchors;
         statement
+    }
+
+    #[test]
+    #[ignore = "diagnostic benchmark, pre-soundness-margin"]
+    fn benchmark_bounded_path_presentations() {
+        let body = br#"{"streakData":{"longestStreak":{"length":123}},"other":{"longestStreak":{"length":123}},"length":999,"rows":[{"length":10},{"length":777}],"deep":{"a":{"b":{"c":{"d":{"e":{"f":{"g":456}}}}}}}}"#;
+        let path: Vec<_> = ["streakData", "longestStreak", "length"]
+            .into_iter()
+            .map(|s| JsonPathSegment::Member(s.into()))
+            .collect();
+        for signed in [false, true] {
+            for unique in [false, true] {
+                for params in [Parameters::Fast, Parameters::Small] {
+                    let (mut a, base, opening, signing) = fixture_body(body);
+                    if signed {
+                        a.claims.push(
+                            zkf_attestation::response::Head {
+                                headers: base.headers.clone(),
+                                records: base.records.clone(),
+                            }
+                            .claim(),
+                        );
+                    }
+                    let signature = a.sign(&signing).unwrap();
+                    let q = Query {
+                        key: "length",
+                        path: &path,
+                        unique,
+                        ..query()
+                    };
+                    let mut statement = path_statement(body, base, &path);
+                    if !unique {
+                        statement.max_depth = 3;
+                    }
+                    let c = relation(&a, &statement, &opening, &q).unwrap();
+                    let started = std::time::Instant::now();
+                    let proof = prove(&a, statement, opening, &q, &[7; 16], params).unwrap();
+                    let prove_ms = started.elapsed().as_secs_f64() * 1000.0;
+                    let started = std::time::Instant::now();
+                    verify(&a, &signature, signing.verifying_key(), &proof, &q).unwrap();
+                    let verify_ms = started.elapsed().as_secs_f64() * 1000.0;
+                    let signed_bytes =
+                        zkf_attestation::SignedAttestation::sign(a.clone(), &signing)
+                            .unwrap()
+                            .encode()
+                            .unwrap();
+                    let encoded_bytes = proof.encode(&signed_bytes).unwrap().len();
+                    println!("path-bench signed={signed} unique={unique} params={params:?} depth={} bits={} constraints={} proof_bytes={} presentation_bytes={} prove_ms={prove_ms:.3} verify_ms={verify_ms:.3}", proof.statement.max_depth, c.committed_bits(), c.constraint_count(), proof.proof.len(), encoded_bytes);
+                }
+            }
+        }
     }
 
     #[test]
@@ -679,26 +752,27 @@ mod tests {
             .into_iter()
             .map(|s| JsonPathSegment::Member(s.into()))
             .collect();
-        assert!(
-            verify(
-                &a,
-                &signature,
-                signing.verifying_key(),
-                &proof,
-                &Query { path: &other, ..q }
-            )
-            .is_err()
-        );
-        assert!(
-            verify(
-                &a,
-                &signature,
-                signing.verifying_key(),
-                &proof,
-                &Query { unique: false, ..q }
-            )
-            .is_err()
-        );
+        assert!(verify(
+            &a,
+            &signature,
+            signing.verifying_key(),
+            &proof,
+            &Query { path: &other, ..q }
+        )
+        .is_err());
+        assert!(verify(
+            &a,
+            &signature,
+            signing.verifying_key(),
+            &proof,
+            &Query { unique: false, ..q }
+        )
+        .is_err());
+        let mut changed_depth = proof.clone();
+        changed_depth.statement.max_depth = 8;
+        assert!(verify(&a, &signature, signing.verifying_key(), &changed_depth, &q).is_err());
+        changed_depth.statement.max_depth = 9;
+        assert!(verify(&a, &signature, signing.verifying_key(), &changed_depth, &q).is_err());
         let mut changed = proof.clone();
         changed.statement.anchors[0].value.start += 1;
         assert!(verify(&a, &signature, signing.verifying_key(), &changed, &q).is_err());
@@ -728,16 +802,14 @@ mod tests {
             JsonPathSegment::Member("rows".into()),
             JsonPathSegment::Index(0),
         ];
-        assert!(
-            verify(
-                &a,
-                &signature,
-                signing.verifying_key(),
-                &proof,
-                &Query { path: &wrong, ..q }
-            )
-            .is_err()
-        );
+        assert!(verify(
+            &a,
+            &signature,
+            signing.verifying_key(),
+            &proof,
+            &Query { path: &wrong, ..q }
+        )
+        .is_err());
     }
 
     #[test]
@@ -754,17 +826,90 @@ mod tests {
             unique: true,
             ..query()
         };
-        assert!(
-            prove(
-                &a,
-                path_statement(body, statement, &path),
-                opening,
-                &q,
-                &[7; 16],
-                Parameters::Fast
-            )
-            .is_err()
-        );
+        assert!(prove(
+            &a,
+            path_statement(body, statement, &path),
+            opening,
+            &q,
+            &[7; 16],
+            Parameters::Fast
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn bounded_path_profiles_pin_the_complete_builder_graph() {
+        let body = br#"{"streakData":{"longestStreak":{"length":123}}}"#;
+        let path: Vec<_> = ["streakData", "longestStreak", "length"]
+            .into_iter()
+            .map(|s| JsonPathSegment::Member(s.into()))
+            .collect();
+        for depth in [3, 8] {
+            for signed in [false, true] {
+                for unique in [false, true] {
+                    let (mut a, base, opening, _) = fixture_body(body);
+                    if signed {
+                        a.claims.push(
+                            zkf_attestation::response::Head {
+                                headers: base.headers.clone(),
+                                records: base.records.clone(),
+                            }
+                            .claim(),
+                        );
+                    }
+                    let mut statement = path_statement(body, base, &path);
+                    statement.max_depth = depth;
+                    let q = Query {
+                        key: "length",
+                        path: &path,
+                        unique,
+                        ..query()
+                    };
+                    let c = relation(&a, &statement, &opening, &q).unwrap();
+                    assert_eq!(
+                        c.profile(),
+                        Some(if signed {
+                            zkf_ir::response::OFFLINE_PATH_BODY_PROFILE
+                        } else {
+                            zkf_ir::response::OFFLINE_PATH_FULL_PROFILE
+                        })
+                    );
+                    let digest = c
+                        .digest()
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<String>();
+                    let expected = match (depth, signed, unique) {
+                        (3, false, false) => {
+                            "8f36128677e332104dc187c44e3abfde1211929b2bb28325f0f2106f5947096a"
+                        }
+                        (3, false, true) => {
+                            "cc377b44db8ab64885e25ed0efe7342750afe282194211440ac6bafb391b643e"
+                        }
+                        (3, true, false) => {
+                            "f3b99de28fef08663ced6fe1193382dfba88e14035c44bddd79b53c239b5c532"
+                        }
+                        (3, true, true) => {
+                            "add44cdbcb42f0ada8b61a057373d00aaa20cd8db2611e65aa0286e8c216b5e0"
+                        }
+                        (8, false, false) => {
+                            "1ce5559aafb9b086706922209fc219844f82b7168d56804754ba3109f252e3cb"
+                        }
+                        (8, false, true) => {
+                            "47e6e3ba0760e4d19596a924c366c60a3094dad33327886c59822595de1c718c"
+                        }
+                        (8, true, false) => {
+                            "a1fe3282ee52160a7c53f0ba9b4ccb09875620ce4698fe685aeba886712e5e16"
+                        }
+                        (8, true, true) => {
+                            "72336809be44dff38729907738f2103cc37c4412adbdb81999427a92fa6b3d39"
+                        }
+                        _ => unreachable!(),
+                    };
+                    assert_eq!(digest, expected, "builder changed: bump its profile and review binding before updating the pin");
+                }
+            }
+        }
     }
 
     #[test]
@@ -848,16 +993,14 @@ mod tests {
         p.statement.key = second.key_range.clone();
         p.statement.colon = second.key_range.end;
         p.statement.value = second.value_range;
-        assert!(
-            verify(
-                &a,
-                &a.sign(&signing).unwrap(),
-                signing.verifying_key(),
-                &p,
-                &query()
-            )
-            .is_err()
-        );
+        assert!(verify(
+            &a,
+            &a.sign(&signing).unwrap(),
+            signing.verifying_key(),
+            &p,
+            &query()
+        )
+        .is_err());
     }
 
     #[test]
@@ -916,17 +1059,15 @@ mod tests {
             statement.colon = member.key_range.end;
             statement.value = member.value_range.clone();
             // The top-level value fails the threshold; the nested value fails depth.
-            assert!(
-                prove(
-                    &a,
-                    statement.clone(),
-                    opening.clone(),
-                    &q,
-                    &[7; 16],
-                    Parameters::Fast
-                )
-                .is_err()
-            );
+            assert!(prove(
+                &a,
+                statement.clone(),
+                opening.clone(),
+                &q,
+                &[7; 16],
+                Parameters::Fast
+            )
+            .is_err());
             let head = zkf_attestation::response::Head {
                 headers: statement.headers.clone(),
                 records: statement.records.clone(),
@@ -1027,12 +1168,10 @@ mod tests {
         // Invalid padding in the last block must still fail even though that
         // block lies well after the selected value. Headers and views are unchanged.
         let (bad, bad_statement, bad_opening, _) = fixture_body_padding(body.as_bytes(), 1);
-        assert!(
-            relation(&bad, &bad_statement, &bad_opening, &query())
-                .unwrap()
-                .eval(&byte_inputs(&[7; 16]))
-                .is_err()
-        );
+        assert!(relation(&bad, &bad_statement, &bad_opening, &query())
+            .unwrap()
+            .eval(&byte_inputs(&[7; 16]))
+            .is_err());
     }
 
     #[test]

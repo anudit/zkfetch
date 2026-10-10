@@ -253,3 +253,25 @@ mod tests {
         }
     }
 }
+
+/// Public allocation hint only. The circuit independently authenticates stack
+/// transitions and rejects overflow; this scanner is never a verifier oracle.
+/// Accepts a prefix ending at the selected value delimiter.
+pub fn required_depth(prefix: &[u8]) -> usize {
+    let (mut quoted, mut escaped, mut depth, mut peak) = (false, false, 0usize, 0usize);
+    for &byte in prefix {
+        if quoted {
+            if escaped { escaped = false; }
+            else if byte == b'\\' { escaped = true; }
+            else if byte == b'"' { quoted = false; }
+        } else {
+            match byte {
+                b'"' => quoted = true,
+                b'{' | b'[' => { depth += 1; peak = peak.max(depth); }
+                b'}' | b']' => depth = depth.saturating_sub(1),
+                _ => {},
+            }
+        }
+    }
+    peak.max(1)
+}

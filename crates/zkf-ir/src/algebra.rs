@@ -10,6 +10,8 @@ type Polynomial = Vec<Vec<Wire>>;
 pub(crate) struct Algebra<'a> {
     circuit: &'a mut Circuit,
     expressions: Vec<Polynomial>,
+    cache_classes: bool,
+    stable_classes: BTreeMap<[usize; 8], ([Wire; 16], [Wire; 16])>,
     classes: BTreeMap<[usize; 8], ([Bit; 16], [Bit; 16])>,
     materialized: BTreeMap<usize, Bit>,
     interned: BTreeMap<Vec<Vec<usize>>, Bit>,
@@ -57,10 +59,17 @@ impl<'a> Algebra<'a> {
         Self {
             circuit,
             expressions: Vec::new(),
+            cache_classes: false,
+            stable_classes: BTreeMap::new(),
             classes: BTreeMap::new(),
             materialized: BTreeMap::new(),
             interned: BTreeMap::new(),
         }
+    }
+    /// Reuse authenticated nibble indicators across compiler checkpoints.
+    /// Keys are circuit wire IDs, never private byte values or expression IDs.
+    pub fn cache_byte_classes(&mut self) {
+        self.cache_classes = true;
     }
     fn push(&mut self, polynomial: Polynomial) -> Bit {
         let key: Vec<Vec<usize>> = polynomial
@@ -299,8 +308,17 @@ impl<'a> Algebra<'a> {
         let (lo, hi) = if let Some(classes) = self.classes.get(&key) {
             *classes
         } else {
-            let lo = self.nibble(&byte.0[..4]);
-            let hi = self.nibble(&byte.0[4..]);
+            let (lo, hi) = if let Some((lo, hi)) = self.stable_classes.get(&key).copied() {
+                (lo.map(|w| self.import_bit(w)), hi.map(|w| self.import_bit(w)))
+            } else {
+                let lo = self.nibble(&byte.0[..4]);
+                let hi = self.nibble(&byte.0[4..]);
+                if self.cache_classes {
+                    let wires = (lo.map(|b| self.export_bit(b)), hi.map(|b| self.export_bit(b)));
+                    self.stable_classes.insert(key, wires);
+                }
+                (lo, hi)
+            };
             self.classes.insert(key, (lo, hi));
             (lo, hi)
         };
