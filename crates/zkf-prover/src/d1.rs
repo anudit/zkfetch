@@ -146,35 +146,57 @@ pub(crate) async fn prove(
                     .as_deref()
                     .ok_or_else(|| anyhow!("sessionClaims require sessionClaimNonce"))?,
             )?;
-            let members = zkf_ir::json::members(&body)?;
+            let values = zkf_ir::json::values(&body)?;
             for predicate in &params.session_claims {
-                ensure!(
-                    predicate.path.is_empty() && !predicate.unique,
-                    "path and uniqueness claims currently require offline presentation"
-                );
-                let member = members
+                let is_path = !predicate.path.is_empty() || predicate.unique;
+                let path = if predicate.path.is_empty() {
+                    vec![zkf_ir::json::JsonPathSegment::Member(predicate.key.clone())]
+                } else {
+                    predicate.path.clone()
+                };
+                ensure!(path.len() <= 8, "session claim path exceeds depth eight");
+                match path.last().unwrap() {
+                    zkf_ir::json::JsonPathSegment::Member(name) => {
+                        ensure!(*name == predicate.key, "key must match the path leaf")
+                    }
+                    zkf_ir::json::JsonPathSegment::Index(_) => {
+                        bail!("session claims select an object member")
+                    }
+                }
+                let member = values
                     .iter()
                     .find(|m| {
-                        m.object_depth == 0
-                            && m.key == predicate.key
+                        m.path == path
                             && !body[m.value_range.clone()].is_empty()
                             && body[m.value_range.clone()].iter().all(u8::is_ascii_digit)
                     })
                     .ok_or_else(|| anyhow!("session member not found"))?;
-                let colon = member.key_range.end
-                    + body[member.key_range.end..]
-                        .iter()
-                        .position(|b| *b == b':')
-                        .ok_or_else(|| anyhow!("member has no colon"))?;
+                let leaf = member.anchors.last().unwrap();
+                let max_depth = if is_path {
+                    let end = if predicate.unique {
+                        body.len()
+                    } else {
+                        leaf.value.end.saturating_add(1).min(body.len())
+                    };
+                    let depth = zkf_ir::json::required_depth(&body[..end]).max(path.len());
+                    ensure!(depth <= 8, "JSON prefix exceeds depth eight");
+                    depth as u8
+                } else {
+                    4
+                };
                 claims.push(zkf_attestation::response::MemberClaim {
                     member: predicate.key.clone(),
                     op: predicate.op.clone(),
                     constant: predicate.value.value().map_err(anyhow::Error::msg)?,
                     nonce,
-                    encoded_key: body[member.key_range.clone()].to_vec(),
-                    key: member.key_range.clone(),
-                    colon,
-                    value: member.value_range.clone(),
+                    encoded_key: leaf.encoded_key.clone(),
+                    key: leaf.key.clone(),
+                    colon: leaf.colon,
+                    value: leaf.value.clone(),
+                    path: if is_path { path } else { Vec::new() },
+                    unique: predicate.unique,
+                    anchors: if is_path { member.anchors.clone() } else { Vec::new() },
+                    max_depth,
                 });
             }
         }

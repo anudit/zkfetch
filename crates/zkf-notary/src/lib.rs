@@ -476,9 +476,9 @@ pub async fn serve(
                     metrics::COMPLETED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     info!(%client, "session notarized");
                 }
-                Err(_) => {
+                Err(err) => {
                     metrics::FAILED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    warn!(%client, "session failed");
+                    warn!(%client, error = %format!("{err:#}"), "session failed");
                 }
             }
         });

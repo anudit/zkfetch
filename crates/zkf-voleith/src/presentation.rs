@@ -388,9 +388,6 @@ fn query_binding(q: &Query<'_>, statement: &Statement) -> Result<Vec<u8>> {
 
 const SIGNED_CLAIM_PROOF: &[u8] = b"zkf/2/presentation/notary-signed-top-level-member/v2";
 fn has_signed_claim(a: &Attestation, q: &Query<'_>) -> bool {
-    if !q.path.is_empty() || q.unique {
-        return false;
-    }
     let op = match q.comparison {
         Comparison::Eq => "eq",
         Comparison::Ne => "ne",
@@ -399,10 +396,15 @@ fn has_signed_claim(a: &Attestation, q: &Query<'_>) -> bool {
         Comparison::Gt => "gt",
         Comparison::Ge => "ge",
     };
-    a.server.name == q.server_name
-        && a.claims.contains(&zkf_attestation::response::member_claim(
-            q.key, op, q.constant, q.nonce,
-        ))
+    let claim = if q.path.is_empty() && !q.unique {
+        zkf_attestation::response::member_claim(q.key, op, q.constant, q.nonce)
+    } else {
+        let Ok(path) = effective_path(q) else {
+            return false;
+        };
+        zkf_attestation::response::path_member_claim(&path, q.unique, op, q.constant, q.nonce)
+    };
+    a.server.name == q.server_name && a.claims.contains(&claim)
 }
 
 /// Prove from a key kept locally after a verified D1 fetch. The caller still
@@ -973,7 +975,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             session.profile(),
-            Some("zkf/2/session/standard-aes/prefix/top-level/depth-4/v5")
+            Some("zkf/2/session/standard-aes/prefix/member-or-path/v6")
         );
         assert_eq!(
             session
@@ -1036,6 +1038,10 @@ mod tests {
                 key: statement.key,
                 colon: statement.colon,
                 value: statement.value,
+                path: Vec::new(),
+                unique: false,
+                anchors: Vec::new(),
+                max_depth: 4,
             };
             let c = zkf_ir::response::session(
                 a.keys.c_server.0,
@@ -1096,6 +1102,10 @@ mod tests {
                 key: statement.key.clone(),
                 colon: statement.colon,
                 value: statement.value.clone(),
+                path: Vec::new(),
+                unique: false,
+                anchors: Vec::new(),
+                max_depth: 4,
             };
             let c = zkf_ir::response::session(
                 a.keys.c_server.0,
@@ -1138,6 +1148,82 @@ mod tests {
             result: true,
         });
         assert!(!has_signed_claim(&old, &q));
+    }
+
+    #[test]
+    fn signed_path_session_claim_binds_path_value_and_query() {
+        let body = br#"{"streakData":{"longestStreak":{"length":123}},"other":{"longestStreak":{"length":7}}}"#;
+        let path: Vec<_> = ["streakData", "longestStreak", "length"]
+            .into_iter()
+            .map(|s| JsonPathSegment::Member(s.into()))
+            .collect();
+        let (mut a, statement, opening, signing) = fixture_body(body);
+        let head = zkf_attestation::response::Head {
+            headers: statement.headers.clone(),
+            records: statement.records.clone(),
+        };
+        let values = zkf_ir::json::values(body).unwrap();
+        let find = |p: &[JsonPathSegment]| values.iter().find(|m| m.path == p).unwrap().clone();
+        let claim_for = |member: &zkf_ir::json::Member, unique: bool, op: &str, constant: u64| {
+            let leaf = member.anchors.last().unwrap().clone();
+            zkf_attestation::response::MemberClaim {
+                member: "length".into(),
+                op: op.into(),
+                constant,
+                nonce: [9; 32],
+                encoded_key: leaf.encoded_key.clone(),
+                key: leaf.key.clone(),
+                colon: leaf.colon,
+                value: leaf.value.clone(),
+                path: path.clone(),
+                unique,
+                anchors: member.anchors.clone(),
+                max_depth: 3,
+            }
+        };
+        let ciphertext = opening.verify(&a.recv).unwrap();
+        let session = |claim: &zkf_attestation::response::MemberClaim| {
+            zkf_ir::response::session(
+                a.keys.c_server.0,
+                a.keys.c_server.0,
+                &a.recv,
+                &ciphertext,
+                a.keys.iv_server.0,
+                &head,
+                std::slice::from_ref(claim),
+            )
+            .and_then(|c| c.eval(&byte_inputs(&[7; 32])).map(|_| ()).map_err(|e| e.to_string()))
+        };
+        let selected = find(&path);
+        for unique in [false, true] {
+            let good = claim_for(&selected, unique, "eq", 123);
+            session(&good).unwrap();
+            assert!(session(&claim_for(&selected, unique, "eq", 124)).is_err());
+        }
+        // The sibling branch's anchors cannot satisfy the requested path.
+        let mut sibling_path = path.clone();
+        sibling_path[0] = JsonPathSegment::Member("other".into());
+        let sibling = find(&sibling_path);
+        assert!(session(&claim_for(&sibling, false, "eq", 7)).is_err());
+        // A signed path claim answers exactly that path, nonce and uniqueness.
+        let good = claim_for(&selected, true, "ge", 100);
+        a.claims.push(head.claim());
+        a.claims.push(good.claim());
+        let q = Query {
+            key: "length",
+            path: &path,
+            unique: true,
+            comparison: Comparison::Ge,
+            constant: 100,
+            nonce: [9; 32],
+            ..query()
+        };
+        assert!(has_signed_claim(&a, &q));
+        let presentation = prove(&a, statement.clone(), opening.clone(), &q, &[7; 16], Parameters::Fast).unwrap();
+        verify(&a, &a.sign(&signing).unwrap(), signing.verifying_key(), &presentation, &q).unwrap();
+        assert!(!has_signed_claim(&a, &Query { unique: false, ..q }));
+        assert!(!has_signed_claim(&a, &Query { nonce: [8; 32], ..q }));
+        assert!(!has_signed_claim(&a, &Query { path: &sibling_path, ..q }));
     }
 
     #[test]

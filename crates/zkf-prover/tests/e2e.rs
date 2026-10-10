@@ -1348,6 +1348,9 @@ mod attestation_v2 {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn attestation_v2_notarize_present_verify() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
         let fixture = spawn_fixture_version(true).await;
         // Its own signing key gives this notary its own pool scope, so tests
         // running in parallel cannot take its warm lease.
@@ -1514,7 +1517,7 @@ mod attestation_v2 {
         let start=std::time::Instant::now();
         let fast=zkf_prover::present_v2(&out.attestation,&out.secrets,&request(member("ge",1000),&nonce)).unwrap();
         eprintln!("signed session claim presentation: {} bytes, {:?}",b64::decode(&fast).unwrap().len(),start.elapsed());
-        let opts=VerifyV2Options {trusted_notary_keys:vec![notary_key],expected_server_name:SERVER_DOMAIN.into(),
+        let opts=VerifyV2Options {trusted_notary_keys:vec![notary_key.clone()],expected_server_name:SERVER_DOMAIN.into(),
             predicate:member("ge",1000),nonce:nonce.clone(),max_age_secs:Some(600),expected_owner:None,expected_context:Some("challenge-1".into())};
         zkf_verifier::verify_v2(&fast,&opts).unwrap();
         if let Ok(path)=std::env::var("ZKF_V2_PROFILE_FIXTURE") {
@@ -1529,6 +1532,33 @@ mod attestation_v2 {
         assert!(zkf_verifier::verify_v2(&fast,&VerifyV2Options {nonce:hex::encode([43;32]),..opts.clone()}).is_err());
         let later=zkf_prover::present_v2(&out.attestation,&out.secrets,&request(member("gt",999),&nonce)).unwrap();
         zkf_verifier::verify_v2(&later,&VerifyV2Options {predicate:member("gt",999),..opts}).unwrap();
+        // Known nested-path claim: signed in session, presented without a new proof.
+        {
+            use zkf_attestation::response::JsonPathSegment::{Member, Index};
+            let nested = MemberPredicate {
+                key: "age".into(), path: vec![Member("information".into()), Member("family".into()),
+                    Member("siblings".into()), Index(0), Member("age".into())],
+                unique: true, op: "eq".into(), value: zkf_core::Decimal::Number(24),
+            };
+            let mut known=p.clone();known.session_claims=vec![nested.clone()];known.session_claim_nonce=Some(nonce.clone());
+            let out=tokio::time::timeout(std::time::Duration::from_secs(60),zkf_prover::notarize(known)).await.unwrap().unwrap();
+            let start=std::time::Instant::now();
+            let fast=zkf_prover::present_v2(&out.attestation,&out.secrets,&request(nested.clone(),&nonce)).unwrap();
+            let elapsed=start.elapsed();
+            eprintln!("signed path claim presentation: {} bytes, {:?}",b64::decode(&fast).unwrap().len(),elapsed);
+            let nested_opts=VerifyV2Options {trusted_notary_keys:vec![notary_key.clone()],expected_server_name:SERVER_DOMAIN.into(),
+                predicate:nested.clone(),nonce:nonce.clone(),max_age_secs:Some(600),expected_owner:None,expected_context:Some("challenge-1".into())};
+            zkf_verifier::verify_v2(&fast,&nested_opts).unwrap();
+            assert!(b64::decode(&fast).unwrap().len() < 16 << 10, "signed claim carries no offline proof");
+            let mut wrong=nested.clone();wrong.path[3]=Index(1);
+            assert!(zkf_verifier::verify_v2(&fast,&VerifyV2Options{predicate:wrong,..nested_opts.clone()}).is_err());
+            assert!(zkf_verifier::verify_v2(&fast,&VerifyV2Options{predicate:MemberPredicate{unique:false,..nested.clone()},..nested_opts.clone()}).is_err());
+            assert!(zkf_verifier::verify_v2(&fast,&VerifyV2Options{nonce:hex::encode([43;32]),..nested_opts}).is_err());
+            let mut false_path=p.clone();
+            false_path.session_claims=vec![MemberPredicate{value:zkf_core::Decimal::Number(25),..nested}];
+            false_path.session_claim_nonce=Some(nonce.clone());
+            assert!(zkf_prover::notarize(false_path).await.is_err());
+        }
         let mut false_claim=p;false_claim.session_claims=vec![member("gt",1234567890)];false_claim.session_claim_nonce=Some(nonce);
         assert!(zkf_prover::notarize(false_claim).await.is_err());
     }

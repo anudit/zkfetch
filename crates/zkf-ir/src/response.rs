@@ -265,10 +265,14 @@ pub fn session(
                     let limit = claims
                         .iter()
                         .map(|claim| {
+                            if claim.unique {
+                                return Ok(body_bytes);
+                            }
                             claim
                                 .value
                                 .end
                                 .checked_add(1)
+                                .map(|end| end.min(body_bytes))
                                 .ok_or_else(|| "claim prefix overflow".to_string())
                         })
                         .collect::<Result<Vec<_>, _>>()?
@@ -298,18 +302,53 @@ pub fn session(
                     "ge" => crate::predicates::Comparison::Ge,
                     _ => return Err("invalid session comparison".into()),
                 };
-                let selected = crate::json_algebra::top_level_member(
-                    &mut c,
-                    &body,
-                    &crate::json_circuit::Selection {
-                        encoded_key: &claim.encoded_key,
-                        key: claim.key.clone(),
-                        colon: claim.colon,
-                        value: claim.value.clone(),
-                    },
-                    4,
-                    true,
-                )
+                let selected = if claim.is_path() {
+                    let leaf = claim.anchors.last().ok_or("path claim without anchors")?;
+                    if claim.path.is_empty()
+                        || claim.anchors.len() != claim.path.len()
+                        || leaf.encoded_key != claim.encoded_key
+                        || leaf.key != claim.key
+                        || leaf.colon != claim.colon
+                        || leaf.value != claim.value
+                        || !(1..=8).contains(&claim.max_depth)
+                    {
+                        return Err("inconsistent path claim".into());
+                    }
+                    if let Some(crate::json::JsonPathSegment::Member(name)) = claim.path.last() {
+                        if *name != claim.member {
+                            return Err("path leaf differs from claim member".into());
+                        }
+                    }
+                    let document = if claim.unique {
+                        &body[..]
+                    } else {
+                        &body[..(claim.value.end + 1).min(body.len())]
+                    };
+                    crate::json_algebra::path_member_bounded(
+                        &mut c,
+                        document,
+                        &claim.path,
+                        &claim.anchors,
+                        claim.unique,
+                        usize::from(claim.max_depth),
+                    )
+                } else {
+                    if !claim.anchors.is_empty() || claim.max_depth != 4 {
+                        return Err("root member claim with path metadata".into());
+                    }
+                    crate::json_algebra::top_level_member(
+                        &mut c,
+                        &body,
+                        &crate::json_circuit::Selection {
+                            encoded_key: &claim.encoded_key,
+                            key: claim.key.clone(),
+                            colon: claim.colon,
+                            value: claim.value.clone(),
+                        },
+                        4,
+                        true,
+                    )
+                }
                 .map_err(|e| e.to_string())?;
                 let value =
                     crate::predicates::ascii_u64(&mut c, &selected).map_err(|e| e.to_string())?;
@@ -419,7 +458,7 @@ pub const OFFLINE_FULL_PROFILE: &str =
     "zkf/2/http-json/compact-aes/prefix/top-level/depth-4/full/v4";
 pub const OFFLINE_BODY_PROFILE: &str =
     "zkf/2/http-json/compact-aes/prefix/top-level/depth-4/signed-head/v4";
-pub const SESSION_PROFILE: &str = "zkf/2/session/standard-aes/prefix/top-level/depth-4/v5";
+pub const SESSION_PROFILE: &str = "zkf/2/session/standard-aes/prefix/member-or-path/v6";
 pub const OFFLINE_PATH_FULL_PROFILE: &str = "zkf/2/http-json/compact-aes/path/bounded-depth-8/full/v7";
 pub const OFFLINE_PATH_BODY_PROFILE: &str =
     "zkf/2/http-json/compact-aes/path/bounded-depth-8/signed-head/v7";

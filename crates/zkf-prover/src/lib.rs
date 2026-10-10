@@ -192,6 +192,7 @@ impl SessionKey {
             } else if params.attestation_v2
                 && params.max_recv.is_some_and(|n| n <= 8192)
                 && params.session_claims.len() <= 1
+                && params.session_claims.iter().all(|c| c.path.is_empty() && !c.unique)
             {
                 tlsn::vole_pool::BUDGET_CLASSES[1]
             } else {
@@ -477,8 +478,7 @@ async fn notarize_auto(
         for claim in &params.session_claims {
             anyhow::ensure!(
                 claim.key.len() <= 1024
-                    && claim.path.is_empty()
-                    && !claim.unique
+                    && claim.path.len() <= 8
                     && matches!(claim.op.as_str(), "eq" | "ne" | "lt" | "le" | "gt" | "ge"),
                 "invalid session member predicate"
             );
