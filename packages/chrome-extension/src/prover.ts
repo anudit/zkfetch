@@ -14,7 +14,7 @@ const config = (version: ProofVersion) => ({ ...ZK_CONFIG, attestationV2: versio
  * it in session and the presentation opens that signature (no offline proof).
  * Preparation uses the same budget-determining options with a placeholder nonce. */
 const exampleConfig = (nonce: string) => ({
-  ...config(2), signedResponseHead: true, maxRecv: 8192,
+  ...config(2), signedResponseHead: true, jsonCheckpoints: false, maxRecv: 8192,
   sessionClaims: [{ ...TOP_LEVEL_PREDICATE }], sessionClaimNonce: nonce,
 });
 const PREPARE_NONCE = "0".repeat(64);
