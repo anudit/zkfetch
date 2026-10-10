@@ -14,6 +14,7 @@ mpz-backend = ["dep:anyhow", "dep:mpz-zk", "dep:mpz-vm-core", "dep:mpz-common", 
 rayon = {version="1",optional=true}
 zkf-attestation.workspace = true
 httparse = "1"
+rustc-hash = "2"
 sha2 = { workspace = true, features = ["compress"] }
 thiserror.workspace = true
 serde_json.workspace = true

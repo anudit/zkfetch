@@ -2,19 +2,94 @@
 //! products stay inside degree-three constraints until an auxiliary bit is
 //! necessary. Parser states are explicitly materialized at byte boundaries.
 use crate::{Byte, Circuit, Term, Wire, field::Fe};
-use std::collections::{BTreeMap, BTreeSet};
+use rustc_hash::FxHashMap;
+use std::collections::BTreeMap;
+use std::rc::Rc;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Bit(usize);
-type Polynomial = Vec<Vec<Wire>>;
+/// A monomial of degree <= 3: wire ids + 1 in ascending order, zero padded.
+/// Lexicographic order on this array equals the order of the id vectors it
+/// replaces (a proper prefix sorts first), so emitted terms are unchanged.
+type Mono = [u32; 3];
+/// Sorted, duplicate-free XOR of monomials.
+type Polynomial = Vec<Mono>;
+const CONSTANT: Mono = [0; 3];
 pub(crate) struct Algebra<'a> {
     circuit: &'a mut Circuit,
-    expressions: Vec<Polynomial>,
+    expressions: Vec<Rc<[Mono]>>,
     cache_classes: bool,
     stable_classes: BTreeMap<[usize; 8], ([Wire; 16], [Wire; 16])>,
     classes: BTreeMap<[usize; 8], ([Bit; 16], [Bit; 16])>,
-    materialized: BTreeMap<usize, Bit>,
-    interned: BTreeMap<Vec<Vec<usize>>, Bit>,
+    materialized: FxHashMap<usize, Bit>,
+    interned: FxHashMap<Rc<[Mono]>, Bit>,
+    ranges: FxHashMap<([usize; 8], u8, u8), Bit>,
+}
+
+fn mono_degree(m: &Mono) -> usize {
+    m.iter().take_while(|&&x| x != 0).count()
+}
+fn mono_of(wire: Wire) -> Mono {
+    [u32::try_from(wire.0 + 1).expect("wire id fits u32"), 0, 0]
+}
+/// Product of two monomials over Boolean bits (x² = x). The caller keeps the
+/// total degree at most three.
+fn mono_mul(a: &Mono, b: &Mono) -> Mono {
+    let mut ids = [0u32; 6];
+    let mut n = 0;
+    for &x in a.iter().chain(b).filter(|&&x| x != 0) {
+        ids[n] = x;
+        n += 1;
+    }
+    let ids = &mut ids[..n];
+    ids.sort_unstable();
+    let mut out = [0u32; 3];
+    let mut k = 0;
+    for &x in ids.iter() {
+        if k == 0 || out[k - 1] != x {
+            assert!(k < 3, "degree capped before multiplication");
+            out[k] = x;
+            k += 1;
+        }
+    }
+    out
+}
+/// XOR of two sorted, duplicate-free polynomials (sorted merge with cancellation).
+fn xor_sorted(a: &[Mono], b: &[Mono]) -> Polynomial {
+    let mut out = Vec::with_capacity(a.len() + b.len());
+    let (mut i, mut j) = (0, 0);
+    while i < a.len() && j < b.len() {
+        match a[i].cmp(&b[j]) {
+            std::cmp::Ordering::Less => {
+                out.push(a[i]);
+                i += 1;
+            }
+            std::cmp::Ordering::Greater => {
+                out.push(b[j]);
+                j += 1;
+            }
+            std::cmp::Ordering::Equal => {
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    out.extend_from_slice(&a[i..]);
+    out.extend_from_slice(&b[j..]);
+    out
+}
+/// Sort an arbitrary monomial list and cancel equal pairs.
+fn normalize(mut monos: Vec<Mono>) -> Polynomial {
+    monos.sort_unstable();
+    let mut out = Vec::with_capacity(monos.len());
+    for m in monos {
+        if out.last() == Some(&m) {
+            out.pop();
+        } else {
+            out.push(m);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -62,8 +137,9 @@ impl<'a> Algebra<'a> {
             cache_classes: false,
             stable_classes: BTreeMap::new(),
             classes: BTreeMap::new(),
-            materialized: BTreeMap::new(),
-            interned: BTreeMap::new(),
+            materialized: FxHashMap::default(),
+            interned: FxHashMap::default(),
+            ranges: FxHashMap::default(),
         }
     }
     /// Reuse authenticated nibble indicators across compiler checkpoints.
@@ -71,17 +147,17 @@ impl<'a> Algebra<'a> {
     pub fn cache_byte_classes(&mut self) {
         self.cache_classes = true;
     }
+    fn wire(&self, id: u32) -> Wire {
+        Wire(id as usize - 1, self.circuit.owner)
+    }
     fn push(&mut self, polynomial: Polynomial) -> Bit {
-        let key: Vec<Vec<usize>> = polynomial
-            .iter()
-            .map(|m| m.iter().map(|w| w.0).collect())
-            .collect();
-        if let Some(id) = self.interned.get(&key) {
+        if let Some(id) = self.interned.get(polynomial.as_slice()) {
             return *id;
         }
         let id = Bit(self.expressions.len());
-        self.expressions.push(polynomial);
-        self.interned.insert(key, id);
+        let shared: Rc<[Mono]> = polynomial.into();
+        self.expressions.push(shared.clone());
+        self.interned.insert(shared, id);
         id
     }
     fn input(&mut self, wire: Wire) -> Bit {
@@ -99,19 +175,19 @@ impl<'a> Algebra<'a> {
                 return self.public_bit(constant == Fe::ONE);
             }
         }
-        self.push(vec![vec![wire]])
+        self.push(vec![mono_of(wire)])
     }
     pub fn public_bit(&mut self, bit: bool) -> Bit {
-        self.push(if bit { vec![vec![]] } else { vec![] })
+        self.push(if bit { vec![CONSTANT] } else { vec![] })
     }
     /// Retain a circuit wire across compiler checkpoints, without retaining an
     /// expression-table index that a checkpoint will invalidate.
     pub fn export_bit(&mut self, bit: Bit) -> Wire {
         let bit = self.commit(bit);
-        match self.expressions[bit.0].as_slice() {
+        match &self.expressions[bit.0][..] {
             [] => self.circuit.public_bit(false),
-            [term] if term.is_empty() => self.circuit.public_bit(true),
-            [term] if term.len() == 1 => term[0],
+            [term] if *term == CONSTANT => self.circuit.public_bit(true),
+            [term] if mono_degree(term) == 1 => self.wire(term[0]),
             _ => unreachable!("committed bit is constant or a single wire"),
         }
     }
@@ -119,41 +195,24 @@ impl<'a> Algebra<'a> {
         self.input(wire)
     }
     pub fn xor_bit(&mut self, a: Bit, b: Bit) -> Bit {
-        let mut terms = BTreeSet::new();
-        for term in self.expressions[a.0].iter().chain(&self.expressions[b.0]) {
-            let key: Vec<_> = term.iter().map(|w| w.0).collect();
-            if !terms.insert(key.clone()) {
-                terms.remove(&key);
-            }
-        }
-        let owner = self.circuit.owner;
-        self.push(
-            terms
-                .into_iter()
-                .map(|ids| ids.into_iter().map(|id| Wire(id, owner)).collect())
-                .collect(),
-        )
+        let sum = xor_sorted(&self.expressions[a.0], &self.expressions[b.0]);
+        self.push(sum)
     }
     pub fn not_bit(&mut self, a: Bit) -> Bit {
         let one = self.public_bit(true);
         self.xor_bit(a, one)
     }
     fn degree(&self, a: Bit) -> usize {
-        self.expressions[a.0]
-            .iter()
-            .map(Vec::len)
-            .max()
-            .unwrap_or(0)
+        self.expressions[a.0].iter().map(mono_degree).max().unwrap_or(0)
     }
     fn terms(&self, a: Bit) -> Vec<Term> {
         self.expressions[a.0]
             .iter()
-            .map(|m| match m.as_slice() {
-                [] => Term::Constant(Fe::ONE),
-                [a] => Term::Linear(Fe::ONE, *a),
-                [a, b] => Term::Quadratic(Fe::ONE, *a, *b),
-                [a, b, c] => Term::Cubic(Fe::ONE, *a, *b, *c),
-                _ => unreachable!("degree capped before materialization"),
+            .map(|m| match mono_degree(m) {
+                0 => Term::Constant(Fe::ONE),
+                1 => Term::Linear(Fe::ONE, self.wire(m[0])),
+                2 => Term::Quadratic(Fe::ONE, self.wire(m[0]), self.wire(m[1])),
+                _ => Term::Cubic(Fe::ONE, self.wire(m[0]), self.wire(m[1]), self.wire(m[2])),
             })
             .collect()
     }
@@ -161,25 +220,24 @@ impl<'a> Algebra<'a> {
         if let Some(value) = self.materialized.get(&a.0) {
             return *value;
         }
-        if self.degree(a) == 0 {
+        let degree = self.degree(a);
+        if degree == 0 {
             return a;
         }
-        if self.degree(a) < 2 {
+        let wire = if degree < 2 {
             let mut constant = Fe::ZERO;
             let mut terms = Vec::new();
-            for m in &self.expressions[a.0] {
-                if m.is_empty() {
+            for m in self.expressions[a.0].iter() {
+                if *m == CONSTANT {
                     constant = constant ^ Fe::ONE;
                 } else {
-                    terms.push((Fe::ONE, m[0]));
+                    terms.push((Fe::ONE, self.wire(m[0])));
                 }
             }
-            let wire = self.circuit.linear_kind(terms, constant, true);
-            let value = self.input(wire);
-            self.materialized.insert(a.0, value);
-            return value;
-        }
-        let wire = self.circuit.polynomial_bit(self.terms(a));
+            self.circuit.linear_kind(terms, constant, true)
+        } else {
+            self.circuit.polynomial_bit(self.terms(a))
+        };
         let value = self.input(wire);
         self.materialized.insert(a.0, value);
         value
@@ -200,24 +258,15 @@ impl<'a> Algebra<'a> {
             a = self.commit(a);
             b = self.commit(b);
         }
-        let mut terms = BTreeSet::new();
-        for left in &self.expressions[a.0] {
-            for right in &self.expressions[b.0] {
-                let mut monomial: Vec<_> = left.iter().chain(right).map(|w| w.0).collect();
-                monomial.sort_unstable();
-                monomial.dedup(); // x² = x for authenticated Boolean bits.
-                if !terms.insert(monomial.clone()) {
-                    terms.remove(&monomial);
-                }
+        let (left, right) = (&self.expressions[a.0], &self.expressions[b.0]);
+        let mut products = Vec::with_capacity(left.len() * right.len());
+        for l in left.iter() {
+            for r in right.iter() {
+                products.push(mono_mul(l, r));
             }
         }
-        let owner = self.circuit.owner;
-        self.push(
-            terms
-                .into_iter()
-                .map(|m| m.into_iter().map(|id| Wire(id, owner)).collect())
-                .collect(),
-        )
+        let product = normalize(products);
+        self.push(product)
     }
     pub fn assert_true(&mut self, a: Bit) {
         let one = self.public_bit(true);
@@ -238,7 +287,7 @@ impl<'a> Algebra<'a> {
     /// states survive; this does not retain a secret trace in the builder.
     pub fn checkpoint(&mut self, sections: &mut [&mut [Bit]]) {
         let mut live = Vec::new();
-        let mut materialized = BTreeMap::new();
+        let mut materialized = FxHashMap::default();
         for section in sections.iter_mut() {
             for bit in section.iter_mut() {
                 let value = *materialized
@@ -249,14 +298,11 @@ impl<'a> Algebra<'a> {
         }
         self.expressions = live;
         self.classes.clear();
+        self.ranges.clear();
         self.materialized.clear();
         self.interned.clear();
         for (index, polynomial) in self.expressions.iter().enumerate() {
-            let key = polynomial
-                .iter()
-                .map(|m| m.iter().map(|w| w.0).collect())
-                .collect();
-            self.interned.entry(key).or_insert(Bit(index));
+            self.interned.entry(polynomial.clone()).or_insert(Bit(index));
         }
         let mut index = 0;
         for section in sections {
@@ -305,6 +351,15 @@ impl<'a> Algebra<'a> {
     /// rebuilding Boolean comparators for every punctuation/range test.
     pub fn range(&mut self, byte: Byte, low: u8, high: u8) -> Bit {
         let key = byte.0.map(|w| w.0);
+        if let Some(bit) = self.ranges.get(&(key, low, high)) {
+            return *bit;
+        }
+        let result = self.range_uncached(byte, key, low, high);
+        self.ranges.insert((key, low, high), result);
+        result
+    }
+    fn range_uncached(&mut self, _byte: Byte, key: [usize; 8], low: u8, high: u8) -> Bit {
+        let byte = _byte;
         let (lo, hi) = if let Some(classes) = self.classes.get(&key) {
             *classes
         } else {
