@@ -64,6 +64,7 @@ pub(crate) async fn open(
     proxy_open: Option<notary_auth::ProxyOpen>,
     low_latency: bool,
     budget: usize,
+    strict_authentication: bool,
 ) -> Result<Option<ClientLease>> {
     use rand::RngCore;
     let mut cached = {
@@ -95,6 +96,7 @@ pub(crate) async fn open(
             pin,
             request,
             notary_auth::SetupOpen {
+                authentication_lanes: if strict_authentication { 2 } else { 1 },
                 // Cold bootstrap completes before forwarding the first TLS flight.
                 proxy: if cached.is_some() { proxy_open } else { None },
                 budget: budget as u32,
@@ -106,15 +108,38 @@ pub(crate) async fn open(
         notary_auth::authenticate_pool(stream, pin, request).await?
     };
     let Some(opening) = opening else {
+        anyhow::ensure!(
+            !strict_authentication,
+            "strict authentication cannot fall back to a legacy opening"
+        );
         return Ok(None);
     };
+    anyhow::ensure!(
+        !strict_authentication
+            || opening
+                .setup
+                .as_ref()
+                .is_some_and(|s| s.authentication_lanes == 2),
+        "strict session requires authenticated dual-lane setup"
+    );
     let mut pool = if opening.resumed {
         cached
             .ok_or_else(|| anyhow::anyhow!("notary resumed an unknown VOLE pool"))?
             .pool
     } else {
-        ProverVolePool::new(opening.binding)
+        {
+            let mut pool = ProverVolePool::new(opening.binding);
+            if strict_authentication {
+                pool.enable_strict_authentication()
+                    .map_err(anyhow::Error::msg)?;
+            }
+            pool
+        }
     };
+    anyhow::ensure!(
+        pool.is_strict_authentication() == strict_authentication,
+        "cached pool authentication mode mismatch"
+    );
     pool.set_budget(budget).map_err(anyhow::Error::msg)?;
     let prefill_check = if opening.low_latency && opening.resumed {
         pool.prefill_check(&opening.ferret_reply)

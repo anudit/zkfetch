@@ -30,7 +30,7 @@ cfg_select! {
     _ => {
         use mpz_garble::protocol::semihonest::Evaluator;
         use mpz_ot::cot::DerandCOTReceiver;
-        use mpz_zk::Verifier;
+        use mpz_zk::session::Verifier;
 
         pub(crate) type VerifierMpc =
             Evaluator<DerandCOTReceiver<SharedRCOTReceiver<kos::Receiver<co::Sender>, bool, Block>>>;
@@ -139,8 +139,12 @@ impl VerifierProxyDeps {
             _ => {{
                 let fresh;
                 let pool = match pool { Some(pool) => pool, None => { fresh = crate::vole_pool::VerifierVolePool::new([0; 32]); &fresh } };
-                let rcot_send = SharedRCOTSender::new(pool.sender());
-                VerifierZk::new(Default::default(), pool.delta(), rcot_send)
+                if let Some(pair) = pool.strict_authentication() {
+                    VerifierZk::new_strict(Default::default(), pair.deltas(), pair.senders().expect("usable strict pool"))
+                } else {
+                    let rcot_send = SharedRCOTSender::new(pool.sender());
+                    VerifierZk::new(Default::default(), pool.delta(), rcot_send)
+                }
             }}
         };
 

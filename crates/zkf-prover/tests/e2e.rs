@@ -1375,6 +1375,9 @@ mod attestation_v2 {
         p.headers = vec![("Authorization".into(), "Bearer v2-secret".into())];
 
         // Requests that cannot be served by a v2 session fail before any I/O.
+        let mut unnegotiated = p.clone();
+        unnegotiated.persistent_vole = Some(false);
+        assert!(zkf_prover::notarize(unnegotiated).await.is_err());
         let mut mpc = p.clone();
         mpc.mode = None;
         assert!(zkf_prover::notarize(mpc).await.is_err());

@@ -56,7 +56,9 @@ def main():
         "strictKernelImplemented": True,
         "strictVmAndBridgeImplemented": True,
         "pairedFullEntropyFerretTested": True,
-        "productionStrictLanesSelected": False,
+        "productionStrictLanesSelected": True,
+        "strictProtocol": "FLOW5 / attestation-v2 / two independent full-width lanes",
+        "deployedStrictLanesSelected": False,
         "fullEntropyTwoLaneRootAndCancellationCandidate": {
             "numerator": "16", "denominator": str(2**256),
             "certified": False,
@@ -73,7 +75,7 @@ def main():
     report = {"targetBits": 128, "marginAnalysis": margin, "nominalLayout": layout,
               "checkTerms": terms, "unresolvedTerms": unresolved,
               "releaseCertified": False,
-              "reason": "single 127-bit MAC delta admits a guessing attack above target; composition and the required protocol upgrade remain unresolved"}
+              "reason": "FLOW5 implements full-entropy dual lanes; adaptive composition, offline reduction and concrete primitive terms remain unresolved"}
     print(json.dumps(report, indent=2))
     if args.require_release:
         return 1

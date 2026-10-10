@@ -2,7 +2,8 @@
 
 The Option A follow-up is tracked in [v2-option-a-progress.md](v2-option-a-progress.md).
 The new dual-lane kernel, VM, bridge and paired Ferret preprocessing are locally
-tested but are not yet selected by the production session driver. D1 and D3-2
+tested and selected by the FLOW5 driver for v2 attestations. The deployed FLOW4
+snapshot still uses legacy authentication. D1 and D3-2
 remain incomplete. The prior source is checkpointed as `fa9b761`.
 
 Started 10 October 2026 from `00c9be5`, following
@@ -35,11 +36,11 @@ benchmark compilation passes, and the 12-case latency matrix verifies every
 session. Stronger-predicate substitution is also rejected in each case.
 
 The Option A follow-up completes both synthetic hosted path matrices (24/24),
-including Chrome with eight threads. Authenticated Duolingo remains unverified.
-Next: integrate the stronger authentication throughout the production TLS session
-and close its composition and offline soundness reductions. Both hosted capacity profiles have completed.
+including Chrome with eight threads. The user confirms successful verification of the live authenticated Duolingo flow (one warm eight-thread sample: 881 ms notarization, 942 ms presentation, 458 ms verification).
+Next: rebuild and deploy FLOW5 from one snapshot, complete adversarial integration
+and close the composition and offline soundness reductions. Both hosted capacity profiles have completed.
 Depth-8 typed paths, array indices and optional semantic key uniqueness pass
-IR, offline proof and native API e2e regressions; live Duolingo validation is awaiting a signed-in extension run. Presentation parameter tuning remains paused pending soundness. Soundness margins, full streaming integration, broader
+IR, offline proof and native API e2e regressions; the signed-in Duolingo extension run also verifies, with user-reported timings recorded in `option-a/duolingo-live-user-reported.json`. Presentation parameter tuning remains paused pending soundness. Soundness margins, full streaming integration, broader
 TLS/JSON/HTTP support and the full split protocol remain implementation work.
 External review is deferred; seven nightly days and the fuzz CPU budget remain
 unfulfilled release gates. The whole completion plan is not complete.

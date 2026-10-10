@@ -1,3 +1,4 @@
+pub mod session;
 pub mod strict;
 mod callstack;
 mod config;

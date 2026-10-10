@@ -29,7 +29,7 @@ cfg_select! {
     _ => {
         use mpz_garble::protocol::semihonest::Garbler;
         use mpz_ot::cot::DerandCOTSender;
-        use mpz_zk::Prover;
+        use mpz_zk::session::Prover;
         use rand::Rng;
 
         pub(crate) type ProverMpc =
@@ -144,8 +144,12 @@ impl ProverProxyDeps {
             _ => {{
                 let fresh;
                 let pool = match pool { Some(pool) => pool, None => { fresh = crate::vole_pool::ProverVolePool::new([0; 32]); &fresh } };
-                let rcot_recv = SharedRCOTReceiver::new(pool.receiver());
-                ProverZk::new(Default::default(), rcot_recv)
+                if let Some(pair) = pool.strict_authentication() {
+                    ProverZk::new_strict(Default::default(), pair.receivers().expect("usable strict pool"))
+                } else {
+                    let rcot_recv = SharedRCOTReceiver::new(pool.receiver());
+                    ProverZk::new(Default::default(), rcot_recv)
+                }
             }}
         };
 

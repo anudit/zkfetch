@@ -14,19 +14,32 @@ fn binding(session: [u8; 32], lane: usize) -> [u8; 32] {
 /// Prover lanes have independent seeds, OT transcripts and reserved states.
 pub struct ProverPool {
     lanes: [ProverVolePool; 2],
-    failed: bool,
+    failed: Arc<std::sync::atomic::AtomicBool>,
 }
 /// Full entropy deltas remain inside the verifier's exclusively leased pair.
 pub struct VerifierPool {
     lanes: [VerifierVolePool; 2],
-    failed: bool,
+    failed: Arc<std::sync::atomic::AtomicBool>,
 }
 impl ProverPool {
+    pub(super) fn session_handle(&self) -> Self {
+        Self {
+            lanes: std::array::from_fn(|i| self.lanes[i].session_handle()),
+            failed: self.failed.clone(),
+        }
+    }
+    /// Share the completion barrier with both per-lane VM correlation handles.
+    pub fn set_ready(&mut self, ready: PrefillReady) {
+        for p in &mut self.lanes {
+            p.set_ready(ready.clone());
+        }
+    }
+
     /// Construct independent lanes from fresh entropy.
     pub fn new(session: [u8; 32]) -> Self {
         Self {
             lanes: std::array::from_fn(|i| ProverVolePool::new(binding(session, i))),
-            failed: false,
+            failed: Default::default(),
         }
     }
     /// Bind both reserved states to a fresh authenticated session lease.
@@ -37,25 +50,27 @@ impl ProverPool {
     }
     /// Set a per-lane budget before either lane becomes active.
     pub fn set_budget(&mut self, per_lane: usize) -> Result<(), Error> {
-        if self.failed {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         for p in &mut self.lanes {
             if let Err(e) = p.set_budget(per_lane) {
-                self.failed = true;
+                self.failed
+                    .store(true, std::sync::atomic::Ordering::Release);
                 return Err(e.into());
             }
         }
         Ok(())
     }
     /// Bootstrap both independent OT streams; a failure burns the pair.
-    pub async fn cold_prefill(&mut self, ctx: &mut Context) -> Result<(), Error> {
-        if self.failed {
+    pub async fn cold_prefill(&self, ctx: &mut Context) -> Result<(), Error> {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         for p in &self.lanes {
-            if let Err(e) = p.cold_prefill(ctx).await {
-                self.failed = true;
+            if let Err(e) = p.cold_prefill_lane(ctx).await {
+                self.failed
+                    .store(true, std::sync::atomic::Ordering::Release);
                 return Err(e);
             }
         }
@@ -63,7 +78,7 @@ impl ProverPool {
     }
     /// Start both warm extensions in one encoded flight.
     pub fn start_prefill(&mut self) -> Result<Vec<u8>, Error> {
-        if self.failed {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         let result = (|| {
@@ -72,13 +87,14 @@ impl ProverPool {
             Ok(bincode::serialize(&[a, b])?)
         })();
         if result.is_err() {
-            self.failed = true;
+            self.failed
+                .store(true, std::sync::atomic::Ordering::Release);
         }
         result
     }
     /// Check both extension replies; failure burns the pair.
-    pub fn prefill_check(&mut self, reply: &[u8]) -> Result<Vec<u8>, Error> {
-        if self.failed {
+    pub fn prefill_check(&self, reply: &[u8]) -> Result<Vec<u8>, Error> {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         let result = (|| {
@@ -88,13 +104,14 @@ impl ProverPool {
             Ok(bincode::serialize(&[a, b])?)
         })();
         if result.is_err() {
-            self.failed = true;
+            self.failed
+                .store(true, std::sync::atomic::Ordering::Release);
         }
         result
     }
     /// Finish both extensions and validate both reserved budgets.
-    pub fn finish_prefill(&mut self, reply: &[u8]) -> Result<(), Error> {
-        if self.failed {
+    pub fn finish_prefill(&self, reply: &[u8]) -> Result<(), Error> {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         let result = (|| {
@@ -105,18 +122,20 @@ impl ProverPool {
             Ok(())
         })();
         if result.is_err() {
-            self.failed = true;
+            self.failed
+                .store(true, std::sync::atomic::Ordering::Release);
         }
         result
     }
     /// Discard unused correlations and retain only both bootstrap states.
     pub fn park(&mut self) -> Result<(), Error> {
-        if self.failed {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         for p in &mut self.lanes {
             if let Err(e) = p.park() {
-                self.failed = true;
+                self.failed
+                    .store(true, std::sync::atomic::Ordering::Release);
                 return Err(e);
             }
         }
@@ -128,11 +147,10 @@ impl ProverPool {
             p.set_low_latency(enabled);
         }
     }
-    #[allow(dead_code)] // Integrated into the session driver in the next protocol step.
     pub(crate) fn receivers(
         &self,
     ) -> Result<[SharedRCOTReceiver<PooledReceiver, bool, Block>; 2], Error> {
-        if self.failed {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         Ok(std::array::from_fn(|i| {
@@ -141,6 +159,19 @@ impl ProverPool {
     }
 }
 impl VerifierPool {
+    pub(super) fn session_handle(&self) -> Self {
+        Self {
+            lanes: std::array::from_fn(|i| self.lanes[i].session_handle()),
+            failed: self.failed.clone(),
+        }
+    }
+    /// Share the completion barrier with both per-lane VM correlation handles.
+    pub fn set_ready(&mut self, ready: PrefillReady) {
+        for p in &mut self.lanes {
+            p.set_ready(ready.clone());
+        }
+    }
+
     /// Construct independent lanes from fresh entropy.
     pub fn new(session: [u8; 32]) -> Self {
         let mut rng = rand::rng();
@@ -148,7 +179,7 @@ impl VerifierPool {
             lanes: std::array::from_fn(|i| {
                 VerifierVolePool::with_block(binding(session, i), Block::random(&mut rng))
             }),
-            failed: false,
+            failed: Default::default(),
         }
     }
     /// Bind both reserved states to a fresh authenticated session lease.
@@ -159,25 +190,27 @@ impl VerifierPool {
     }
     /// Set a per-lane budget before either lane becomes active.
     pub fn set_budget(&mut self, per_lane: usize) -> Result<(), Error> {
-        if self.failed {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         for p in &mut self.lanes {
             if let Err(e) = p.set_budget(per_lane) {
-                self.failed = true;
+                self.failed
+                    .store(true, std::sync::atomic::Ordering::Release);
                 return Err(e.into());
             }
         }
         Ok(())
     }
     /// Bootstrap both independent OT streams; a failure burns the pair.
-    pub async fn cold_prefill(&mut self, ctx: &mut Context) -> Result<(), Error> {
-        if self.failed {
+    pub async fn cold_prefill(&self, ctx: &mut Context) -> Result<(), Error> {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         for p in &self.lanes {
-            if let Err(e) = p.cold_prefill(ctx).await {
-                self.failed = true;
+            if let Err(e) = p.cold_prefill_lane(ctx).await {
+                self.failed
+                    .store(true, std::sync::atomic::Ordering::Release);
                 return Err(e);
             }
         }
@@ -185,7 +218,7 @@ impl VerifierPool {
     }
     /// Accept both warm extensions in one encoded flight.
     pub fn accept_prefill(&mut self, start: &[u8]) -> Result<Vec<u8>, Error> {
-        if self.failed {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         let result = (|| {
@@ -195,13 +228,14 @@ impl VerifierPool {
             Ok(bincode::serialize(&[a, b])?)
         })();
         if result.is_err() {
-            self.failed = true;
+            self.failed
+                .store(true, std::sync::atomic::Ordering::Release);
         }
         result
     }
     /// Finish both extensions and validate both reserved budgets.
-    pub fn finish_prefill(&mut self, check: &[u8]) -> Result<Vec<u8>, Error> {
-        if self.failed {
+    pub fn finish_prefill(&self, check: &[u8]) -> Result<Vec<u8>, Error> {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         let result = (|| {
@@ -211,18 +245,20 @@ impl VerifierPool {
             Ok(bincode::serialize(&[a, b])?)
         })();
         if result.is_err() {
-            self.failed = true;
+            self.failed
+                .store(true, std::sync::atomic::Ordering::Release);
         }
         result
     }
     /// Discard unused correlations and retain only both bootstrap states.
     pub fn park(&mut self) -> Result<(), Error> {
-        if self.failed {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         for p in &mut self.lanes {
             if let Err(e) = p.park() {
-                self.failed = true;
+                self.failed
+                    .store(true, std::sync::atomic::Ordering::Release);
                 return Err(e);
             }
         }
@@ -238,9 +274,8 @@ impl VerifierPool {
             p.set_low_latency(enabled);
         }
     }
-    #[allow(dead_code)] // Integrated into the session driver in the next protocol step.
     pub(crate) fn senders(&self) -> Result<[SharedRCOTSender<PooledSender, Block>; 2], Error> {
-        if self.failed {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
             return Err("burned strict pool".into());
         }
         Ok(std::array::from_fn(|i| {
@@ -252,6 +287,29 @@ impl VerifierPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn negotiated_pool_handles_share_both_lanes_and_failure_state() {
+        let mut p=ProverVolePool::new([7;32]); let mut v=VerifierVolePool::new([7;32]);
+        p.set_budget(1_000_000).unwrap(); v.set_budget(1_000_000).unwrap();
+        p.enable_strict_authentication().unwrap(); v.enable_strict_authentication().unwrap();
+        p.set_low_latency(true); v.set_low_latency(true);
+        let (mut cp,mut cv)=mpz_common::context::test_st_context(8);
+        futures::try_join!(p.cold_prefill(&mut cp),v.cold_prefill(&mut cv)).unwrap();
+        for lane in 0..2 {
+            let recv=p.authentication.as_ref().unwrap().lanes[lane].inner.try_lock().unwrap().try_recv_rcot(640_000).unwrap();
+            let send=v.authentication.as_ref().unwrap().lanes[lane].inner.try_lock().unwrap().try_send_rcot(640_000).unwrap();
+            let delta=*v.authentication.as_ref().unwrap().deltas()[lane].as_block();
+            for ((tag,choice),key) in recv.msgs.iter().zip(recv.choices).zip(send.keys) { assert_eq!(*tag,key ^ if choice { delta } else { Block::ZERO }); }
+        }
+        p.park().unwrap(); v.park().unwrap();
+        let start=p.start_prefill().unwrap(); let reply=v.accept_prefill(&start).unwrap();
+        let handle=p.prefill_handle();
+        let mut bad:[Vec<u8>;2]=bincode::deserialize(&reply).unwrap(); bad[1]=vec![255];
+        assert!(handle.prefill_check(&bincode::serialize(&bad).unwrap()).is_err());
+        assert!(p.park().is_err(),"a failed prefill handle must burn the owning lease");
+        assert!(p.authentication.as_ref().unwrap().receivers().is_err());
+    }
+
     #[tokio::test]
     async fn paired_cold_and_warm_ferret_preserve_full_deltas_and_never_reuse() {
         let mut p = ProverPool::new([7; 32]);

@@ -40,6 +40,7 @@ pub struct ProverVolePool {
     pub(crate) begin_proof: Option<Arc<dyn Fn() + Send + Sync>>,
     inner: Arc<Mutex<Receiver>>,
     active: Arc<std::sync::atomic::AtomicBool>,
+    authentication: Option<Box<strict::ProverPool>>,
 }
 /// Notary's reserved Ferret correlations and their secret correlation delta.
 pub struct VerifierVolePool {
@@ -54,8 +55,42 @@ pub struct VerifierVolePool {
     inner: Arc<Mutex<Sender>>,
     active: Arc<std::sync::atomic::AtomicBool>,
     delta: zeroize::Zeroizing<Block>,
+    authentication: Option<Box<strict::VerifierPool>>,
 }
 impl ProverVolePool {
+    /// Returns whether this pool uses two independent full-width authentication lanes.
+    pub fn is_strict_authentication(&self) -> bool {
+        self.authentication.is_some()
+    }
+
+    /// Enable both independent full-width authentication lanes before preprocessing.
+    pub fn enable_strict_authentication(&mut self) -> Result<(), &'static str> {
+        if self.authentication.is_some() {
+            return Ok(());
+        }
+        if self.active.load(std::sync::atomic::Ordering::Acquire) || self.ready.is_some() {
+            return Err("cannot change an active authentication mode");
+        }
+        if !self
+            .inner
+            .try_lock()
+            .map_err(|_| "active preprocessing")?
+            .core_mut()
+            .wants_init()
+        {
+            return Err("authentication mode must be selected on a fresh pool");
+        }
+        let mut pair = strict::ProverPool::new(self.binding);
+        pair.set_budget(self.budget)
+            .map_err(|_| "invalid strict pool budget")?;
+        pair.set_low_latency(self.low_latency);
+        self.authentication = Some(Box::new(pair));
+        Ok(())
+    }
+    pub(crate) fn strict_authentication(&self) -> Option<&strict::ProverPool> {
+        self.authentication.as_deref()
+    }
+
     /// Install the callback that starts collecting the final proof flight.
     pub fn set_begin_proof(&mut self, begin: Arc<dyn Fn() + Send + Sync>) {
         self.begin_proof = Some(begin);
@@ -66,6 +101,7 @@ impl ProverVolePool {
         let mut rng = rand::rng();
         Self {
             binding,
+            authentication: None,
             low_latency: false,
             opened_host: None,
             pipeline_tls: false,
@@ -96,6 +132,10 @@ impl ProverVolePool {
         if self.active.load(std::sync::atomic::Ordering::Acquire) || self.ready.is_some() {
             return Err("cannot resize a live VOLE lease");
         }
+        if let Some(pair) = self.authentication.as_mut() {
+            pair.set_budget(budget)
+                .map_err(|_| "strict pool resize rejected")?;
+        }
         self.budget = budget;
         Ok(())
     }
@@ -105,10 +145,16 @@ impl ProverVolePool {
     }
     /// Binds the exclusively checked-out pool to a fresh authenticated lease.
     pub fn bind(&mut self, binding: [u8; 32]) {
+        if let Some(pair) = self.authentication.as_mut() {
+            pair.bind(binding);
+        }
         self.binding = binding;
     }
     /// Enables the authenticated v2 pipelined message flow. Both peers must agree.
     pub fn set_low_latency(&mut self, enabled: bool) {
+        if let Some(pair) = self.authentication.as_mut() {
+            pair.set_low_latency(enabled);
+        }
         self.low_latency = enabled;
     }
     /// Overlaps preprocessing with a TLS handshake opened in the first flight.
@@ -117,6 +163,9 @@ impl ProverVolePool {
     }
     /// Prepare the first warm Ferret flight, burning the checked-out lease.
     pub fn start_prefill(&mut self) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(pair) = self.authentication.as_mut() {
+            return pair.start_prefill();
+        }
         let mut inner = self.inner.try_lock().expect("exclusive prefill");
         inner.alloc(self.budget)?;
         let core = inner.core_mut();
@@ -135,6 +184,9 @@ impl ProverVolePool {
         &self,
         reply: &[u8],
     ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(pair) = self.authentication.as_ref() {
+            return pair.prefill_check(reply);
+        }
         if reply.is_empty() {
             return Ok(vec![]);
         }
@@ -148,6 +200,9 @@ impl ProverVolePool {
         &self,
         reply: &[u8],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(pair) = self.authentication.as_ref() {
+            return pair.finish_prefill(reply);
+        }
         let mut inner = self.inner.try_lock().expect("exclusive prefill");
         if !reply.is_empty() {
             inner
@@ -165,6 +220,15 @@ impl ProverVolePool {
         &self,
         ctx: &mut Context,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(pair) = &self.authentication {
+            return pair.cold_prefill(ctx).await;
+        }
+        self.cold_prefill_lane(ctx).await
+    }
+    async fn cold_prefill_lane(
+        &self,
+        ctx: &mut Context,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut inner = self.inner.lock().await;
         inner.alloc(self.budget)?;
         inner.flush(ctx).await?;
@@ -178,6 +242,7 @@ impl ProverVolePool {
         self.begin_proof = None;
         self.pipeline_tls = false;
         self.strict = false;
+        if let Some(pair) = self.authentication.as_mut() { return pair.park(); }
         if !self.low_latency {
             return Ok(());
         }
@@ -197,6 +262,9 @@ impl ProverVolePool {
     }
     /// Require prefill completion before constructing the final proof.
     pub fn set_ready(&mut self, ready: PrefillReady) {
+        if let Some(pair) = self.authentication.as_mut() {
+            pair.set_ready(ready.clone());
+        }
         self.ready = Some(ready);
         self.pipeline_tls = true;
         self.strict = true;
@@ -204,6 +272,10 @@ impl ProverVolePool {
     pub(crate) fn session_handle(&self) -> Self {
         Self {
             binding: self.binding,
+            authentication: self
+                .authentication
+                .as_ref()
+                .map(|p| Box::new(p.session_handle())),
             low_latency: self.low_latency,
             opened_host: self.opened_host.clone(),
             pipeline_tls: self.pipeline_tls,
@@ -226,6 +298,39 @@ impl ProverVolePool {
     }
 }
 impl VerifierVolePool {
+    /// Returns whether this pool uses two independent full-width authentication lanes.
+    pub fn is_strict_authentication(&self) -> bool {
+        self.authentication.is_some()
+    }
+
+    /// Enable both independent full-width authentication lanes before preprocessing.
+    pub fn enable_strict_authentication(&mut self) -> Result<(), &'static str> {
+        if self.authentication.is_some() {
+            return Ok(());
+        }
+        if self.active.load(std::sync::atomic::Ordering::Acquire) || self.ready.is_some() {
+            return Err("cannot change an active authentication mode");
+        }
+        if !self
+            .inner
+            .try_lock()
+            .map_err(|_| "active preprocessing")?
+            .core_mut()
+            .wants_init()
+        {
+            return Err("authentication mode must be selected on a fresh pool");
+        }
+        let mut pair = strict::VerifierPool::new(self.binding);
+        pair.set_budget(self.budget)
+            .map_err(|_| "invalid strict pool budget")?;
+        pair.set_low_latency(self.low_latency);
+        self.authentication = Some(Box::new(pair));
+        Ok(())
+    }
+    pub(crate) fn strict_authentication(&self) -> Option<&strict::VerifierPool> {
+        self.authentication.as_deref()
+    }
+
     /// Creates a pool that bootstraps with fresh base OT on first use.
     pub fn new(binding: [u8; 32]) -> Self {
         let mut rng = rand::rng();
@@ -239,6 +344,7 @@ impl VerifierVolePool {
         let mut rng = rand::rng();
         Self {
             binding,
+            authentication: None,
             low_latency: false,
             opened_host: None,
             pipeline_tls: false,
@@ -258,11 +364,7 @@ impl VerifierVolePool {
                     .build()
                     .expect("valid Ferret config"),
                 Block::random(&mut rng),
-                kos::Sender::new(
-                    Default::default(),
-                    delta,
-                    co::Receiver::default(),
-                ),
+                kos::Sender::new(Default::default(), delta, co::Receiver::default()),
             ))),
         }
     }
@@ -274,6 +376,10 @@ impl VerifierVolePool {
         if self.active.load(std::sync::atomic::Ordering::Acquire) || self.ready.is_some() {
             return Err("cannot resize a live VOLE lease");
         }
+        if let Some(pair) = self.authentication.as_mut() {
+            pair.set_budget(budget)
+                .map_err(|_| "strict pool resize rejected")?;
+        }
         self.budget = budget;
         Ok(())
     }
@@ -283,10 +389,16 @@ impl VerifierVolePool {
     }
     /// Binds the exclusively checked-out pool to a fresh authenticated lease.
     pub fn bind(&mut self, binding: [u8; 32]) {
+        if let Some(pair) = self.authentication.as_mut() {
+            pair.bind(binding);
+        }
         self.binding = binding;
     }
     /// Enables the authenticated v2 pipelined message flow. Both peers must agree.
     pub fn set_low_latency(&mut self, enabled: bool) {
+        if let Some(pair) = self.authentication.as_mut() {
+            pair.set_low_latency(enabled);
+        }
         self.low_latency = enabled;
     }
     /// Overlaps preprocessing with a TLS handshake opened in the first flight.
@@ -298,6 +410,9 @@ impl VerifierVolePool {
         &mut self,
         start: &[u8],
     ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(pair) = self.authentication.as_mut() {
+            return pair.accept_prefill(start);
+        }
         let mut inner = self.inner.try_lock().expect("exclusive prefill");
         inner.alloc(self.budget)?;
         let core = inner.core_mut();
@@ -317,6 +432,9 @@ impl VerifierVolePool {
         &self,
         check: &[u8],
     ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(pair) = self.authentication.as_ref() {
+            return pair.finish_prefill(check);
+        }
         let mut inner = self.inner.try_lock().expect("exclusive prefill");
         let reply = if check.is_empty() {
             vec![]
@@ -336,6 +454,15 @@ impl VerifierVolePool {
         &self,
         ctx: &mut Context,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(pair) = &self.authentication {
+            return pair.cold_prefill(ctx).await;
+        }
+        self.cold_prefill_lane(ctx).await
+    }
+    async fn cold_prefill_lane(
+        &self,
+        ctx: &mut Context,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut inner = self.inner.lock().await;
         inner.alloc(self.budget)?;
         inner.flush(ctx).await?;
@@ -349,6 +476,7 @@ impl VerifierVolePool {
         self.begin_proof = None;
         self.pipeline_tls = false;
         self.strict = false;
+        if let Some(pair) = self.authentication.as_mut() { return pair.park(); }
         if !self.low_latency {
             return Ok(());
         }
@@ -368,6 +496,9 @@ impl VerifierVolePool {
     }
     /// Require prefill completion before constructing the final proof.
     pub fn set_ready(&mut self, ready: PrefillReady) {
+        if let Some(pair) = self.authentication.as_mut() {
+            pair.set_ready(ready.clone());
+        }
         self.ready = Some(ready);
         self.pipeline_tls = true;
         self.strict = true;
@@ -375,6 +506,10 @@ impl VerifierVolePool {
     pub(crate) fn session_handle(&self) -> Self {
         Self {
             binding: self.binding,
+            authentication: self
+                .authentication
+                .as_ref()
+                .map(|p| Box::new(p.session_handle())),
             low_latency: self.low_latency,
             opened_host: self.opened_host.clone(),
             pipeline_tls: self.pipeline_tls,

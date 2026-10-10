@@ -576,8 +576,10 @@ impl Verifier<state::Committed> {
             tlsn_core::transcript::Direction::Received => self.state.keys.server_write_key,
         };
         let ctx = self.ctx.as_mut().ok_or_else(|| Error::internal().with_msg("verification context was dropped"))?;
-        zkf_ir::backend::mpz::verify(&mut self.state.vm, ctx, circuit, prefix, binding)
-            .await.map_err(|e| Error::user().with_msg(format!("application key relation rejected: {e}")))
+        match &mut self.state.vm {
+            mpz_zk::session::Verifier::Legacy(vm) => zkf_ir::backend::mpz::verify(vm, ctx, circuit, prefix, binding).await,
+            mpz_zk::session::Verifier::Strict(vm) => zkf_ir::backend::mpz::strict::verify_prefixes(vm, ctx, circuit, &[prefix], binding).await,
+        }.map_err(|e| Error::user().with_msg(format!("application key relation rejected: {e}")))
     }
 
     /// Combined Fiat--Shamir relation borrowing both session keys in order.
@@ -593,8 +595,10 @@ impl Verifier<state::Committed> {
         }
         let prefixes = [self.state.keys.client_write_key, self.state.keys.server_write_key];
         let ctx = self.ctx.as_mut().ok_or_else(|| Error::internal().with_msg("verification context was dropped"))?;
-        zkf_ir::backend::mpz::verify_profiled_prefixes(&mut self.state.vm, ctx, circuit, &prefixes, binding, true)
-            .await.map_err(|e| Error::user().with_msg(format!("application key relation rejected: {e}")))
+        match &mut self.state.vm {
+            mpz_zk::session::Verifier::Legacy(vm) => zkf_ir::backend::mpz::verify_profiled_prefixes(vm, ctx, circuit, &prefixes, binding, true).await,
+            mpz_zk::session::Verifier::Strict(vm) => zkf_ir::backend::mpz::strict::verify_prefixes(vm, ctx, circuit, &prefixes, binding).await,
+        }.map_err(|e| Error::user().with_msg(format!("application key relation rejected: {e}")))
     }
 
     /// Returns the TLS transcript.

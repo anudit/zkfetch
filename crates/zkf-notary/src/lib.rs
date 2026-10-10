@@ -530,6 +530,16 @@ where
         !attestation_v2 || cfg!(feature = "d1-experimental"),
         "this notary does not support v2 attestations"
     );
+    // Separate tenant leases by protocol and authentication mode. The signed
+    // opening additionally binds the mode before any upstream forwarding.
+    let scope = {
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(b"zkfetch/pool-scope/flow5/authentication\0");
+        hash.update(scope);
+        hash.update([if attestation_v2 { 2 } else { 1 }]);
+        hash.finalize().into()
+    };
     let mut allocation = None;
     let allocation_slot = &mut allocation;
     let opening = zkf_core::notary_auth::respond_pool_with_async(
@@ -538,7 +548,12 @@ where
         scope,
         &VOLE_POOLS,
         |mut cached, setup| async move {
+            anyhow::ensure!(
+                !attestation_v2 || setup.as_ref().is_some_and(|s| s.authentication_lanes == 2),
+                "v2 requires signed dual-lane setup"
+            );
             if let Some(setup) = &setup {
+                anyhow::ensure!(setup.authentication_lanes == if attestation_v2 { 2 } else { 1 }, "authentication mode mismatch");
                 if let Some(open) = &setup.proxy {
                     tlsn::validate_proxy_open(&open.client_hello, &open.host)?;
                 }
@@ -550,15 +565,17 @@ where
             // The opening deadline bounds queueing. Holding this guard through
             // verification also bounds simultaneous large-class allocations.
             *allocation_slot = Some(
-                resources::acquire(
+                resources::acquire_lanes(
                     setup
                         .as_ref()
                         .map_or(tlsn::vole_pool::FLOW_BUDGET, |s| s.budget as usize),
+                    if attestation_v2 { 2 } else { 1 },
                 )
                 .await?,
             );
             if let Some(setup) = &setup {
                 if let Some(pool) = &mut cached {
+                    anyhow::ensure!(pool.is_strict_authentication() == attestation_v2, "cached pool authentication mode mismatch");
                     pool.set_budget(setup.budget as usize)
                         .map_err(anyhow::Error::msg)?;
                     let reply = pool
@@ -582,9 +599,16 @@ where
         Some(permit) => permit,
         None => resources::acquire(tlsn::vole_pool::FLOW_BUDGET).await?,
     };
+    anyhow::ensure!(!attestation_v2 || opening.is_some(), "v2 cannot fall back to legacy authentication");
     let mut pool_lease = opening.map(|(opening, cached)| {
         let mut pool =
-            cached.unwrap_or_else(|| tlsn::vole_pool::VerifierVolePool::new(opening.binding));
+            cached.unwrap_or_else(|| {
+                let mut pool = tlsn::vole_pool::VerifierVolePool::new(opening.binding);
+                if attestation_v2 {
+                    pool.enable_strict_authentication().expect("fresh pool");
+                }
+                pool
+            });
         pool.bind(opening.binding);
         // Setup is authenticated before forwarding or allocating the session.
         pool.set_budget(
@@ -1013,6 +1037,36 @@ async fn verify_session<C: ServerConnector>(
 #[cfg(test)]
 mod tests {
     use super::is_public;
+
+    #[cfg(feature = "d1-experimental")]
+    #[tokio::test]
+    async fn v2_refuses_legacy_lane_before_upstream_connection() {
+        use tokio_util::compat::TokioAsyncReadCompatExt;
+        struct NoConnect;
+        impl super::ServerConnector for NoConnect {
+            type Stream = tokio_util::compat::Compat<tokio::io::DuplexStream>;
+            async fn connect(&self, _: &str, _: u16) -> anyhow::Result<Self::Stream> {
+                panic!("downgraded v2 must not forward TLS")
+            }
+        }
+        let config = super::NotaryConfig { signing_key: [7; 32], extra_roots: vec![] };
+        let (client, server) = tokio::io::duplex(4096);
+        let mut client = client.compat();
+        let setup = zkf_core::notary_auth::SetupOpen {
+            authentication_lanes: 1,
+            proxy: None,
+            budget: 1_000_000,
+            ferret: vec![],
+        };
+        let (opening, session) = futures::join!(
+            zkf_core::notary_auth::authenticate_pool_setup(
+                &mut client, None, Default::default(), setup
+            ),
+            super::notarize_with(server.compat(), &config, &NoConnect, [0; 32], true)
+        );
+        assert!(opening.is_err());
+        assert!(session.unwrap_err().to_string().contains("dual-lane setup"));
+    }
 
     #[test]
     fn per_client_slots_are_reclaimed() {

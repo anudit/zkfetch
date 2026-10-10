@@ -1,0 +1,28 @@
+{
+  "protocol": "FLOW5",
+  "deployed": false,
+  "strict_v2_cold_warm_signed_head_and_claim_e2e": true,
+  "native_api_e2e": {
+    "passed": 18,
+    "failed": 0,
+    "threads": 2
+  },
+  "setup_authentication": {
+    "passed": 10,
+    "failed": 0
+  },
+  "weighted_admission": {
+    "passed": 1,
+    "failed": 0
+  },
+  "strict_per_lane_budget_to_units": {
+    "1000000": 2,
+    "2000000": 4,
+    "3500000": 8
+  },
+  "soundness_certified": false,
+  "notary_downgrade_before_upstream_connection": {
+    "passed": 1,
+    "failed": 0
+  }
+}

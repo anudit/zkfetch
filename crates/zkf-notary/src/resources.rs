@@ -18,7 +18,23 @@ pub(crate) fn units(budget: usize) -> u32 {
 }
 
 pub(crate) async fn acquire(budget: usize) -> anyhow::Result<OwnedSemaphorePermit> {
-    Ok(SLOTS.clone().acquire_many_owned(units(budget)).await?)
+    acquire_lanes(budget, 1).await
+}
+
+pub(crate) async fn acquire_lanes(
+    budget: usize,
+    lanes: u8,
+) -> anyhow::Result<OwnedSemaphorePermit> {
+    anyhow::ensure!(
+        matches!(lanes, 1 | 2),
+        "unsupported authentication lane count"
+    );
+    let required = units(budget) * u32::from(lanes);
+    anyhow::ensure!(
+        required <= CAPACITY as u32,
+        "session exceeds admission capacity"
+    );
+    Ok(SLOTS.clone().acquire_many_owned(required).await?)
 }
 
 pub(crate) fn active_units() -> usize {
@@ -31,6 +47,12 @@ mod tests {
     #[tokio::test]
     async fn weighted_waits_release_on_completion_and_cancellation() {
         assert_eq!([1_000_000, 2_000_000, 3_500_000].map(units), [1, 2, 4]);
+        assert_eq!(
+            [1_000_000, 2_000_000, 3_500_000].map(|n| units(n) * 2),
+            [2, 4, 8]
+        );
+        assert!(acquire_lanes(1_000_000, 0).await.is_err());
+        assert!(acquire_lanes(5_000_000, 2).await.is_err());
         let slots = Arc::new(Semaphore::new(4));
         let small = slots.clone().acquire_many_owned(1).await.unwrap();
         let middle = slots.clone().acquire_many_owned(2).await.unwrap();

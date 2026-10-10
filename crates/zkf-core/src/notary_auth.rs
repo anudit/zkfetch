@@ -83,7 +83,7 @@ mod tests {
 /// Opening marker: 192 random bits remain in the challenge.
 pub const POOL_MAGIC: &[u8; 8] = b"ZKFPOOL1";
 /// Negotiates the pipelined proof and in-session attestation flow.
-pub const FLOW_MAGIC: &[u8; 8] = b"ZKFFLOW4";
+pub const FLOW_MAGIC: &[u8; 8] = b"ZKFFLOW5";
 
 /// Public TLS first flight. No application data or private proof inputs.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -94,6 +94,8 @@ pub struct ProxyOpen {
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SetupOpen {
+    /// Signed authentication mode: one legacy lane or two independent full-width lanes.
+    pub authentication_lanes: u8,
     pub proxy: Option<ProxyOpen>,
     pub budget: u32,
     pub ferret: Vec<u8>,
@@ -138,6 +140,7 @@ pub async fn authenticate_pool_open<S: AsyncRead + AsyncWrite + Unpin>(
         expected,
         request,
         SetupOpen {
+            authentication_lanes: 1,
             proxy: proxy_open,
             budget: 0,
             ferret: vec![],
@@ -309,7 +312,9 @@ where
             .deserialize(&bytes)?;
         if let Some(setup) = &open {
             ensure!(
-                setup.budget <= 3_500_000 && setup.ferret.len() <= 4096,
+                matches!(setup.authentication_lanes, 1 | 2)
+                    && setup.budget <= 3_500_000
+                    && setup.ferret.len() <= 8192,
                 "invalid setup budget"
             );
             if let Some(open) = &setup.proxy {
@@ -411,6 +416,7 @@ mod pool_tests {
         let (a, b) = tokio::io::duplex(4096);
         let (mut a, mut b) = (a.compat(), b.compat());
         let setup = SetupOpen {
+            authentication_lanes: 1,
             proxy: None,
             budget: 3_500_000,
             ferret: vec![1, 2, 3],
@@ -432,31 +438,49 @@ mod pool_tests {
 
     #[tokio::test]
     async fn cancellation_while_waiting_for_admission_burns_checked_out_state() {
-        use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
         struct Tracked(Arc<AtomicBool>);
         impl Drop for Tracked {
-            fn drop(&mut self) { self.0.store(true, Ordering::SeqCst); }
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
         }
         let cache = PoolCache::new(1, std::time::Duration::from_secs(60));
         let dropped = Arc::new(AtomicBool::new(false));
         let entered = Arc::new(AtomicBool::new(false));
         let old = PoolRequest::default();
         cache.put([9; 32], old, Tracked(dropped.clone()));
-        let request = PoolRequest { generation: 1, ..old };
+        let request = PoolRequest {
+            generation: 1,
+            ..old
+        };
         let (a, b) = tokio::io::duplex(4096);
         let (mut a, mut b) = (a.compat(), b.compat());
-        let setup = SetupOpen { proxy: None, budget: 1_000_000, ferret: vec![] };
+        let setup = SetupOpen {
+            authentication_lanes: 1,
+            proxy: None,
+            budget: 1_000_000,
+            ferret: vec![],
+        };
         let entered_callback = entered.clone();
         let mut waiting = Box::pin(async {
             futures::join!(
                 authenticate_pool_setup(&mut a, None, request, setup),
-                respond_pool_with_async(&mut b, &[7; 32], [9; 32], &cache,
+                respond_pool_with_async(
+                    &mut b,
+                    &[7; 32],
+                    [9; 32],
+                    &cache,
                     |cached, _| async move {
                         assert!(cached.is_some());
                         entered_callback.store(true, Ordering::SeqCst);
                         std::future::pending::<()>().await;
                         Ok((cached, vec![]))
-                    })
+                    }
+                )
             )
         });
         assert!(futures::poll!(&mut waiting).is_pending());
@@ -479,6 +503,7 @@ mod pool_tests {
             client_hello: vec![1, 2, 3],
         };
         let opening = bincode::serialize(&Some(SetupOpen {
+            authentication_lanes: 1,
             proxy: Some(hello),
             budget: 3_500_000,
             ferret: vec![9, 8, 7],
@@ -501,6 +526,67 @@ mod pool_tests {
             assert!(key.verifying_key().verify(&changed, &sig).is_err());
         }
     }
+    #[tokio::test]
+    async fn flow5_rejects_unsupported_lane_counts_before_prefill() {
+        for lanes in [0, 3, 255] {
+            let cache = PoolCache::<u8>::new(2, std::time::Duration::from_secs(60));
+            let (a, b) = tokio::io::duplex(4096);
+            let (mut a, mut b) = (a.compat(), b.compat());
+            let setup = SetupOpen {
+                authentication_lanes: lanes,
+                proxy: None,
+                budget: 1_000_000,
+                ferret: vec![],
+            };
+            let (client, server) = futures::join!(
+                authenticate_pool_setup(&mut a, None, PoolRequest::default(), setup),
+                async {
+                    let result = respond_pool_with(&mut b, &[7; 32], [9; 32], &cache, |_, _| {
+                        panic!("invalid mode must not reach preprocessing")
+                    })
+                    .await;
+                    drop(b);
+                    result
+                }
+            );
+            assert!(server.is_err());
+            assert!(client.is_err());
+        }
+    }
+
+    #[test]
+    fn flow5_signature_binds_authentication_lane_count() {
+        let key = SigningKey::from_slice(&[7; 32]).unwrap();
+        let mut nonce = [3; 32];
+        nonce[..8].copy_from_slice(FLOW_MAGIC);
+        let setup = SetupOpen {
+            authentication_lanes: 2,
+            proxy: None,
+            budget: 1_000_000,
+            ferret: vec![],
+        };
+        let signed_message = |setup: SetupOpen| {
+            let bytes = bincode::serialize(&Some(setup)).unwrap();
+            let mut msg = pool_message(&nonce, &PoolRequest::default().encode(), &[0; 41]);
+            msg.extend_from_slice(&(bytes.len() as u64).to_be_bytes());
+            msg.extend_from_slice(&bytes);
+            msg.extend_from_slice(&0u64.to_be_bytes());
+            msg
+        };
+        let message = signed_message(setup.clone());
+        let signature: Signature = key.sign(&message);
+        assert!(key.verifying_key().verify(&message, &signature).is_ok());
+        let changed = SetupOpen {
+            authentication_lanes: 1,
+            ..setup
+        };
+        assert!(
+            key.verifying_key()
+                .verify(&signed_message(changed), &signature)
+                .is_err()
+        );
+    }
+
     #[tokio::test]
     async fn signed_opening_resumes_once_and_resets_stale_tickets() {
         let cache = PoolCache::new(2, std::time::Duration::from_secs(60));

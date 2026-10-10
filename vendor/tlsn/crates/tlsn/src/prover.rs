@@ -616,8 +616,10 @@ impl Prover<state::Committed> {
             tlsn_core::transcript::Direction::Received => self.state.keys.server_write_key,
         };
         let ctx = self.ctx.as_mut().ok_or_else(|| Error::internal().with_msg("proving context was dropped"))?;
-        zkf_ir::backend::mpz::prove(&mut self.state.vm, ctx, circuit, witness, prefix, binding)
-            .await.map_err(|e| Error::internal().with_msg(format!("application key relation failed: {e}")))
+        match &mut self.state.vm {
+            mpz_zk::session::Prover::Legacy(vm) => zkf_ir::backend::mpz::prove(vm, ctx, circuit, witness, prefix, binding).await,
+            mpz_zk::session::Prover::Strict(vm) => zkf_ir::backend::mpz::strict::prove_prefixes(vm, ctx, circuit, witness, &[prefix], binding).await,
+        }.map_err(|e| Error::internal().with_msg(format!("application key relation failed: {e}")))
     }
 
     /// Combined Fiat--Shamir relation borrowing both session keys in order.
@@ -633,8 +635,10 @@ impl Prover<state::Committed> {
         }
         let prefixes = [self.state.keys.client_write_key, self.state.keys.server_write_key];
         let ctx = self.ctx.as_mut().ok_or_else(|| Error::internal().with_msg("proving context was dropped"))?;
-        zkf_ir::backend::mpz::prove_profiled_prefixes(&mut self.state.vm, ctx, circuit, witness, &prefixes, binding, true)
-            .await.map_err(|e| Error::internal().with_msg(format!("application key relation failed: {e}")))
+        match &mut self.state.vm {
+            mpz_zk::session::Prover::Legacy(vm) => zkf_ir::backend::mpz::prove_profiled_prefixes(vm, ctx, circuit, witness, &prefixes, binding, true).await,
+            mpz_zk::session::Prover::Strict(vm) => zkf_ir::backend::mpz::strict::prove_prefixes(vm, ctx, circuit, witness, &prefixes, binding).await,
+        }.map_err(|e| Error::internal().with_msg(format!("application key relation failed: {e}")))
     }
 
     /// Returns the TLS transcript.

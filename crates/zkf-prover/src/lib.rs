@@ -210,8 +210,8 @@ impl SessionKey {
             "this build does not support attestationV2"
         );
         anyhow::ensure!(
-            self.proxy && self.protocol_v2,
-            "attestationV2 requires mode \"proxy\" and protocolV2"
+            self.proxy && self.protocol_v2 && self.persistent_vole,
+            "attestationV2 requires proxy, protocolV2 and persistent VOLE"
         );
         Ok(self)
     }
@@ -318,8 +318,8 @@ async fn prepare_with(
     let opening = async {
         if key.proxy && key.persistent_vole {
             let cache_key = format!(
-                "{}|{:?}|{:?}|v2={}",
-                key.notary_url, key.expected_notary_key, tls_version, key.protocol_v2
+                "{}|{:?}|{:?}|flow5={}|attestation_v2={}",
+                key.notary_url, key.expected_notary_key, tls_version, key.protocol_v2, key.attestation_v2
             );
             if let Some(lease) = setup_pool::open(
                 &mut notary,
@@ -328,6 +328,7 @@ async fn prepare_with(
                 public_open,
                 key.protocol_v2 && tls_version == TlsVersion::V1_3,
                 key.vole_budget,
+                key.attestation_v2,
             )
             .await?
             {
