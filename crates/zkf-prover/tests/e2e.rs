@@ -1560,6 +1560,34 @@ mod attestation_v2 {
             false_path.session_claim_nonce=Some(nonce.clone());
             assert!(zkf_prover::notarize(false_path).await.is_err());
         }
+        // Signed head turns on JSON checkpoints; later claims parse windows only.
+        {
+            use zkf_attestation::response::JsonPathSegment::{Member, Index};
+            let mut signed=p.clone();signed.signed_response_head=true;
+            let out=tokio::time::timeout(std::time::Duration::from_secs(60),zkf_prover::notarize(signed)).await.unwrap().unwrap();
+            let attestation=zkf_attestation::SignedAttestation::decode(&b64::decode(&out.attestation).unwrap()).unwrap();
+            assert!(zkf_attestation::checkpoints::signed(&attestation.attestation.claims).is_some(),"signed head carries checkpoints");
+            let nested = MemberPredicate {
+                key: "age".into(), path: vec![Member("information".into()), Member("family".into()),
+                    Member("siblings".into()), Index(0), Member("age".into())],
+                unique: false, op: "eq".into(), value: zkf_core::Decimal::Number(24),
+            };
+            let window_nonce=hex::encode([77;32]);
+            let start=std::time::Instant::now();
+            let proof=zkf_prover::present_v2(&out.attestation,&out.secrets,&request(nested.clone(),&window_nonce)).unwrap();
+            eprintln!("checkpoint-window presentation: {} bytes, {:?}",b64::decode(&proof).unwrap().len(),start.elapsed());
+            let window_opts=VerifyV2Options {trusted_notary_keys:vec![notary_key.clone()],expected_server_name:SERVER_DOMAIN.into(),
+                predicate:nested.clone(),nonce:window_nonce.clone(),max_age_secs:Some(600),expected_owner:None,expected_context:Some("challenge-1".into())};
+            zkf_verifier::verify_v2(&proof,&window_opts).unwrap();
+            let mut wrong=nested.clone();wrong.path[3]=Index(1);
+            assert!(zkf_verifier::verify_v2(&proof,&VerifyV2Options{predicate:wrong,..window_opts.clone()}).is_err());
+            assert!(zkf_verifier::verify_v2(&proof,&VerifyV2Options{predicate:MemberPredicate{value:zkf_core::Decimal::Number(25),..nested.clone()},..window_opts.clone()}).is_err());
+            let root=zkf_prover::present_v2(&out.attestation,&out.secrets,&request(member("ge",1000),&window_nonce)).unwrap();
+            zkf_verifier::verify_v2(&root,&VerifyV2Options{predicate:member("ge",1000),..window_opts.clone()}).unwrap();
+            let unique=MemberPredicate{unique:true,..nested};
+            let proof=zkf_prover::present_v2(&out.attestation,&out.secrets,&request(unique.clone(),&window_nonce)).unwrap();
+            zkf_verifier::verify_v2(&proof,&VerifyV2Options{predicate:unique,..window_opts}).unwrap();
+        }
         let mut false_claim=p;false_claim.session_claims=vec![member("gt",1234567890)];false_claim.session_claim_nonce=Some(nonce);
         assert!(zkf_prover::notarize(false_claim).await.is_err());
     }

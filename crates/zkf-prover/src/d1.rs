@@ -526,7 +526,7 @@ pub fn present_v2(
         anchors: if request.predicate.path.is_empty() && !request.predicate.unique {
             Vec::new()
         } else {
-            member.anchors
+            member.anchors.clone()
         },
         windows: false,
         checkpoints: Vec::new(),
@@ -538,7 +538,62 @@ pub fn present_v2(
         other => bail!("parameters must be \"fast\" or \"small\", got {other:?}"),
     };
     let opening = recv.open(0, recv.direction.len)?;
-    let proof = presentation::prove(a, statement, opening, &query, &secrets.server_key, params)?;
+    let mut statement = statement;
+    let mut states = Vec::new();
+    let head = zkf_attestation::response::Head {
+        headers: statement.headers.clone(),
+        records: statement.records.clone(),
+    };
+    if let (Some((spacing, count, root)), true) = (
+        zkf_attestation::checkpoints::signed(&a.claims),
+        head.is_signed(&a.claims),
+    ) {
+        ensure!(
+            spacing == zkf_ir::json_segment::CHECKPOINT_SPACING
+                && count == secrets.checkpoint_states.len(),
+            "these secrets do not carry the attestation's checkpoints"
+        );
+        states = secrets
+            .checkpoint_states
+            .iter()
+            .map(|packed| {
+                zkf_ir::checkpoint::unpack(packed).ok_or_else(|| anyhow!("malformed checkpoint state"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let commitments: Vec<_> = states
+            .iter()
+            .enumerate()
+            .map(|(i, s)| zkf_ir::checkpoint::commit_native(&secrets.server_key, i + 1, s))
+            .collect();
+        ensure!(
+            zkf_attestation::checkpoints::root(&commitments) == root,
+            "stored checkpoint states do not match the signed root"
+        );
+        statement.windows = true;
+        statement.max_depth = 8;
+        statement.anchors = member.anchors.clone();
+        let plan = zkf_ir::json_window::plan(body.len(), &path, &statement.anchors, query.unique)
+            .map_err(anyhow::Error::msg)?;
+        statement.checkpoints = plan
+            .checkpoints
+            .iter()
+            .filter(|i| **i > 0)
+            .map(|i| presentation::OpenedCheckpoint {
+                index: *i as u32,
+                commitment: commitments[i - 1].to_vec(),
+                path: zkf_attestation::checkpoints::path(&commitments, *i),
+            })
+            .collect();
+    }
+    let proof = presentation::prove_with_checkpoints(
+        a,
+        statement,
+        opening,
+        &query,
+        &secrets.server_key,
+        params,
+        &states,
+    )?;
     Ok(b64::encode(proof.encode(&signed_bytes)?))
 }
 
