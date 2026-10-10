@@ -1,0 +1,85 @@
+{
+  "scope": "partial attack audit; not a minimum-security certificate",
+  "source": "https://github.com/Memphisd/Regular-ISD",
+  "estimatorCommit": "afe1e408f8a46aebc15293462480f478ff969923",
+  "rows": [
+    {
+      "n": 256000,
+      "k": 13249,
+      "t": 2000,
+      "regularBlockLength": 128,
+      "regularPermutationBits": 183.44836661648756,
+      "ccjLinearizationBits": 183.4254227696585,
+      "eu2025SufficientPolynomialCondition": false
+    },
+    {
+      "n": 512000,
+      "k": 22653,
+      "t": 2000,
+      "regularBlockLength": 256,
+      "regularPermutationBits": 175.58693686745903,
+      "ccjLinearizationBits": 175.5796322844612,
+      "eu2025SufficientPolynomialCondition": false
+    },
+    {
+      "n": 1024000,
+      "k": 38737,
+      "t": 2000,
+      "regularBlockLength": 512,
+      "regularPermutationBits": 165.2120132511891,
+      "ccjLinearizationBits": 165.20859892340752,
+      "eu2025SufficientPolynomialCondition": false
+    },
+    {
+      "n": 2048000,
+      "k": 69559,
+      "t": 2000,
+      "regularBlockLength": 1024,
+      "regularPermutationBits": 159.58880422467553,
+      "ccjLinearizationBits": 159.58724083583144,
+      "eu2025SufficientPolynomialCondition": false
+    },
+    {
+      "n": 4096000,
+      "k": 131155,
+      "t": 2000,
+      "regularBlockLength": 2048,
+      "regularPermutationBits": 158.25237182588336,
+      "ccjLinearizationBits": 158.25155852528573,
+      "eu2025SufficientPolynomialCondition": false
+    },
+    {
+      "n": 8192000,
+      "k": 247302,
+      "t": 2000,
+      "regularBlockLength": 4096,
+      "regularPermutationBits": 156.53004702920367,
+      "ccjLinearizationBits": 156.52962893892982,
+      "eu2025SufficientPolynomialCondition": false
+    },
+    {
+      "n": 16384000,
+      "k": 466318,
+      "t": 2000,
+      "regularBlockLength": 8192,
+      "regularPermutationBits": 154.76660871195452,
+      "ccjLinearizationBits": 154.76639013044874,
+      "eu2025SufficientPolynomialCondition": false
+    },
+    {
+      "n": 32768000,
+      "k": 879301,
+      "t": 2000,
+      "regularBlockLength": 16384,
+      "regularPermutationBits": 153.12285161183192,
+      "ccjLinearizationBits": 153.1227348060701,
+      "eu2025SufficientPolynomialCondition": false
+    }
+  ],
+  "missing": [
+    "Briaud-Oygarden concrete algebraic costs",
+    "regular enumeration and representation costs",
+    "all generic attacks and sparse-matrix-specific advantages",
+    "malicious OT and warm-pool composition"
+  ]
+}

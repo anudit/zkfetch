@@ -1,0 +1,60 @@
+{
+  "startedAt": "2026-10-10T10:48:28.896Z",
+  "completedAt": "2026-10-10T10:48:46.614Z",
+  "complete": true,
+  "expectedSamples": 2,
+  "host": "wss://13-202-74-218.sslip.io/notarize",
+  "scope": "one observation per case; not medians",
+  "provenance": {
+    "scripts/hosted-extension-example.js": "164972f7ee0cc382eef524ff319d9a66ed9dba68c4d1ddbffc42f35904c3319f",
+    "scripts/bench-v2-hosted.ts": "334fd30cc9b4939ec52199eb606c22334a224003413ba01245a8c198586d7d9c",
+    ".zkf/build-all/artifacts/zkf-notary": "ccb17098fe81f2a817688139ac2d48b64329aafee651c4bc965f98895a066f3c",
+    "packages/native/zkf.node": "5ad540590561b952486d8a84c98aef4fc0a73a4c7988ca7cee7126e6d88d2931",
+    "packages/wasm/pkg/zkf_bg.wasm": "367c5aab9218223859577bc71623aa976fa76ea93637e9f253fe9ff9ae04a0b7",
+    "packages/wasm/pkg-threads/zkf_bg.wasm": "5e7929b5b50a92b10f5d0e71c1329167b477e833723b354d2a021ed9c073467a"
+  },
+  "samples": [
+    {
+      "client": "Chrome",
+      "threads": 0,
+      "state": "extension-public-top-level",
+      "verified": true,
+      "nonceRejected": true,
+      "nestedPathRejected": true,
+      "elapsedMs": 4380.405000030994,
+      "presentMs": 1917.5400000214577,
+      "verifyMs": 720.6399999856949,
+      "timings": {
+        "notaryConnectMs": 229.98,
+        "setupMs": 1815.455,
+        "tlsMs": 100.58,
+        "proveMs": 193.24,
+        "attestMs": 110.405,
+        "totalMs": 2449.665,
+        "prewarmed": false,
+        "voleResumed": false
+      }
+    },
+    {
+      "client": "Chrome",
+      "threads": 8,
+      "state": "extension-public-top-level",
+      "verified": true,
+      "nonceRejected": true,
+      "nestedPathRejected": true,
+      "elapsedMs": 3515.375,
+      "presentMs": 1277.2649999856949,
+      "verifyMs": 439.4050000309944,
+      "timings": {
+        "notaryConnectMs": 564.844971,
+        "setupMs": 1364.804932,
+        "tlsMs": 96.099853,
+        "proveMs": 88.13501,
+        "attestMs": 112.73998999999999,
+        "totalMs": 2226.629883,
+        "prewarmed": false,
+        "voleResumed": false
+      }
+    }
+  ]
+}

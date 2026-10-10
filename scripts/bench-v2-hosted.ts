@@ -13,6 +13,8 @@ const url = new URL(deployment.url);
 url.searchParams.set('capability', capability);
 const config = { notaryUrl: url.toString(), publicKey: deployment.publicKey,
   pathUrl: process.env.ZKF_HOSTED_PATH_URL, pathSignedHead: process.env.ZKF_PATH_SIGNED_HEAD === '1', syntheticPaths: process.env.ZKF_HOSTED_SYNTHETIC_PATH === '1' };
+const expectedSamples = process.env.ZKF_EXTENSION_EXAMPLE ? 2 : process.env.ZKF_BROWSER_ONLY ? 8 : 12;
+const notaryArtifact = process.env.ZKF_NOTARY_ARTIFACT ?? '.zkf/aws/artifacts/zkf-notary';
 const samples: any[] = [];
 const onRow = (row: any) => { samples.push(row); console.log(JSON.stringify(row)); };
 const out = process.env.ZKF_HOSTED_REPORT ?? 'docs/benchmarks/d1-d5-completion/hosted-matrix.json';
@@ -123,7 +125,7 @@ try {
   if (!process.env.ZKF_BROWSER_ONLY && !process.env.ZKF_EXTENSION_EXAMPLE) await runCases(native, { ...config, onRow }, 'native', 0);
   await chromeCases(1);
   await chromeCases(8);
-  if (samples.length !== (process.env.ZKF_EXTENSION_EXAMPLE ? 2 : 12) || samples.some(row => !row.verified)) throw new Error('Incomplete hosted matrix');
+  if (samples.length !== expectedSamples || samples.some(row => !row.verified)) throw new Error('Incomplete hosted matrix');
 } catch (e) {
   console.error(String(e).split(capability).join('[redacted]'));
   process.exitCode = 1;
@@ -131,11 +133,11 @@ try {
   server.stop(true);
   const provenance: Record<string, string> = {};
   for (const path of [casesFile, 'scripts/bench-v2-hosted.ts',
-    '.zkf/aws/completion-artifacts/zkf-notary', 'packages/native/zkf.node',
+    notaryArtifact, 'packages/native/zkf.node',
     'packages/wasm/pkg/zkf_bg.wasm', 'packages/wasm/pkg-threads/zkf_bg.wasm']) {
     provenance[path] = createHash('sha256').update(new Uint8Array(await Bun.file(path).arrayBuffer())).digest('hex');
   }
   await Bun.write(out, JSON.stringify({ startedAt, completedAt: new Date().toISOString(),
-    complete: samples.length === 12, host: deployment.url,
+    complete: samples.length === expectedSamples && samples.every(row => row.verified), expectedSamples, host: deployment.url,
     scope: 'one observation per case; not medians', provenance, samples }, null, 2) + '\n');
 }

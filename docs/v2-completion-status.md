@@ -34,11 +34,12 @@ the relay's fragmented/coalesced WebSocket framing regression passes, release
 benchmark compilation passes, and the 12-case latency matrix verifies every
 session. Stronger-predicate substitution is also rejected in each case.
 
-Next: finish the final hosted path/client matrix, then implement the stronger
-authentication needed for D3-2. Both hosted capacity profiles have completed.
+The Option A follow-up completes both synthetic hosted path matrices (24/24),
+including Chrome with eight threads. Authenticated Duolingo remains unverified.
+Next: integrate the stronger authentication throughout the production TLS session
+and close its composition and offline soundness reductions. Both hosted capacity profiles have completed.
 Depth-8 typed paths, array indices and optional semantic key uniqueness pass
-IR, offline proof and native API e2e regressions; live Duolingo validation is
-under way. Presentation parameter tuning remains paused pending soundness. Soundness margins, full streaming integration, broader
+IR, offline proof and native API e2e regressions; live Duolingo validation is awaiting a signed-in extension run. Presentation parameter tuning remains paused pending soundness. Soundness margins, full streaming integration, broader
 TLS/JSON/HTTP support and the full split protocol remain implementation work.
 External review is deferred; seven nightly days and the fuzz CPU budget remain
 unfulfilled release gates. The whole completion plan is not complete.

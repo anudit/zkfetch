@@ -87,3 +87,55 @@ above the target. Raw cases are in `option-a/bounded-path-native.json`.
 `scripts/build-all.sh` refuses dirty build inputs and records artifact hashes,
 commit/tree identity and toolchain versions. This is provenance, not a claim of
 bit-identical output across toolchains.
+
+## Rebuilt deployment and audit evidence
+
+Commit `3405827` produced native, single-threaded WASM, threaded WASM, the
+extension and the ARM64 notary; the build manifest records 24 artifact hashes.
+The rebuilt binary is deployed to the existing instance. Strict authentication
+is still not selected by the production driver.
+
+The shipped extension worker verifies its public top-level example in real
+Chrome with one and eight threads, rejects changed nonce/path policy, and is
+recorded in `option-a/hosted-extension-top-level.json`. These are fresh single
+observations, not warm medians or signed-in Duolingo validation.
+
+The regular-LPN audit is partial. MPZ's estimator describes its basis as
+ePrint 2022/712; the parameter table cannot certify coverage of later attacks.
+The authors' regular-ISD permutation and CCJ linearization estimates span
+153–183 bits for the eight current sets. None meets the sufficient polynomial
+regime criterion in the 2025 algebraic-analysis abstract. This does not establish
+a minimum work factor: algebraic, enumeration, representation, sparse-matrix
+and composition analyses remain. Sources:
+[regular-ISD estimator](https://github.com/Memphisd/Regular-ISD),
+[2023 algebraic attack](https://eprint.iacr.org/2023/176),
+[2024 regular-ISD analysis](https://eprint.iacr.org/2023/1568), and
+[2025 algebraic analysis](https://eprint.iacr.org/2025/415).
+
+## Hosted path matrix completed
+
+The rebuilt snapshot passes both 12-case synthetic path matrices: native and
+Chrome with one/eight threads, fresh/warm/prepared sessions and v1 baselines.
+Array-index and depth-eight proofs pass; changed ancestor/path, uniqueness and
+nonce policy are rejected; prepared sessions cannot be reused. The fixture is
+public synthetic data, not an authenticated Duolingo response.
+
+Eight-thread Chrome warm observations (one sample each):
+
+| Unique path profile | Full presentation | Present | Verify |
+|---|---:|---:|---:|
+| Ciphertext-only, Fast | 194,371 B | 1,441 ms | 1,009 ms |
+| Signed head, Fast | 157,986 B | 1,196 ms | 942 ms |
+
+Both matrices have `complete: true` in `option-a/hosted-paths-*.json`. The old
+incomplete runs remain as historical evidence. These observations are still
+before the soundness margin and do not meet the presentation gates.
+
+Remote binary SHA-256 matches the synchronized build:
+`ccb17098fe81f2a817688139ac2d48b64329aafee651c4bc965f98895a066f3c`.
+The temporary Caddy fixture was restored byte-for-byte; both systemd services
+remain active. The build manifest is `option-a/build-3405827.json`.
+
+The benchmark runner now marks its two-case extension and eight-case browser-only
+modes correctly, and hashes the actual deployed notary artifact instead of an
+older fixed checkpoint path. Typecheck and all 22 extension tests pass.
