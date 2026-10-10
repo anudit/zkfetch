@@ -129,7 +129,7 @@ fn bind_key(
 /// authenticates strings independently. This DP accepts literal UTF-8, short
 /// escapes and case-insensitive Unicode/surrogate escapes, so uniqueness cannot
 /// be bypassed with e.g. "a" versus "\u0061".
-fn decoded_key_matches(c: &mut Algebra<'_>, document: &[Byte], name: &str) -> Vec<Wire> {
+pub(crate) fn decoded_key_matches(c: &mut Algebra<'_>, document: &[Byte], name: &str) -> Vec<Wire> {
     let mut zero = c.public_bit(false);
     let mut suffix: Vec<_> = document.iter().map(|b| eq(c, *b, b'"')).collect();
     suffix.push(zero);

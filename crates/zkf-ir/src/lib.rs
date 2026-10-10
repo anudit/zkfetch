@@ -11,6 +11,7 @@ pub mod json;
 pub mod json_algebra;
 pub mod json_circuit;
 pub mod json_segment;
+pub mod json_window;
 pub mod predicates;
 pub mod response;
 pub mod sha256;

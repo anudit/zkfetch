@@ -63,6 +63,38 @@ pub fn commit_native(key: &[u8; 16], index: usize, bits: &[bool]) -> Commitment 
     out
 }
 
+/// Native checkpoint states of a body, by evaluating the parse-only relation.
+/// Fails if the body is not a complete JSON document of bounded depth.
+pub fn native_states(body: &[u8]) -> Result<Vec<Vec<bool>>, String> {
+    if body.is_empty() || body.len() > crate::json_segment::MAX_BODY {
+        return Err("checkpoint body size outside profile".into());
+    }
+    let mut c = Circuit::default();
+    let bytes: Vec<_> = (0..body.len()).map(|_| c.commit_byte()).collect();
+    let states = crate::json_segment::checkpoint_states(&mut c, &bytes);
+    let w = c
+        .eval(&crate::byte_inputs(body))
+        .map_err(|_| "body is not a complete JSON document within depth eight".to_string())?;
+    Ok(states
+        .iter()
+        .map(|s| crate::json_segment::state_values(&w, s))
+        .collect())
+}
+
+/// Compact storage of state bits (little-endian bit order).
+pub fn pack(bits: &[bool]) -> Vec<u8> {
+    let mut out = vec![0u8; bits.len().div_ceil(8)];
+    for (i, b) in bits.iter().enumerate() {
+        out[i / 8] |= u8::from(*b) << (i % 8);
+    }
+    out
+}
+pub fn unpack(bytes: &[u8]) -> Option<Vec<bool>> {
+    (bytes.len() == STATE_BITS.div_ceil(8)).then(|| {
+        (0..STATE_BITS).map(|i| bytes[i / 8] >> (i % 8) & 1 == 1).collect()
+    })
+}
+
 fn block_wires(c: &mut Circuit, index: usize, part: usize, state: &State) -> [Byte; 16] {
     let bits = state.bits();
     let zero = c.public_bit(false);

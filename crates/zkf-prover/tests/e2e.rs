@@ -166,6 +166,7 @@ fn params(
         signed_response_head: false,
         session_claims: vec![],
         session_claim_nonce: None,
+    json_checkpoints: None,
     }
 }
 

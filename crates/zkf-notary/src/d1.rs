@@ -93,6 +93,7 @@ pub(crate) async fn verify(
             iv_server,
             &metadata.head,
             &metadata.claims,
+            checkpoint_arg(metadata)?.as_deref(),
         )
         .map_err(anyhow::Error::msg)?
     } else {
@@ -121,6 +122,23 @@ pub(crate) async fn verify(
         dialed_ip,
         metadata,
     })
+}
+
+fn checkpoint_arg(
+    metadata: &zkf_attestation::response::SessionMetadata,
+) -> Result<Option<Vec<zkf_ir::checkpoint::Commitment>>> {
+    match metadata.checkpoint_spacing {
+        0 => {
+            ensure!(metadata.checkpoints.is_empty(), "checkpoints without spacing");
+            Ok(None)
+        }
+        s if usize::from(s) == zkf_ir::json_segment::CHECKPOINT_SPACING => Ok(Some(
+            metadata
+                .checkpoint_commitments()
+                .ok_or_else(|| anyhow!("malformed checkpoint commitments"))?,
+        )),
+        _ => anyhow::bail!("unsupported checkpoint spacing"),
+    }
 }
 
 /// Signs the v2 attestation for verified `evidence`; returns the envelope.
@@ -182,11 +200,7 @@ pub(crate) fn sign(
         claims: evidence
             .metadata
             .as_ref()
-            .map(|metadata| {
-                std::iter::once(metadata.head.claim())
-                    .chain(metadata.claims.iter().map(|claim| claim.claim()))
-                    .collect()
-            })
+            .map(|metadata| metadata.signed_claims())
             .unwrap_or_default(),
         binding: Binding {
             owner: request.owner,

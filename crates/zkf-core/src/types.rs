@@ -89,6 +89,16 @@ pub struct NotarizeParams {
     /// Independent verifier challenge, required with sessionClaims.
     #[serde(default)]
     pub session_claim_nonce: Option<String>,
+    /// Sign JSON parser checkpoints so later offline claims parse only small
+    /// windows. Defaults to `signed_response_head`; requires it.
+    #[serde(default)]
+    pub json_checkpoints: Option<bool>,
+}
+
+impl NotarizeParams {
+    pub fn checkpoints_enabled(&self) -> bool {
+        self.json_checkpoints.unwrap_or(self.signed_response_head)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -120,6 +120,35 @@ impl MemberClaim {
 pub struct SessionMetadata {
     pub head: Head,
     pub claims: Vec<MemberClaim>,
+    /// Checkpoint spacing in body bytes; 0 when checkpoints are off.
+    pub checkpoint_spacing: u16,
+    /// JSON parser checkpoint commitments, 48 bytes each, for checkpoints
+    /// 1..=n at `checkpoint_spacing`.
+    pub checkpoints: Vec<u8>,
+}
+
+impl SessionMetadata {
+    pub fn checkpoint_commitments(&self) -> Option<Vec<[u8; crate::checkpoints::COMMITMENT_BYTES]>> {
+        (self.checkpoints.len() % crate::checkpoints::COMMITMENT_BYTES == 0).then(|| {
+            self.checkpoints
+                .chunks_exact(crate::checkpoints::COMMITMENT_BYTES)
+                .map(|c| c.try_into().unwrap())
+                .collect()
+        })
+    }
+    /// Every claim the notary signs for this metadata, in canonical order.
+    pub fn signed_claims(&self) -> Vec<Claim> {
+        let mut out = vec![self.head.claim()];
+        out.extend(self.claims.iter().map(MemberClaim::claim));
+        if self.checkpoint_spacing != 0 {
+            let commitments = self.checkpoint_commitments().unwrap_or_default();
+            out.push(crate::checkpoints::claim(
+                usize::from(self.checkpoint_spacing),
+                &commitments,
+            ));
+        }
+        out
+    }
 }
 
 impl Head {

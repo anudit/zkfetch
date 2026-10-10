@@ -333,6 +333,7 @@ async fn run(
                     vec![]
                 },
                 session_claim_nonce: opts.session_claim.then(|| nonce.clone()),
+            json_checkpoints: None,
             }),
         )
         .await

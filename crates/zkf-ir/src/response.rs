@@ -230,8 +230,14 @@ pub fn session(
     iv: [u8; 12],
     head: &Head,
     claims: &[zkf_attestation::response::MemberClaim],
+    checkpoints: Option<&[crate::checkpoint::Commitment]>,
 ) -> Result<Circuit, String> {
     let body_bytes = body_len(direction, head)?;
+    if let Some(commitments) = checkpoints {
+        if commitments.len() != crate::checkpoint::count(body_bytes) {
+            return Err("checkpoint count does not match the response body".into());
+        }
+    }
     if claims.len() > 16 {
         return Err("too many session claims".into());
     }
@@ -253,14 +259,16 @@ pub fn session(
                 ciphertext,
                 iv,
                 head,
-                if claims.is_empty() {
+                if claims.is_empty() && checkpoints.is_none() {
                     Scope::Head
                 } else {
                     Scope::Full
                 },
                 false,
-                if claims.is_empty() {
+                if claims.is_empty() && checkpoints.is_none() {
                     None
+                } else if checkpoints.is_some() {
+                    Some(body_bytes)
                 } else {
                     let limit = claims
                         .iter()
@@ -285,6 +293,12 @@ pub fn session(
                     Some(limit)
                 },
             )?;
+            if let Some(commitments) = checkpoints {
+                let states = crate::json_segment::checkpoint_states(&mut c, &body);
+                for (i, (state, commitment)) in states.iter().zip(commitments).enumerate() {
+                    crate::checkpoint::assert_commitment(&mut c, &expanded, i + 1, state, commitment, true);
+                }
+            }
             for claim in claims {
                 if claim.member.len() > 1024
                     || serde_json::from_slice::<String>(&claim.encoded_key)
@@ -357,7 +371,11 @@ pub fn session(
             }
         }
     }
-    c.register_profile(SESSION_PROFILE);
+    c.register_profile(if checkpoints.is_some() {
+        SESSION_CHECKPOINT_PROFILE
+    } else {
+        SESSION_PROFILE
+    });
     Ok(c)
 }
 
@@ -459,6 +477,8 @@ pub const OFFLINE_FULL_PROFILE: &str =
 pub const OFFLINE_BODY_PROFILE: &str =
     "zkf/2/http-json/compact-aes/prefix/top-level/depth-4/signed-head/v4";
 pub const SESSION_PROFILE: &str = "zkf/2/session/standard-aes/prefix/member-or-path/v6";
+pub const SESSION_CHECKPOINT_PROFILE: &str =
+    "zkf/2/session/standard-aes/full-body/json-checkpoints-32/member-or-path/v1";
 pub const OFFLINE_PATH_FULL_PROFILE: &str = "zkf/2/http-json/compact-aes/path/bounded-depth-8/full/v7";
 pub const OFFLINE_PATH_BODY_PROFILE: &str =
     "zkf/2/http-json/compact-aes/path/bounded-depth-8/signed-head/v7";

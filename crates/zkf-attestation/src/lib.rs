@@ -1,5 +1,6 @@
 //! V2 signed-object primitives. These types do not establish a TLS key binding
 //! on their own: the notary must first accept the complete in-session proof.
+pub mod checkpoints;
 pub mod records;
 
 pub mod response;

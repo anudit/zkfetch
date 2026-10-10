@@ -970,8 +970,7 @@ mod tests {
             &opening.verify(&a.recv).unwrap(),
             a.keys.iv_server.0,
             &head,
-            &[],
-        )
+            &[], None)
         .unwrap();
         assert_eq!(
             session.profile(),
@@ -1050,8 +1049,7 @@ mod tests {
                 &opening.verify(&a.recv).unwrap(),
                 a.keys.iv_server.0,
                 &head,
-                &[claim],
-            )
+                &[claim], None)
             .unwrap();
             assert!(
                 c.committed_bits() < 30_000,
@@ -1114,8 +1112,7 @@ mod tests {
                 &opening.verify(&a.recv).unwrap(),
                 a.keys.iv_server.0,
                 &head,
-                &[claim],
-            )
+                &[claim], None)
             .unwrap();
             assert!(c.eval(&byte_inputs(&[7; 32])).is_err());
             if member.object_depth == 0 {
@@ -1190,8 +1187,7 @@ mod tests {
                 &ciphertext,
                 a.keys.iv_server.0,
                 &head,
-                std::slice::from_ref(claim),
-            )
+                std::slice::from_ref(claim), None)
             .and_then(|c| c.eval(&byte_inputs(&[7; 32])).map(|_| ()).map_err(|e| e.to_string()))
         };
         let selected = find(&path);

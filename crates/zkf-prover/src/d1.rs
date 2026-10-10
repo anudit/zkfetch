@@ -30,7 +30,7 @@ use zkf_voleith::{
     primitives::Parameters,
 };
 
-const SECRETS_MAGIC: &[u8; 8] = b"zkf2sec\x01";
+const SECRETS_MAGIC: &[u8; 8] = b"zkf2sec\x02";
 /// Two record streams at the 8 MiB stream cap, plus keys and framing.
 const MAX_SECRETS_BYTES: u64 = 17 << 20;
 
@@ -43,6 +43,9 @@ pub(crate) struct SecretsV2 {
     /// Complete application-epoch wire records, as relayed.
     sent: Vec<Vec<u8>>,
     recv: Vec<Vec<u8>>,
+    /// Packed JSON parser states at each signed checkpoint (empty if none).
+    /// Secret: they reveal the body's structure at those positions.
+    checkpoint_states: Vec<Vec<u8>>,
 }
 
 fn secrets_options() -> impl Options {
@@ -129,12 +132,17 @@ pub(crate) async fn prove(
     let keys = prover
         .application_key_secrets()
         .ok_or_else(|| anyhow!("application keys were not retained"))?;
-    let secrets = SecretsV2 {
+    let mut secrets = SecretsV2 {
         client_key: *keys.key(Direction::Sent),
         server_key: *keys.key(Direction::Received),
         sent: epoch.sent.clone(),
         recv: epoch.received.clone(),
+        checkpoint_states: Vec::new(),
     };
+    ensure!(
+        !params.checkpoints_enabled() || params.signed_response_head,
+        "jsonCheckpoints require signedResponseHead"
+    );
     let metadata = if params.signed_response_head || !params.session_claims.is_empty() {
         let (head, body) = response_head(&secrets.recv, &secrets.server_key, epoch.iv_server)?;
         let mut claims = Vec::new();
@@ -200,7 +208,38 @@ pub(crate) async fn prove(
                 });
             }
         }
-        Some(zkf_attestation::response::SessionMetadata { head, claims })
+        let mut checkpoints = Vec::new();
+        // Default-on checkpoints fall back to none for bodies the profile
+        // cannot parse (e.g. deeper than eight); an explicit request fails.
+        let states = if params.checkpoints_enabled() {
+            match zkf_ir::checkpoint::native_states(&body) {
+                Ok(states) => Some(states),
+                Err(e) if params.json_checkpoints == Some(true) => bail!(e),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        if let Some(states) = &states {
+            for (i, state) in states.iter().enumerate() {
+                checkpoints.extend_from_slice(&zkf_ir::checkpoint::commit_native(
+                    &secrets.server_key,
+                    i + 1,
+                    state,
+                ));
+                secrets.checkpoint_states.push(zkf_ir::checkpoint::pack(state));
+            }
+        }
+        Some(zkf_attestation::response::SessionMetadata {
+            head,
+            claims,
+            checkpoint_spacing: if states.is_some() {
+                zkf_ir::json_segment::CHECKPOINT_SPACING as u16
+            } else {
+                0
+            },
+            checkpoints,
+        })
     } else {
         None
     };
@@ -235,6 +274,7 @@ pub(crate) async fn prove(
             expected.iv_server,
             &metadata.head,
             &metadata.claims,
+            checkpoint_arg(metadata)?.as_deref(),
         )
         .map_err(anyhow::Error::msg)?
     } else {
@@ -254,6 +294,25 @@ pub(crate) async fn prove(
         .await
         .context("combined key-commitment proof failed")?;
     Ok((secrets, expected))
+}
+
+/// The commitments to prove in session, if checkpoints are on. Rejects any
+/// spacing other than the one the relation implements.
+pub(crate) fn checkpoint_arg(
+    metadata: &zkf_attestation::response::SessionMetadata,
+) -> Result<Option<Vec<zkf_ir::checkpoint::Commitment>>> {
+    match metadata.checkpoint_spacing {
+        0 => {
+            ensure!(metadata.checkpoints.is_empty(), "checkpoints without spacing");
+            Ok(None)
+        }
+        s if usize::from(s) == zkf_ir::json_segment::CHECKPOINT_SPACING => Ok(Some(
+            metadata
+                .checkpoint_commitments()
+                .ok_or_else(|| anyhow!("malformed checkpoint commitments"))?,
+        )),
+        _ => bail!("unsupported checkpoint spacing"),
+    }
 }
 
 /// Decodes the notary's reply and checks it signs exactly this session.
@@ -296,9 +355,7 @@ pub(crate) fn accept(
                 == expected
                     .metadata
                     .as_ref()
-                    .map(|metadata| std::iter::once(metadata.head.claim())
-                        .chain(metadata.claims.iter().map(|claim| claim.claim()))
-                        .collect::<Vec<_>>())
+                    .map(|metadata| metadata.signed_claims())
                     .unwrap_or_default(),
         "notary returned an attestation inconsistent with this session"
     );
