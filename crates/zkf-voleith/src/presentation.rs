@@ -675,7 +675,17 @@ mod tests {
     #[test]
     #[ignore = "diagnostic benchmark, pre-soundness-margin"]
     fn benchmark_bounded_path_presentations() {
-        let body = br#"{"streakData":{"longestStreak":{"length":123}},"other":{"longestStreak":{"length":123}},"length":999,"rows":[{"length":10},{"length":777}],"deep":{"a":{"b":{"c":{"d":{"e":{"f":{"g":456}}}}}}}}"#;
+        let small = br#"{"streakData":{"longestStreak":{"length":123}},"other":{"longestStreak":{"length":123}},"length":999,"rows":[{"length":10},{"length":777}],"deep":{"a":{"b":{"c":{"d":{"e":{"f":{"g":456}}}}}}}}"#;
+        // ZKF_PATH_BODY=1k: the claimed member sits after ~900 bytes of filler.
+        let large = format!(
+            r#"{{"pad":"{}","streakData":{{"longestStreak":{{"length":123}}}}}}"#,
+            "x".repeat(950)
+        );
+        let body: &[u8] = if std::env::var("ZKF_PATH_BODY").as_deref() == Ok("1k") {
+            large.as_bytes()
+        } else {
+            small
+        };
         let path: Vec<_> = ["streakData", "longestStreak", "length"]
             .into_iter()
             .map(|s| JsonPathSegment::Member(s.into()))
@@ -706,8 +716,13 @@ mod tests {
                     }
                     let c = relation(&a, &statement, &opening, &q).unwrap();
                     let started = std::time::Instant::now();
+                    crate::profile::enable(std::env::var_os("ZKF_PATH_PROFILE").is_some());
                     let proof = prove(&a, statement, opening, &q, &[7; 16], params).unwrap();
                     let prove_ms = started.elapsed().as_secs_f64() * 1000.0;
+                    if let Some(profile) = crate::profile::take() {
+                        let stages: Vec<_> = profile.stages.iter().map(|s| format!("{}={:.1}", s.name, s.ms)).collect();
+                        println!("path-profile {}", stages.join(" "));
+                    }
                     let started = std::time::Instant::now();
                     verify(&a, &signature, signing.verifying_key(), &proof, &q).unwrap();
                     let verify_ms = started.elapsed().as_secs_f64() * 1000.0;

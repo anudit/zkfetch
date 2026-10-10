@@ -156,3 +156,43 @@ must independently enforce the same complete public TLS relation, and the
 reduction must address cross-lane witness consistency and adaptive leakage.
 This candidate is not added to a certified total. OT, LPN, PRG/hash advantages
 and offline extraction remain unresolved; `--require-release` still fails.
+
+## Offline margin: per-round proof-of-work (11 October 2026)
+
+The offline (VOLE-in-the-head) proof now meets **≤ Q·2⁻¹²⁸ for Q ≤ 2⁶⁴
+random-oracle queries** by derivation. `scripts/soundness.py` reports
+`offline.derived = true`: 2⁻¹²⁹·⁰ per query for Fast and 2⁻¹²⁹·¹ for Small.
+
+**Mechanism.** Each Fiat–Shamir round gets an independent proof-of-work.
+The predicate is evaluated on hash output disjoint from the challenge itself,
+so it does not restrict the challenge distribution. Every *accepted*
+challenge then costs an adversary 2^w oracle queries, which divides that
+round's round-by-round error by 2^w. This differs from narrowing Δ's domain,
+which does not reduce the root probability (see above). Constants are in
+`crates/zkf-voleith/src/experimental.rs`:
+
+| Round | Error before | PoW bits | Error per query |
+|---|---|---:|---|
+| iv → leaf-commitment hash key (FAEST Thm 9.24, third term) | τ·2⁻¹²⁸ | 7 | τ·2⁻¹³⁵ |
+| VOLE consistency (Lemma 4.10, incl. SoftSpoken 2^τ loss, ℓ̂ ≤ 2²³) | 2^τ·2⁻¹⁴⁴ | 2 | ≤ 2⁻¹³⁰ |
+| Check weights (independent uniform field weights) | 2⁻¹²⁸ | 2 | 2⁻¹³⁰ |
+| Opening Δ (degree-3 roots) | 3·2⁻¹²⁸ | 3 | 3·2⁻¹³¹ |
+| Oracle collisions (2λ-bit outputs) | Q·2⁻²⁵⁶ | — | ≤ 2⁻¹⁹² at Q = 2⁶⁴ |
+
+The total is leaf + max(round) + collision. Rounds combine by their maximum,
+because Fiat–Shamir of a round-by-round sound protocol loses a factor of Q on
+the largest round error (Canetti et al., STOC 2019).
+
+**Cost.** Expected extra hashing per proof: 128 iv trials, 4 + 4 nonces, and
+an 8× wider Δ search. The Δ search checks the cheap predicate before the BAVC
+opening, so the number of openings is unchanged. Measured prove/verify times
+are within run-to-run noise of the previous build. Proofs grow by 8 bytes,
+for the two u32 nonces. The proof magic is `zkfVI\0\x03\0`, and the transcript
+domain is `pow-margin-2`. Older proofs are rejected.
+
+**What this does not cover.**
+- The term structure is FAEST v2 Theorem 9.24 applied to a general degree-3
+  relation. Re-proving it independently for our relation is part of the
+  deferred external review.
+- Attestation-side terms (ECDSA, Bao/BLAKE3, `C_k` binding) and the session
+  terms below remain separate entries in `unresolvedTerms`.

@@ -14,8 +14,18 @@ use spongefish::{VerifierState, instantiations::XOF};
 use zeroize::Zeroizing;
 use zkf_ir::{CheckedWitness, Circuit, Witness, field::Fe};
 
-const MAGIC: &[u8; 8] = b"zkfVI\0\x02\0";
-const MAX_GRIND: u32 = 1 << 20;
+const MAGIC: &[u8; 8] = b"zkfVI\0\x03\0";
+const MAX_GRIND: u32 = 1 << 24;
+
+/// Proof-of-work bits added to each Fiat–Shamir challenge, on hash output
+/// independent of the challenge itself. Every accepted challenge then costs an
+/// adversary 2^bits random-oracle queries, which divides that round's
+/// round-by-round error by 2^bits. `scripts/soundness.py` derives these values;
+/// see `docs/v2-soundness.md` (offline margin).
+pub const POW_IV_BITS: u32 = 7;
+pub const POW_CONSISTENCY_BITS: u32 = 2;
+pub const POW_WEIGHTS_BITS: u32 = 2;
+pub const POW_OPENING_BITS: u32 = 3;
 
 /// All three bindings are supplied by the integrating verifier. `statement`
 /// must be a canonical encoding, not an unchecked client description.
@@ -67,7 +77,7 @@ fn transcript(
     instance.extend_from_slice(&(circuit.committed_bits() as u64).to_le_bytes());
     instance.extend_from_slice(&(context.statement.len() as u64).to_le_bytes());
     instance.extend_from_slice(context.statement);
-    spongefish::domain_separator!("zkf/2/present; general-degree-3; experimental-1")
+    spongefish::domain_separator!("zkf/2/present; general-degree-3; pow-margin-2")
         .instance(&instance)
         .to_verifier(XOF::<Turbo>::default(), &[])
 }
@@ -148,14 +158,52 @@ fn next_weight(reader: &mut TurboShake128Reader) -> Fe {
     reader.read(&mut bytes);
     Fe(u128::from_le_bytes(bytes))
 }
-fn grind(seed: &[u8; 32], counter: u32) -> [u8; 16] {
+fn low_bits_zero(bytes: [u8; 4], bits: u32) -> bool {
+    u32::from_le_bytes(bytes) & ((1u32 << bits) - 1) == 0
+}
+/// One random-oracle query: the opening challenge Δ and, from independent
+/// output bits, its proof-of-work predicate.
+fn grind(seed: &[u8; 32], counter: u32) -> ([u8; 16], bool) {
     let mut hash = Turbo::default();
     hash.update(b"zkf/2/check-opening");
     hash.update(seed);
     hash.update(&counter.to_le_bytes());
-    let mut output = [0; 16];
+    let mut output = [0; 20];
+    hash.finalize_xof().read(&mut output);
+    let pow = low_bits_zero(output[16..].try_into().unwrap(), POW_OPENING_BITS);
+    (output[..16].try_into().unwrap(), pow)
+}
+fn pow_hash(label: &[u8], seed: &[u8], nonce: u32) -> [u8; 4] {
+    let mut hash = Turbo::default();
+    hash.update(b"zkf/2/pow");
+    hash.update(&(label.len() as u64).to_le_bytes());
+    hash.update(label);
+    hash.update(seed);
+    hash.update(&nonce.to_le_bytes());
+    let mut output = [0; 4];
     hash.finalize_xof().read(&mut output);
     output
+}
+fn iv_ok(iv: &[u8; 16]) -> bool {
+    low_bits_zero(pow_hash(b"iv", iv, 0), POW_IV_BITS)
+}
+/// Bind a proof-of-work to the current transcript state before a challenge.
+fn pow_prove(t: &mut Transcript, label: &[u8], bits: u32) -> Result<u32> {
+    let seed = challenge::<32>(t, label);
+    let nonce = (0..MAX_GRIND)
+        .find(|n| low_bits_zero(pow_hash(label, &seed, *n), bits))
+        .ok_or_else(|| anyhow!("proof-of-work budget exhausted"))?;
+    absorb(t, label, &nonce.to_le_bytes());
+    Ok(nonce)
+}
+fn pow_verify(t: &mut Transcript, label: &[u8], bits: u32, nonce: u32) -> Result<()> {
+    let seed = challenge::<32>(t, label);
+    ensure!(
+        nonce < MAX_GRIND && low_bits_zero(pow_hash(label, &seed, nonce), bits),
+        "invalid proof-of-work"
+    );
+    absorb(t, label, &nonce.to_le_bytes());
+    Ok(())
 }
 
 /// Prove an already checked IR relation. This API deliberately requires a
@@ -192,7 +240,14 @@ fn prove_checked_inner(
     let mut seed = Zeroizing::new([0u8; 16]);
     let mut iv = [0u8; 16];
     rand::rngs::OsRng.fill_bytes(seed.as_mut());
-    rand::rngs::OsRng.fill_bytes(&mut iv);
+    // The leaf-commitment hash key derives from iv; grinding iv bounds the
+    // number of keys an adversary can try (FAEST v2 Thm 9.24, third term).
+    loop {
+        rand::rngs::OsRng.fill_bytes(&mut iv);
+        if iv_ok(&iv) {
+            break;
+        }
+    }
     let material = primitives::commit(params, &seed, &iv, length)
         .ok_or_else(|| anyhow!("VOLE commitment failed"))?;
     profile.mark("prove.vole-commit");
@@ -201,6 +256,7 @@ fn prove_checked_inner(
     absorb(&mut t, b"bavc", &material.com);
     absorb(&mut t, b"corrections", &material.corrections);
     profile.mark("transcript.binding");
+    let pow_consistency = pow_prove(&mut t, b"pow-consistency", POW_CONSISTENCY_BITS)?;
     let check_seed = challenge::<88>(&mut t, b"vole-consistency");
     let u_tilde = primitives::hash_vector(&check_seed, &material.u).unwrap();
     absorb(&mut t, b"u-tilde", &u_tilde);
@@ -216,6 +272,7 @@ fn prove_checked_inner(
         *byte ^= u;
     }
     absorb(&mut t, b"witness-correction", &correction);
+    let pow_weights = pow_prove(&mut t, b"pow-weights", POW_WEIGHTS_BITS)?;
     let weight_seed = challenge::<32>(&mut t, b"check-weights");
     profile.mark("prove.transcript-and-consistency");
     let tags = authenticated_values(c, &material.columns);
@@ -248,7 +305,10 @@ fn prove_checked_inner(
     let opening_seed = challenge::<32>(&mut t, b"opening-seed");
     let mut selected = None;
     for counter in 0..MAX_GRIND {
-        let delta = grind(&opening_seed, counter);
+        let (delta, pow) = grind(&opening_seed, counter);
+        if !pow || !params.valid_challenge(&delta) {
+            continue;
+        }
         if let Some(opening) = material.open(&delta) {
             selected = Some((counter, delta, opening));
             break;
@@ -262,8 +322,10 @@ fn prove_checked_inner(
     proof.extend_from_slice(&(c.committed_bits() as u64).to_le_bytes());
     proof.extend_from_slice(&iv);
     proof.extend_from_slice(&material.corrections);
+    proof.extend_from_slice(&pow_consistency.to_le_bytes());
     proof.extend_from_slice(&u_tilde);
     proof.extend_from_slice(&correction);
+    proof.extend_from_slice(&pow_weights.to_le_bytes());
     proof.extend_from_slice(&a1.0.to_le_bytes());
     proof.extend_from_slice(&a2.0.to_le_bytes());
     proof.extend_from_slice(&opening);
@@ -277,8 +339,10 @@ struct Parsed<'a> {
     params: Parameters,
     iv: &'a [u8; 16],
     corrections: &'a [u8],
+    pow_consistency: u32,
     u_tilde: &'a [u8; 18],
     correction: &'a [u8],
+    pow_weights: u32,
     a1: Fe,
     a2: Fe,
     opening: &'a [u8],
@@ -302,7 +366,7 @@ fn parse<'a>(c: &Circuit, proof: &'a [u8]) -> Result<Parsed<'a>> {
     let length = vector_bytes(c)?;
     let wbytes = length - 50;
     let cbytes = (params.tau() - 1) * length;
-    let expected = 17 + 16 + cbytes + 18 + wbytes + 32 + params.opening_bytes() + 16 + 4;
+    let expected = 17 + 16 + cbytes + 4 + 18 + wbytes + 4 + 32 + params.opening_bytes() + 16 + 4;
     ensure!(
         proof.len() == expected,
         "incorrect proof length or trailing bytes"
@@ -315,8 +379,10 @@ fn parse<'a>(c: &Circuit, proof: &'a [u8]) -> Result<Parsed<'a>> {
     };
     let iv = take(16).try_into().unwrap();
     let corrections = take(cbytes);
+    let pow_consistency = u32::from_le_bytes(take(4).try_into().unwrap());
     let u_tilde = take(18).try_into().unwrap();
     let correction = take(wbytes);
+    let pow_weights = u32::from_le_bytes(take(4).try_into().unwrap());
     let a1 = Fe(u128::from_le_bytes(take(16).try_into().unwrap()));
     let a2 = Fe(u128::from_le_bytes(take(16).try_into().unwrap()));
     let opening = take(params.opening_bytes());
@@ -326,12 +392,15 @@ fn parse<'a>(c: &Circuit, proof: &'a [u8]) -> Result<Parsed<'a>> {
         counter < MAX_GRIND && params.valid_challenge(delta),
         "invalid grinding challenge"
     );
+    ensure!(iv_ok(iv), "invalid iv proof-of-work");
     Ok(Parsed {
         params,
         iv,
         corrections,
+        pow_consistency,
         u_tilde,
         correction,
+        pow_weights,
         a1,
         a2,
         opening,
@@ -363,6 +432,7 @@ fn verify_inner(c: &Circuit, proof: &[u8], context: &Context<'_>, profiled: bool
     absorb(&mut t, b"bavc", &material.com);
     absorb(&mut t, b"corrections", p.corrections);
     profile.mark("transcript.binding");
+    pow_verify(&mut t, b"pow-consistency", POW_CONSISTENCY_BITS, p.pow_consistency)?;
     let check_seed = challenge::<88>(&mut t, b"vole-consistency");
     absorb(&mut t, b"u-tilde", p.u_tilde);
     for (i, column) in material.columns.iter().enumerate() {
@@ -375,6 +445,7 @@ fn verify_inner(c: &Circuit, proof: &[u8], context: &Context<'_>, profiled: bool
         absorb(&mut t, b"v-hash", &hash);
     }
     absorb(&mut t, b"witness-correction", p.correction);
+    pow_verify(&mut t, b"pow-weights", POW_WEIGHTS_BITS, p.pow_weights)?;
     let weight_seed = challenge::<32>(&mut t, b"check-weights");
     for (i, column) in material.columns.iter_mut().enumerate() {
         if (p.delta[i / 8] >> (i % 8)) & 1 != 0 {
@@ -404,7 +475,7 @@ fn verify_inner(c: &Circuit, proof: &[u8], context: &Context<'_>, profiled: bool
     let opening_seed = challenge::<32>(&mut t, b"opening-seed");
     profile.mark("verify.weighted-check");
     ensure!(
-        grind(&opening_seed, p.counter) == *p.delta,
+        grind(&opening_seed, p.counter) == (*p.delta, true),
         "invalid relation/transcript"
     );
     Ok(())
@@ -465,8 +536,10 @@ mod tests {
             8,
             16,
             parsed.corrections.len(),
+            4,
             18,
             parsed.correction.len(),
+            4,
             16,
             16,
             parsed.opening.len(),
