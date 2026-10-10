@@ -563,7 +563,7 @@ pub fn offline_relation_windows(
     Ok(c)
 }
 pub const OFFLINE_WINDOW_PROFILE: &str =
-    "zkf/2/http-json/compact-aes/checkpoint-windows-32/path-depth-8/signed-head/v1";
+    "zkf/2/http-json/compact-aes/checkpoint-windows-32/path-depth-8/signed-head/v2";
 
 pub const OFFLINE_FULL_PROFILE: &str =
     "zkf/2/http-json/compact-aes/prefix/top-level/depth-4/full/v4";
@@ -571,7 +571,7 @@ pub const OFFLINE_BODY_PROFILE: &str =
     "zkf/2/http-json/compact-aes/prefix/top-level/depth-4/signed-head/v4";
 pub const SESSION_PROFILE: &str = "zkf/2/session/standard-aes/prefix/member-or-path/v6";
 pub const SESSION_CHECKPOINT_PROFILE: &str =
-    "zkf/2/session/standard-aes/full-body/json-checkpoints-32/member-or-path/v1";
+    "zkf/2/session/standard-aes/full-body/json-checkpoints-32/member-or-path/v2";
 pub const OFFLINE_PATH_FULL_PROFILE: &str = "zkf/2/http-json/compact-aes/path/bounded-depth-8/full/v7";
 pub const OFFLINE_PATH_BODY_PROFILE: &str =
     "zkf/2/http-json/compact-aes/path/bounded-depth-8/signed-head/v7";

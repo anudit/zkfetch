@@ -271,10 +271,13 @@ pub fn assert_path(
                     parser.assert_stack(*level, *opened_at);
                 }
             }
+            let Some(r) = rules else {
+                parser.step_plain(b, p);
+                continue;
+            };
             let mut new_leaf_depth = None;
             let mut new_counters = Vec::new();
             parser.step(b, p, |a, ev| {
-                let Some(r) = rules else { return };
                 for level in &r.key_start {
                     a.assert_true(ev.key_start);
                     a.assert_true(ev.depth[level + 1]);
@@ -357,7 +360,7 @@ pub fn assert_path(
             if let Some(d) = new_leaf_depth {
                 leaf_depth = Some(d);
             }
-            if rules.is_some_and(|r| r.document_end) {
+            if r.document_end {
                 parser.assert_complete();
             }
         }

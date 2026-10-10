@@ -194,6 +194,36 @@ pub struct Parser<'c, 'a> {
     stack_base: [[Wire; POSITION_BITS]; LEVELS],
     writes: Vec<(usize, [Wire; LEVELS])>,
     max_depth: usize,
+    /// When set, the current state is these wires (template steps) and the
+    /// symbolic bits above are stale until `materialize`.
+    pending: Option<Vec<Wire>>,
+    constants: Option<(Wire, Wire)>,
+}
+
+/// Inputs and outputs of the cached step template: grammar, lexer, depth,
+/// kind and unicode bits (in that order), then the byte; outputs the same
+/// state bits followed by the eight stack-write bits.
+const CORE_BITS: usize = 10 + NSTATES + (LEVELS + 1) + LEVELS + 4;
+
+fn step_template() -> &'static crate::template::Template {
+    static TEMPLATE: std::sync::OnceLock<crate::template::Template> = std::sync::OnceLock::new();
+    TEMPLATE.get_or_init(|| {
+        let mut g = Circuit::default();
+        let core: Vec<Wire> = (0..CORE_BITS).map(|_| g.commit_bit()).collect();
+        let byte = g.commit_byte();
+        let zero = g.public_bit(false);
+        let mut bits = core.clone();
+        bits.extend(std::iter::repeat_n(zero, LEVELS * POSITION_BITS));
+        let state = State::from_bits(&bits);
+        let mut a = Algebra::new(&mut g);
+        let mut p = Parser::new(&mut a, &state, LEVELS);
+        p.step(byte, 0, |_, _| {});
+        let mut outputs = p.core_wires();
+        outputs.extend(p.writes[0].1);
+        drop(p);
+        drop(a);
+        crate::template::Template::new(g, outputs)
+    })
 }
 
 impl<'c, 'a> Parser<'c, 'a> {
@@ -227,7 +257,89 @@ impl<'c, 'a> Parser<'c, 'a> {
             stack_base: state.stack,
             writes: Vec::new(),
             max_depth,
+            pending: None,
+            constants: None,
         }
+    }
+
+    fn constants(&mut self) -> (Wire, Wire) {
+        if self.constants.is_none() {
+            let zero = self.c.circuit().public_bit(false);
+            let one = self.c.circuit().public_bit(true);
+            self.constants = Some((zero, one));
+        }
+        self.constants.unwrap()
+    }
+
+    /// The current core state (grammar, lex, depth, kind, unicode) as wires.
+    fn core_wires(&mut self) -> Vec<Wire> {
+        if let Some(wires) = &self.pending {
+            return wires.clone();
+        }
+        let (zero, one) = self.constants();
+        let mut bits: Vec<Bit> = Vec::with_capacity(CORE_BITS);
+        bits.extend(self.grammar);
+        bits.extend(self.lex);
+        bits.extend(self.depth.iter().copied());
+        bits.extend(self.kind.iter().copied());
+        bits.extend(self.unicode);
+        let mut out: Vec<Wire> = bits.into_iter().map(|b| self.c.wire_of(b, zero, one)).collect();
+        // Shallower parsers pad depth/kind to the full layout with zeros.
+        if self.max_depth < LEVELS {
+            let (g, rest) = out.split_at(10 + NSTATES);
+            let (d, rest) = rest.split_at(self.max_depth + 1);
+            let (k, u) = rest.split_at(self.max_depth);
+            let mut full = g.to_vec();
+            full.extend(d);
+            full.extend(std::iter::repeat_n(zero, LEVELS - self.max_depth));
+            full.extend(k);
+            full.extend(std::iter::repeat_n(zero, LEVELS - self.max_depth));
+            full.extend(u);
+            out = full;
+        }
+        out
+    }
+
+    /// Re-import pending wires as symbolic bits for a hooked step or check.
+    fn materialize(&mut self) {
+        let Some(wires) = self.pending.take() else { return };
+        let mut at = 0;
+        let mut take = |n: usize| {
+            let slice = wires[at..at + n].to_vec();
+            at += n;
+            slice
+        };
+        let grammar = take(10);
+        let lex = take(NSTATES);
+        let depth = take(LEVELS + 1);
+        let kind = take(LEVELS);
+        let unicode = take(4);
+        for (i, w) in grammar.iter().enumerate() {
+            self.grammar[i] = self.c.import_bit(*w);
+        }
+        for (i, w) in lex.iter().enumerate() {
+            self.lex[i] = self.c.import_bit(*w);
+        }
+        self.depth = depth[..=self.max_depth].iter().map(|w| self.c.import_bit(*w)).collect();
+        self.kind = kind[..self.max_depth].iter().map(|w| self.c.import_bit(*w)).collect();
+        for (i, w) in unicode.iter().enumerate() {
+            self.unicode[i] = self.c.import_bit(*w);
+        }
+    }
+
+    /// Process one byte with no assertions: instantiate the cached step
+    /// template (same relation as `step`) instead of recompiling it.
+    pub fn step_plain(&mut self, byte: Byte, position: usize) {
+        assert!(position < MAX_BODY);
+        if self.max_depth != LEVELS {
+            return self.step(byte, position, |_, _| {});
+        }
+        let mut inputs = self.core_wires();
+        inputs.extend(byte.0);
+        let outputs = step_template().instantiate(self.c.circuit(), &inputs);
+        self.writes
+            .push((position, outputs[CORE_BITS..].try_into().unwrap()));
+        self.pending = Some(outputs[..CORE_BITS].to_vec());
     }
 
     fn eq(&mut self, byte: Byte, value: u8) -> Bit {
@@ -258,6 +370,7 @@ impl<'c, 'a> Parser<'c, 'a> {
         hook: impl FnOnce(&mut Algebra<'a>, &Events),
     ) {
         assert!(position < MAX_BODY);
+        self.materialize();
         let max_depth = self.max_depth;
         let ws = self.equals_any(byte, b" \t\n\r");
         let quote = self.eq(byte, b'"');
@@ -551,6 +664,17 @@ impl<'c, 'a> Parser<'c, 'a> {
 
     /// The full state after the bytes processed so far; starts a new segment.
     pub fn export(&mut self) -> State {
+        if self.pending.is_some() {
+            let core = self.core_wires();
+            let stack = std::array::from_fn(|level| self.stack_level(level));
+            self.stack_base = stack;
+            self.writes.clear();
+            let mut bits = core;
+            for level in &stack {
+                bits.extend(level);
+            }
+            return State::from_bits(&bits);
+        }
         let zero = self.c.public_bit(false);
         let mut depth = vec![zero; LEVELS + 1];
         depth[..=self.max_depth].copy_from_slice(&self.depth);
@@ -576,6 +700,7 @@ impl<'c, 'a> Parser<'c, 'a> {
 
     /// The document is complete here: one top-level value, closed, no token open.
     pub fn assert_complete(&mut self) {
+        self.materialize();
         let lex = self.lex;
         let endlex = self.any(&[lex[NONE], lex[ZERO], lex[DIGITS], lex[FRAC], lex[EXPDIGITS]]);
         self.c.assert_true(endlex);
@@ -598,7 +723,7 @@ pub fn checkpoint_states(c: &mut Circuit, body: &[Byte]) -> Vec<State> {
         if position > 0 && position % CHECKPOINT_SPACING == 0 {
             states.push(p.export());
         }
-        p.step(*byte, position, |_, _| {});
+        p.step_plain(*byte, position);
     }
     p.assert_complete();
     states
@@ -696,6 +821,11 @@ mod cost {
         let mut c = Circuit::default();
         let bytes: Vec<_> = (0..body.len()).map(|_| c.commit_byte()).collect();
         let base = c.committed_bits();
+        for _ in 1..std::env::var("ZKF_REPEAT").ok().and_then(|v| v.parse().ok()).unwrap_or(1usize) {
+            let mut c2 = Circuit::default();
+            let bytes2: Vec<_> = (0..body.len()).map(|_| c2.commit_byte()).collect();
+            checkpoint_states(&mut c2, &bytes2);
+        }
         let started = std::time::Instant::now();
         let states = checkpoint_states(&mut c, &bytes);
         println!(

@@ -191,6 +191,19 @@ impl<'a> Algebra<'a> {
             _ => unreachable!("committed bit is constant or a single wire"),
         }
     }
+    /// The wire behind a bit that is already a single wire or a constant,
+    /// without adding ops (committing first if it is a larger polynomial).
+    pub fn wire_of(&mut self, bit: Bit, zero: Wire, one: Wire) -> Wire {
+        match &self.expressions[bit.0][..] {
+            [] => zero,
+            [m] if *m == CONSTANT => one,
+            [m] if mono_degree(m) == 1 => self.wire(m[0]),
+            _ => self.export_bit(bit),
+        }
+    }
+    pub fn circuit(&mut self) -> &mut Circuit {
+        self.circuit
+    }
     pub fn import_bit(&mut self, wire: Wire) -> Bit {
         self.input(wire)
     }
