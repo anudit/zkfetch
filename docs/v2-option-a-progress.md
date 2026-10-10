@@ -4,11 +4,12 @@ The user selected two independent full-entropy authentication lanes and asked
 for D1 and D3-2 completion. This follows `zkfetch-d1-d5-plan-v2.md`.
 
 The prior work is checkpointed as `fa9b761` on `v2-completion`. The restored
-Mumbai notary at `13-202-74-218.sslip.io` serves that checkpoint protocol.
+Mumbai notary at `13-202-74-218.sslip.io` initially served that checkpoint protocol;
+it now serves FLOW5 from `7066a4a`.
 All 947 recorded Rust source hashes match the commit. The restored binary hash
 and instance identity are in
 `benchmarks/d1-d5-completion/option-a/restored-checkpoint-provenance.json`.
-This does not mean that the new strict protocol is deployed.
+That restoration evidence predates the FLOW5 deployment recorded below.
 
 ## Implemented foundations
 
@@ -30,7 +31,7 @@ This does not mean that the new strict protocol is deployed.
   separate.
 
 These APIs are experimental. **The current FLOW5 source selects the dual-lane
-VM and pool for v2 attestations; the deployed FLOW4 snapshot still uses one lane.**
+VM and pool for v2 attestations; the deployed snapshot is now `7066a4a`.**
 Secret-memory zeroization audit and synchronized release remain required. Tests establish functional identities, not an adaptive security proof.
 
 Validation: seven authentication-core tests; two strict VM/bridge integration
@@ -171,6 +172,27 @@ Validation: 18/18 native API e2e tests, 10/10 setup-authentication tests, and th
 weighted admission and pre-forwarding downgrade tests pass. Cold/warm v2 proofs, signed-head proofs, signed
 session claims and offline verification pass. Authentication-mode signature
 tampering and unsupported lane counts are rejected. The hosted notary and
-extension remain on `3405827` until synchronized rebuild/deployment. The
+extension were synchronously rebuilt from `7066a4a` and deployed; all 24
+artifact hashes are recorded in `option-a/build-7066a4a.json`. The
 soundness gate still fails closed: this integration does not supply the
 adaptive composition or generalized offline proof reduction.
+
+The new remote ARM64 binary matches SHA-256
+`c20e1f0436e1bd2f71fd7e28e783b115a95e024bc318653cb537de52c0a8e9ed`;
+both systemd services are active. The shipped extension worker passes in real
+Chrome with one and eight threads, including nonce/path substitution rejection.
+All 48 local warm measurements (four per profile at 0/33/100 ms RTT) verify and
+retain one large message in the final proof flight. Ciphertext-only notarization
+medians are 289/463/699 ms, signed-head 485/618/905 ms, and known session claim
+609/739/1,025 ms. These are native synthetic-fixture measurements; the offline
+margin is not yet implemented. Reports are in `option-a/flow5-local-flow/`.
+
+Both FLOW5 hosted path matrices pass 12/12 (24/24 total), including array and
+depth-eight proofs, substituted policy rejection and prepared-session single use.
+The temporary Caddy fixture was removed after both completed. Eight-thread Chrome
+unique-path warm observations: ciphertext-only 194,371 B / 1,389 ms present /
+1,015 ms verify; signed-head 157,986 B / 1,163 ms present / 949 ms verify. Warm
+notarization wall times were 3.22/4.47 s; prepared notarization wall times were
+846/903 ms. These are one sample each and do not establish median performance
+or target closure. The signed-in Duolingo validation above belongs to the
+previous FLOW4 snapshot and needs repeating after reloading the FLOW5 extension.

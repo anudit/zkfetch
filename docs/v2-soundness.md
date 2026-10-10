@@ -140,8 +140,12 @@ repetition argument are recorded as exact 128-bit security.
 ## Option A implementation boundary
 
 The experimental full-entropy dual-lane kernel, VM, degree-three bridge and
-paired Ferret pool now pass functional and mutation tests. Production TLS
-sessions still select the legacy single lane. See `v2-option-a-progress.md`.
+paired Ferret pool now pass functional and mutation tests. FLOW5 source selects
+both lanes throughout proxy TLS schedule checks and the application-key bridge
+for v2 attestations. Its signed setup rejects a downgrade before upstream
+forwarding, separates pool scopes by authentication mode and doubles admission
+accounting. Snapshot `7066a4a` is now synchronously rebuilt and deployed; its native
+cold/warm tests and hosted shipped-extension checks pass. See `v2-option-a-progress.md`.
 
 With full 128-bit deltas, an isolated lane's ideal root/cancellation union is
 `(3 + 1)/2^128`. Squaring would give `16/2^256` **only after** proving the

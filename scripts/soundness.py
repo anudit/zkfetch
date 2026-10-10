@@ -58,7 +58,8 @@ def main():
         "pairedFullEntropyFerretTested": True,
         "productionStrictLanesSelected": True,
         "strictProtocol": "FLOW5 / attestation-v2 / two independent full-width lanes",
-        "deployedStrictLanesSelected": False,
+        "deployedStrictLanesSelected": True,
+        "deployedStrictSnapshot": "7066a4a",
         "fullEntropyTwoLaneRootAndCancellationCandidate": {
             "numerator": "16", "denominator": str(2**256),
             "certified": False,

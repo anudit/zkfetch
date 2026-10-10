@@ -1,0 +1,60 @@
+{
+  "startedAt": "2026-10-10T11:17:33.428Z",
+  "completedAt": "2026-10-10T11:17:56.089Z",
+  "complete": true,
+  "expectedSamples": 2,
+  "host": "wss://13-202-74-218.sslip.io/notarize",
+  "scope": "one observation per case; not medians",
+  "provenance": {
+    "scripts/hosted-extension-example.js": "164972f7ee0cc382eef524ff319d9a66ed9dba68c4d1ddbffc42f35904c3319f",
+    "scripts/bench-v2-hosted.ts": "334fd30cc9b4939ec52199eb606c22334a224003413ba01245a8c198586d7d9c",
+    ".zkf/build-all/artifacts/zkf-notary": "c20e1f0436e1bd2f71fd7e28e783b115a95e024bc318653cb537de52c0a8e9ed",
+    "packages/native/zkf.node": "2f0f89adce7507cb26e9ef93f1aeafd34631d8330507ee351f6b33331ce18bd0",
+    "packages/wasm/pkg/zkf_bg.wasm": "e1fbb066f5095ea7c2945cd2155d7e0807becd79b4d72704f83b15bf5ca53f14",
+    "packages/wasm/pkg-threads/zkf_bg.wasm": "2ab3175b14ec5c22523963487385694796e608b0f335209cbe5066af24268ebd"
+  },
+  "samples": [
+    {
+      "client": "Chrome",
+      "threads": 0,
+      "state": "extension-public-top-level",
+      "verified": true,
+      "nonceRejected": true,
+      "nestedPathRejected": true,
+      "elapsedMs": 7264.600000023842,
+      "presentMs": 1904.4050000309944,
+      "verifyMs": 721.4350000023842,
+      "timings": {
+        "notaryConnectMs": 203.23499999999999,
+        "setupMs": 4347.389999999999,
+        "tlsMs": 115.29,
+        "proveMs": 360.42999999999995,
+        "attestMs": 317.06,
+        "totalMs": 5343.409999999999,
+        "prewarmed": false,
+        "voleResumed": false
+      }
+    },
+    {
+      "client": "Chrome",
+      "threads": 8,
+      "state": "extension-public-top-level",
+      "verified": true,
+      "nonceRejected": true,
+      "nestedPathRejected": true,
+      "elapsedMs": 5473.550000011921,
+      "presentMs": 1425.9849999547005,
+      "verifyMs": 485.375,
+      "timings": {
+        "notaryConnectMs": 418.945068,
+        "setupMs": 2902,
+        "tlsMs": 106.04003900000001,
+        "proveMs": 360.915039,
+        "attestMs": 246.324951,
+        "totalMs": 4034.225097,
+        "prewarmed": false,
+        "voleResumed": false
+      }
+    }
+  ]
+}

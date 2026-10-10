@@ -2,8 +2,8 @@
 
 The Option A follow-up is tracked in [v2-option-a-progress.md](v2-option-a-progress.md).
 The new dual-lane kernel, VM, bridge and paired Ferret preprocessing are locally
-tested and selected by the FLOW5 driver for v2 attestations. The deployed FLOW4
-snapshot still uses legacy authentication. D1 and D3-2
+tested and selected by the FLOW5 driver for v2 attestations. Snapshot `7066a4a` is synchronously rebuilt and deployed; the shipped extension
+verifies with one and eight Chrome threads. D1 and D3-2
 remain incomplete. The prior source is checkpointed as `fa9b761`.
 
 Started 10 October 2026 from `00c9be5`, following
@@ -35,10 +35,11 @@ the relay's fragmented/coalesced WebSocket framing regression passes, release
 benchmark compilation passes, and the 12-case latency matrix verifies every
 session. Stronger-predicate substitution is also rejected in each case.
 
-The Option A follow-up completes both synthetic hosted path matrices (24/24),
+The Option A follow-up completes both synthetic hosted path matrices (24/24)
+on both the earlier FLOW4 and the deployed FLOW5 snapshot,
 including Chrome with eight threads. The user confirms successful verification of the live authenticated Duolingo flow (one warm eight-thread sample: 881 ms notarization, 942 ms presentation, 458 ms verification).
-Next: rebuild and deploy FLOW5 from one snapshot, complete adversarial integration
-and close the composition and offline soundness reductions. Both hosted capacity profiles have completed.
+Next: complete adversarial integration, zeroization, and the composition and
+offline soundness reductions. Both hosted capacity profiles have completed.
 Depth-8 typed paths, array indices and optional semantic key uniqueness pass
 IR, offline proof and native API e2e regressions; the signed-in Duolingo extension run also verifies, with user-reported timings recorded in `option-a/duolingo-live-user-reported.json`. Presentation parameter tuning remains paused pending soundness. Soundness margins, full streaming integration, broader
 TLS/JSON/HTTP support and the full split protocol remain implementation work.
