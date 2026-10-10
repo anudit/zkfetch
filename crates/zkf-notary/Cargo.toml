@@ -9,7 +9,7 @@ publish.workspace = true
 [features]
 default = ["d1-experimental"]
 # v2 (D1) attestations, selected per session by the prover. Experimental.
-d1-experimental = ["tlsn/d1-experimental", "dep:zkf-attestation", "dep:zkf-ir"]
+d1-experimental = ["tlsn/d1-experimental", "dep:zkf-attestation", "dep:zkf-ir", "zkf-ir/parallel"]
 
 [[bin]]
 name = "zkf-notary"

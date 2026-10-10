@@ -64,8 +64,9 @@ where
         "wrong dual authentication row count"
     );
     let seed = vm.field_challenge();
-    let mut message = [[[0u8; 16]; 3]; 2];
-    for lane in 0..2 {
+    // The streaming plan depends only on the public circuit: build it once.
+    let plan = if c.edge_count() >= 32_768 { Some(c.streaming_plan(&[])?) } else { None };
+    let lane_message = |lane: usize| -> Result<[[u8; 16]; 3]> {
         let rows = Zeroizing::new(
             macs.iter()
                 .map(|m| Fe(u128::from_le_bytes(m.tags()[lane].to_bytes())))
@@ -74,9 +75,8 @@ where
         let tags = lift_rows(c, &rows);
         let mut weights = Weights::new(&seed, &lane_binding(&bound, lane));
         let mut coeff = Zeroizing::new([Fe::ZERO; 3]);
-        if c.edge_count() >= 32_768 {
+        if let Some(plan) = &plan {
             let weights: Vec<_> = (0..c.constraint_count()).map(|_| weights.next()).collect();
-            let plan = c.streaming_plan(&[])?;
             let mut valid = true;
             plan.prover_constraints(&checked, &tags, |i, p| {
                 valid &= p.0[3] == Fe::ZERO;
@@ -107,8 +107,14 @@ where
             ^ Fe(u128::from_le_bytes(
                 masks[mask_at + 16..mask_at + 32].try_into()?,
             ));
-        message[lane] = coeff.map(|v| v.0.to_le_bytes());
-    }
+        Ok(coeff.map(|v| v.0.to_le_bytes()))
+    };
+    // The lanes are independent: compute them concurrently when threads exist.
+    #[cfg(feature = "parallel")]
+    let (first, second) = rayon::join(|| lane_message(0), || lane_message(1));
+    #[cfg(not(feature = "parallel"))]
+    let (first, second) = (lane_message(0), lane_message(1));
+    let message = [first?, second?];
     ctx.io_mut().send(message).await?;
     vm.bind_statement(&message.concat().concat());
     Ok(())
@@ -146,24 +152,30 @@ where
         "wrong dual authentication row count"
     );
     let seed = vm.field_challenge();
-    let mut expected = [Fe::ZERO; 2];
-    for lane in 0..2 {
+    let deltas = vm.deltas();
+    let lane_expected = |lane: usize| -> Result<Fe> {
         let rows = Zeroizing::new(
             keys.iter()
                 .map(|k| Fe(u128::from_le_bytes(k.tags()[lane].to_bytes())))
                 .collect::<Vec<_>>(),
         );
         let commitments = lift_rows(c, &rows);
-        let delta = Fe(u128::from_le_bytes(vm.deltas()[lane].as_block().to_bytes()));
+        let delta = Fe(u128::from_le_bytes(deltas[lane].as_block().to_bytes()));
         let at = bytes * 8 + lane * 256;
-        expected[lane] =
+        let mut expected =
             field_rows(&rows[at..at + 128]) ^ (delta * field_rows(&rows[at + 128..at + 256]));
         let mut weights = Weights::new(&seed, &lane_binding(&bound, lane));
         let checks = Zeroizing::new(c.verifier_constraints(&commitments, delta)?);
         for check in checks.iter() {
-            expected[lane] = expected[lane] ^ (weights.next() * *check);
+            expected = expected ^ (weights.next() * *check);
         }
-    }
+        Ok(expected)
+    };
+    #[cfg(feature = "parallel")]
+    let (first, second) = rayon::join(|| lane_expected(0), || lane_expected(1));
+    #[cfg(not(feature = "parallel"))]
+    let (first, second) = (lane_expected(0), lane_expected(1));
+    let expected = [first?, second?];
     let message: [[[u8; 16]; 3]; 2] = ctx.io_mut().expect_next().await?;
     let mut valid = true;
     for lane in 0..2 {
